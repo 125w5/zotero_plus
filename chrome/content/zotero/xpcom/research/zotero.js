@@ -91,13 +91,26 @@
 	};
 	Z.openSource = async source => {
 		if (source.docx) {
-			await Zotero.getActiveZoteroPane().viewAttachment(source.attachmentID);
+			await E.openDOCX(source.attachmentID);
 		}
 		else if (source.attachmentID) {
 			await Zotero.Reader.open(source.attachmentID,
 				Number.isInteger(source.pageIndex) ? { pageIndex: source.pageIndex } : undefined);
 		}
 		else Zotero.launchURL(source.uri);
+	};
+	Z.docxPreview = async function (attachmentID) {
+		let item = await Zotero.Items.getAsync(attachmentID);
+		if (!item?.isAttachment()
+			|| item.attachmentContentType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+			throw new Error('所选条目不是 DOCX 附件');
+		}
+		let path = await item.getFilePathAsync();
+		if (!path || !await IOUtils.exists(path)) throw new Error('DOCX 文件尚未下载或已被移动');
+		const { extractDOCX } = ChromeUtils.importESModule(E.rootURI + 'docx.mjs');
+		return { item: Z.describe(item), parentID: item.parentID || item.id,
+			filename: item.attachmentFilename || item.getField('title') || 'document.docx',
+			path, document: await extractDOCX(path) };
 	};
 	Z.note = async function (paper, record) {
 		let parent = await Zotero.Items.getAsync(paper.id);

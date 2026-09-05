@@ -4,7 +4,7 @@
 
 Native meeting workspace → DSH assembled planning prompt → configured remote model (DeepSeek retained) → reviewed page plan → DSH validation/export tools → editable PPTX + SVG/draw.io + evidence/data manifest.
 
-The engine is in `services/research-engine`; the Gecko bridge is `xpcom/research/artifacts.js`. The built-in Word, PDF reader and plugin mechanisms are unchanged. Native regression: 9/9 passed, including a real remote plan and export. Two engine tests passed. Three test slides rendered and reviewed; method connector geometry corrected after visual inspection.
+The engine is in `services/research-engine`; the Gecko bridge is `xpcom/research/artifacts.js`. The built-in Word, PDF reader and plugin mechanisms are unchanged. An earlier native regression reported 9/9, but it did not exercise the PDF inline actions, DOCX center viewer, tag study sets, or visual slide previews and must not be used as acceptance evidence for those features. The artifact engine currently has two passing tests that inspect editable PPTX diagram/chart internals. The new native UI assertions require a complete platform test runtime before they can be reported as passing.
 
 ## Upstream reuse status (do not report all projects as installed)
 

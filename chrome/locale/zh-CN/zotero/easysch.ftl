@@ -7,6 +7,10 @@ easysch-writing = 论文写作
 easysch-schedule = 研究日程
 easysch-settings = 模型与期刊设置
 easysch-refresh = 读取 Zotero 选中文献
+easysch-tag-create-study-set =
+    .label = 从标签创建动态研究集
+easysch-open-docx =
+    .label = 在 Zotero 中打开 DOCX
 
 easysch-section =
     .label = 科研工作台

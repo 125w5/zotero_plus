@@ -657,7 +657,7 @@ Zotero.TagSelector = class TagSelectorContainer extends React.PureComponent {
 		// affect one of the selected libraries. Deleting still works -- it removes the
 		// tag from all selected libraries (see openDeletePrompt())
 		if (this.multiLibrary) {
-			for (let id of ['assign-color-tag', 'rename-tag', 'split-tag']) {
+			for (let id of ['create-tag-study-set', 'assign-color-tag', 'rename-tag', 'split-tag']) {
 				document.getElementById(id).disabled = true;
 			}
 		}
@@ -769,6 +769,25 @@ Zotero.TagSelector = class TagSelectorContainer extends React.PureComponent {
 		this.selectedTags = new Set();
 	}
 	
+	async createStudySet() {
+		if (this.multiLibrary || !this.libraryID || !this.contextTag?.name) {
+			throw new Error('A tag study set requires a single library');
+		}
+		let tags = this.selectedTags.has(this.contextTag.name)
+			? [...this.selectedTags]
+			: [this.contextTag.name];
+		let search = new Zotero.Search();
+		search.libraryID = this.libraryID;
+		search.name = `研究集 · ${tags.join(' + ')}`;
+		search.addCondition('resultLevel', 'item');
+		search.addCondition('joinMode', 'all');
+		for (let tag of tags) {
+			search.addCondition('tag', 'is', tag);
+		}
+		let id = await search.saveTx();
+		await Zotero.getActiveZoteroPane().collectionsView.selectSearch(id);
+	}
+
 	async openColorPickerWindow() {
 		var io = {
 			libraryID: this.libraryID,

@@ -34,6 +34,11 @@ describe('Built-in research workstation', function () {
 			position: { pageIndex: 0, rects: [[20, 20, 120, 35]] }, text: text.text.slice(0, 50) }, reader._iframeWindow));
 		await saved;
 		assert.isAbove(attachment.getAnnotations().length, 0);
+		let popup = win.document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+		R.readerHandler({ reader: { itemID: attachment.id }, doc: win.document,
+			params: { annotation: { text: text.text.slice(0, 80), position: { pageIndex: 0 } } }, append: node => popup.append(node) });
+		assert.sameMembers([...popup.querySelectorAll('button.easysch-reader-action')].map(button => button.textContent),
+			['翻译', 'AI 解释', '专业术语', '生成示意图', '更多 · 工作台']);
 		await capture('research-pdf.png');
 		reader.close();
 	});
@@ -47,6 +52,11 @@ describe('Built-in research workstation', function () {
 		assert.equal(R.formatTime(new Date(2026, 8, 5, 9, 7)), '2026-09-05 09:07');
 		assert.equal(R.core.task('meeting', '2026-09-06T14:35').due, '2026-09-06T14:35');
 		assert.throws(() => R.core.task('meeting', '2026-02-30T14:35'), /日期/);
+		win.ZoteroPane.tagSelector.contextTag = { name: '调制识别' };
+		await win.ZoteroPane.tagSelector.createStudySet();
+		let studySet = (await Zotero.Searches.getAll(item.libraryID)).find(search => search.name === '研究集 · 调制识别');
+		assert.exists(studySet);
+		assert.equal(win.ZoteroPane.collectionsView.selectedTreeRow.id, `S${studySet.id}`);
 	});
 	it('checks explicitly configured live services and searches both academic databases', async function () {
 		this.timeout(240000);
@@ -113,6 +123,12 @@ describe('Built-in research workstation', function () {
 		assert.isTrue(standaloneSources.sources.some(s => s.docx));
 		let sources = await R.library.sources([R.library.describe(item)]);
 		assert.isTrue(sources.sources.some(s => s.docx && s.text.includes('quartzbiomarker')));
+		await R.openDOCX(attachment.id);
+		let frame = win.document.getElementById(`easysch-docx-frame-${attachment.id}`);
+		for (let n = 0; n < 100 && frame.contentDocument.getElementById('title')?.textContent === '正在读取…'; n++) await Zotero.Promise.delay(100);
+		assert.equal(win.Zotero_Tabs.selectedType, 'research-docx');
+		assert.include(frame.contentDocument.getElementById('document').textContent, 'quartzbiomarker');
+		assert.exists(frame.contentDocument.querySelector('table'));
 	});
 	it('renders native columns, sidebar, and a workspace tab without an installed XPI', async function () {
 		await win.ZoteroPane.selectItem(item.id);
@@ -164,6 +180,11 @@ describe('Built-in research workstation', function () {
 		} finally { stub.restore(); }
 	});
 	it('runs the DSH artifact engine through native pipes without opening another app', async function () {
+		let command = Zotero.Prefs.get('extensions.easysch.engineNode', true);
+		let entry = Zotero.Prefs.get('extensions.easysch.engineEntry', true);
+		if (!command || !entry || !await IOUtils.exists(command) || !await IOUtils.exists(entry)) {
+			this.skip();
+		}
 		let prompt = await R.runArtifactEngine({ operation: 'prompt' });
 		assert.equal(prompt.tools.length, 2);
 		let record = { sources: [{ id: 'E1', text: 'Input is encoded and classified.', label: 'Fixture', uri: 'https://example.org' }], result: { sections: [{ heading: 'Method', body: 'Input is encoded and classified.', sources: ['E1'] }] } };

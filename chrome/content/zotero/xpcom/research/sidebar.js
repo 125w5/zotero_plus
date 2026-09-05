@@ -116,12 +116,11 @@
 			action('取消分析', () => R.ai.cancel());
 		}
 		if (originalItem.isAttachment() && originalItem.attachmentContentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-			action('读取 DOCX / 建立全文索引', async () => {
+			action('在 Zotero 中打开 DOCX', () => R.openDOCX(originalItem.id));
+			action('建立 DOCX 全文索引', async () => {
 				await Zotero.Fulltext.indexItems([originalItem.id]);
-				const { extractDOCX } = ChromeUtils.importESModule(R.rootURI + 'docx.mjs');
-				let data = await extractDOCX(await originalItem.getFilePathAsync());
+				let data = (await R.library.docxPreview(originalItem.id)).document;
 				status.textContent = `${data.paragraphs.length} 段 · ${data.tables.length} 表 · ${data.citations.length} 引用字段`;
-				result.textContent = data.text.slice(0, 30000);
 			});
 		}
 		action('打开科研工作台 / 组会 / 写作', () => R.open({ paperID: item.id }));
