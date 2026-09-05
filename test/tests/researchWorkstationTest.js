@@ -180,6 +180,11 @@ describe('Built-in research workstation', function () {
 		} finally { stub.restore(); }
 	});
 	it('runs the DSH artifact engine through native pipes without opening another app', async function () {
+		let command = Zotero.Prefs.get('extensions.easysch.engineNode', true);
+		let entry = Zotero.Prefs.get('extensions.easysch.engineEntry', true);
+		if (!command || !entry || !await IOUtils.exists(command) || !await IOUtils.exists(entry)) {
+			this.skip();
+		}
 		let prompt = await R.runArtifactEngine({ operation: 'prompt' });
 		assert.equal(prompt.tools.length, 2);
 		let record = { sources: [{ id: 'E1', text: 'Input is encoded and classified.', label: 'Fixture', uri: 'https://example.org' }], result: { sections: [{ heading: 'Method', body: 'Input is encoded and classified.', sources: ['E1'] }] } };
