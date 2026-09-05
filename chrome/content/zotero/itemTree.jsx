@@ -716,6 +716,9 @@ class ItemTreeRowProvider {
 				if (sortField == 'callNumber') {
 					return Zotero.Utilities.Item.compareCallNumbers(fieldA, fieldB);
 				}
+				if (sortField.startsWith('research_') && typeof fieldA === 'number' && typeof fieldB === 'number') {
+					return fieldA - fieldB;
+				}
 
 				return this._sortCollation.compareString(1, String(fieldA), String(fieldB));
 			}
@@ -2437,7 +2440,7 @@ var ItemTree = class ItemTree extends LibraryTree {
 							val = date.toLocaleDateString();
 						}
 						else {
-							val = date.toLocaleString();
+							val = Zotero.Research?.formatTime(date) || date.toLocaleString();
 						}
 					}
 					else {

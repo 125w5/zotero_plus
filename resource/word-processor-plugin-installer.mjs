@@ -62,6 +62,10 @@ export var ZoteroPluginInstaller = function (addon, failSilently, force) {
 
 ZoteroPluginInstaller.prototype = {
 	init: async function () {
+		if (!this.force && this._addon.isAvailable && !await this._addon.isAvailable()) {
+			this.debug('Word is not installed; skipping automatic installation');
+			return;
+		}
 		this.debug('Fetching addon info');
 		
 		this._currentPluginVersion = (await Zotero.File.getContentsFromURLAsync(this._addon.VERSION_FILE)).trim();

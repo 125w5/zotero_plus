@@ -157,6 +157,7 @@ class ZoteroItemTreeRow extends ItemTreeRow {
 	}
 
 	getField(field, unformatted) {
+		if (field.startsWith('research_')) return Zotero.Research.field?.(this.ref, field) ?? '';
 		if (this.ref.hasOwnProperty(field) && this.ref[field] != null) {
 			return this.ref[field];
 		}

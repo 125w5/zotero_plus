@@ -1,0 +1,20 @@
+{
+  "name": "easysch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Evidence-linked research and journal writing for Zotero",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.cjs",
+    "doctor": "node scripts/doctor.mjs"
+  },
+  "devDependencies": {
+    "fflate": "0.8.2"
+  },
+  "dependencies": {
+    "dompurify": "3.4.14",
+    "katex": "0.18.5",
+    "marked": "15.0.12"
+  }
+}

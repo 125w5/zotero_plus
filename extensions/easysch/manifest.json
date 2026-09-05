@@ -1,0 +1,15 @@
+{
+  "manifest_version": 2,
+  "name": "EasySch 简单研究",
+  "version": "0.1.0",
+  "description": "基于证据的论文阅读、研究记忆与期刊写作工作台",
+  "author": "EasySch contributors",
+  "applications": {
+    "zotero": {
+      "id": "easysch@local.research",
+      "update_url": "https://updates.easysch.invalid/updates.json",
+      "strict_min_version": "7.0",
+      "strict_max_version": "7.0.*"
+    }
+  }
+}

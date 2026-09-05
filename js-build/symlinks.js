@@ -22,6 +22,12 @@ async function getSymlinks(source, options, signatures) {
 		if ('isSymlinked' in signature && signature.isSymlinked) {
 			try {
 				await fs.access(path.join('build', f), fs.constants.F_OK);
+				// Windows uses copies, so an existing destination isn't necessarily current.
+				if (isWindows) {
+					const stat = await fs.stat(f);
+					if (!stat.isFile() || stat.mtimeMs !== signature.sourceMTime
+							|| stat.size !== signature.sourceSize) continue;
+				}
 				// file found in signatures and build/ dir, skip
 				filesDonePreviously.push(f);
 			} catch (_) {
@@ -45,6 +51,11 @@ async function getSymlinks(source, options, signatures) {
 			signatures[f] = {
 				isSymlinked: true
 			};
+			if (isWindows) {
+				const stat = await fs.stat(f);
+				signatures[f].sourceMTime = stat.mtimeMs;
+				signatures[f].sourceSize = stat.size;
+			}
 			onProgress(f, dest, 'ln');
 		} catch (err) {
 			throw new Error(`Failed on ${f}: ${err}`);

@@ -1641,7 +1641,10 @@ var ZoteroPane = new function () {
 					updateUnselectedCount();
 				}
 			});
-			ZoteroPane.itemsView.waitForLoad().then(() => Zotero.uiIsReady());
+			ZoteroPane.itemsView.waitForLoad().then(async () => {
+				Zotero.uiIsReady();
+				try { await Zotero.Research.attachWindow(window); } catch (e) { Zotero.logError(e); }
+			});
 
 			ItemTreeMenuBar.setItemTreeSortKeys(ZoteroPane.itemsView);
 		}

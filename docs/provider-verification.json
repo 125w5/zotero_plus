@@ -1,0 +1,26 @@
+{
+  "at": "2026-09-05T10:21:54.046Z",
+  "providers": {
+    "deepseek": "对话成功 · deepseek-v4-flash",
+    "easyscholar": "期刊查询成功（未写入文库）",
+    "youdao": "短句翻译成功"
+  },
+  "search": {
+    "pubmed": {
+      "count": 10,
+      "imported": true,
+      "title": "Left-Sided Pseudomonas Infective Endocarditis Presenting with Septic Shock and Ischemic Stroke in a Non-Injection Drug User Receiving PD-L1 Inhibitor Therapy."
+    },
+    "arxiv": {
+      "count": 10,
+      "imported": true,
+      "title": "Blind Modulation Classification based on MLP and PNN"
+    }
+  },
+  "analysis": {
+    "model": "deepseek-v4-flash",
+    "sections": 1,
+    "evidence": 1,
+    "saved": true
+  }
+}

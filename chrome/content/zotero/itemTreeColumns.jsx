@@ -402,6 +402,57 @@ const COLUMNS = [
 	}
 ];
 
+// Native research columns; third-party plugin columns remain independent.
+for (let [key, label] of [
+	["firstAuthor", "第一作者"],
+	["correspondingAuthor", "通讯作者"],
+	["impact_factor", "影响因子"],
+	["publicationIF", "发表年影响因子"],
+	["impact_factor_5y", "五年影响因子"],
+	["jcr_quartile", "JCR 分区"],
+	["cas_large_category", "中科院大类"],
+	["cas_small_category", "中科院小类"],
+	["cas_top", "中科院 Top"],
+	["warning_status", "期刊预警"],
+	["indexing", "收录目录"],
+	["ccf", "CCF 等级"],
+	["school_rank", "学校目录"],
+	["metricInfo", "指标年份 / 来源"],
+	["reading", "阅读状态"],
+	["importance", "重要程度"],
+	["relevance", "课题相关度"],
+	["topic", "研究方向"],
+	["method", "研究方法"],
+	["evidence", "证据强度"],
+	["question", "待解问题"],
+	["meeting", "组会状态"],
+	["ppt", "PPT 状态"],
+	["cited", "写作引用"],
+	["ai", "AI 状态"],
+	["rating", "评分"]
+]) {
+ COLUMNS.push({ dataKey: 'research_' + key, label, showInColumnPicker: true,
+  enabledTreeIDs: ['main'], flex: 1, width: 110,
+  defaultIn: ['impact_factor', 'cas_large_category', 'reading'].includes(key) ? ['default'] : [],
+  zoteroPersist: ['width', 'hidden', 'sortDirection'] });
+}
+for (let [key, label] of [['tags', '#标签'], ['journalTags', '期刊标签']]) {
+ COLUMNS.push({ dataKey: 'research_' + key, label, showInColumnPicker: true,
+  enabledTreeIDs: ['main'], flex: 2, width: 190, defaultIn: ['default'],
+  zoteroPersist: ['width', 'hidden', 'sortDirection'] });
+}
+for (let key of ['research_tags', 'research_journalTags', 'research_impact_factor']) {
+ COLUMNS.find(c => c.dataKey === key).renderCell = function (index, data, column, isFirst, doc) {
+  return Zotero.Research.renderColumn(this, index, data, column, doc);
+ };
+}
+for (let key of ['year', 'publicationTitle']) {
+ COLUMNS.find(c => c.dataKey === key).defaultIn = ['default'];
+}
+for (let key of ['dateAdded', 'dateModified']) {
+ Object.assign(COLUMNS.find(c => c.dataKey === key), { minWidth: 145 });
+}
+
 /**
  * Returns the columns that match the given data keys from the COLUMNS constant.
  * @param {string | string[]} dataKeys - The data key(s) to match.

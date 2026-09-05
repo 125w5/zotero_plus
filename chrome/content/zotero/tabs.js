@@ -232,6 +232,7 @@ var Zotero_Tabs = new function () {
 			}
 		},
 		restoreState: {
+			research: async () => { return {}; },
 			library: async (tab, _tabIndex) => {
 				this.rename('zotero-pane', tab.title);
 				// At first, library tab is added without the icon data. We set it here once we know what it is

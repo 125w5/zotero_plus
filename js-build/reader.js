@@ -4,6 +4,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const util = require('util');
 const exec = util.promisify(require('child_process').exec);
+const execFile = util.promisify(require('child_process').execFile);
 const { getSignatures, writeSignatures, onSuccess, onError } = require('./utils');
 const { buildsURL } = require('./config');
 
@@ -15,8 +16,11 @@ async function getReader(signatures) {
 	const { stdout } = await exec('git rev-parse HEAD', { cwd: modulePath });
 	const hash = stdout.trim();
 	
-	if (!('reader' in signatures) || signatures['reader'].hash !== hash) {
-		const targetDir = path.join(__dirname, '..', 'build', 'resource', 'reader');
+	const targetDir = path.join(__dirname, '..', 'build', 'resource', 'reader');
+	const required = ['reader.html', 'reader.js', 'pdf/build/pdf.mjs', 'pdf/build/pdf.worker.mjs',
+		'pdf/web/viewer.html', 'pdf/web/viewer.mjs', 'pdf/web/standard_fonts/LiberationSans-Regular.ttf'];
+	const complete = (await Promise.all(required.map(file => fs.pathExists(path.join(targetDir, file))))).every(Boolean);
+	if (!('reader' in signatures) || signatures['reader'].hash !== hash || !complete) {
 		try {
 			const filename = hash + '.zip';
 			const tmpDir = path.join(__dirname, '..', 'tmp', 'builds', 'reader');
@@ -26,18 +30,15 @@ async function getReader(signatures) {
 			await fs.ensureDir(targetDir);
 			await fs.ensureDir(tmpDir);
 
-			await exec(
-				`cd ${tmpDir}`
-				+ ` && (test -f ${filename} || curl -f ${url} -o ${filename})`
-				+ ` && unzip ${filename} zotero/* -d ${targetDir}`
-			);
-
-			// Move the contents of zotero/ up a level (not in the shell, whose glob
-			// handling breaks on Windows paths)
-			for (let entry of await fs.readdir(path.join(targetDir, 'zotero'))) {
-				await fs.move(path.join(targetDir, 'zotero', entry), path.join(targetDir, entry));
-			}
-			await fs.remove(path.join(targetDir, 'zotero'));
+			const archive = path.join(tmpDir, filename);
+			if (!await fs.pathExists(archive)) await execFile('curl', ['-fL', url, '-o', archive]);
+			// Windows unzip glob matching can omit descendants of zotero/pdf/.
+			// Extract the archive without a mask, then copy the selected platform.
+			const unpacked = path.join(tmpDir, 'unpacked-' + hash);
+			await fs.ensureDir(unpacked);
+			await execFile('unzip', ['-o', archive, '-d', unpacked], { maxBuffer: 16 * 1024 * 1024 });
+			await fs.copy(path.join(unpacked, 'zotero'), targetDir);
+			await fs.remove(unpacked);
 		}
 		catch (e) {
 			if (!e.message?.includes('The requested URL returned error: 403')) {
@@ -45,10 +46,13 @@ async function getReader(signatures) {
 			}
 			await exec('npm ci', { cwd: modulePath });
 			await exec('npm run build:zotero', { cwd: modulePath });
-			if (!fs.pathExists(path.join(modulePath, 'build', 'zotero', 'pdf', 'build', 'pdf.mjs'))) {
+			if (!await fs.pathExists(path.join(modulePath, 'build', 'zotero', 'pdf', 'build', 'pdf.mjs'))) {
 				throw new Error('pdf.js build failed to produce output');
 			}
 			await fs.copy(path.join(modulePath, 'build', 'zotero'), targetDir);
+		}
+		for (let file of required) {
+			if (!await fs.pathExists(path.join(targetDir, file))) throw new Error(`Incomplete reader build: ${file}`);
 		}
 		signatures['reader'] = { hash };
 	}

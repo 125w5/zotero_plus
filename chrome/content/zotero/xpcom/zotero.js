@@ -427,6 +427,7 @@ const { CommandLineOptions } = ChromeUtils.importESModule("chrome://zotero/conte
 		Zotero.debug("Running initialization callbacks");
 		delete this.startupError;
 		this.initialized = true;
+		try { await Zotero.Research.init(); } catch (e) { Zotero.logError(e); }
 		this.initializationDeferred.resolve();
 		
 		if(!Zotero.isFirstLoadThisSession) {

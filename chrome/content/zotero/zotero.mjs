@@ -66,6 +66,7 @@ const xpcomFilesAll = [
 
 /** XPCOM files to be loaded only for local translation and DB access **/
 const xpcomFilesLocal = [
+	'research/service',
 	'collectionTreeRow',
 	'annotations',
 	'api',

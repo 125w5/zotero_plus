@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN">
+<head>
+	<meta charset="utf-8"/>
+	<title>EasySch · 简单研究</title>
+	<link rel="localization" href="easysch.ftl"/>
+	<link rel="stylesheet" href="workspace.css"/>
+	<link rel="stylesheet" href="vendor/katex.min.css"/>
+	<script src="vendor/marked.js" defer="defer"></script>
+	<script src="vendor/purify.js" defer="defer"></script>
+	<script src="vendor/katex.js" defer="defer"></script>
+	<script src="vendor/auto-render.js" defer="defer"></script>
+	<script src="ui/main.js" defer="defer"></script>
+	<script src="ui/markdown.js" defer="defer"></script>
+	<script src="ui/research.js" defer="defer"></script>
+	<script src="ui/writing.js" defer="defer"></script>
+	<script src="ui/settings.js" defer="defer"></script>
+</head>
+<body>
+	<aside class="rail">
+		<div class="brand"><span class="brand-icon">E</span><div><strong>EasySch</strong><small data-l10n-id="easysch-subtitle">简单研究</small></div></div>
+		<p class="eyebrow">RESEARCH WORKSPACE</p>
+		<nav aria-label="工作台">
+			<button data-tab="research" class="active" data-l10n-id="easysch-research">文献研究</button>
+			<button data-tab="graph" data-l10n-id="easysch-graph">知识网络</button>
+			<button data-tab="writing" data-l10n-id="easysch-writing">论文写作</button>
+			<button data-tab="schedule" data-l10n-id="easysch-schedule">研究日程</button>
+			<button data-tab="settings" data-l10n-id="easysch-settings">模型与期刊设置</button>
+		</nav>
+		<div class="rail-bottom"><span class="dot"></span> Zotero 原生工作流<br/><small>阅读 · 思考 · 验证 · 写作</small></div>
+	</aside>
+	<div class="workspace">
+		<header><div><span class="eyebrow">YOUR RESEARCH, CONNECTED</span><h1 id="view-title">文献研究</h1></div>
+			<button id="refresh" data-l10n-id="easysch-refresh">读取 Zotero 选中文献</button></header>
+		<div class="statusbar"><span id="status" role="status" aria-live="polite">就绪</span><button id="cancel" hidden="hidden">取消请求</button></div>
+		<main>
+			<section id="view-research" class="view">
+				<div class="research-grid">
+					<div class="library-column"><div class="section-heading"><h2>研究文献</h2><span id="paper-count" class="badge">0</span></div>
+						<p class="muted">在 Zotero 中选择论文，再点击右上角读取。支持多选。</p><div id="paper-list"></div>
+					</div>
+					<div class="analysis-column">
+						<div id="selection-box" hidden="hidden"><h3>阅读器选段</h3><blockquote id="selection-text"></blockquote><button id="translate">翻译并生成追问</button></div>
+						<div id="paper-details" class="metadata"></div>
+						<div class="actions"><button class="primary" id="analyze">分析当前论文</button><button id="synthesize">多文献研究构思</button><button id="make-outline">生成写作大纲</button></div>
+						<label for="prompt">研究问题或分析要求</label><textarea id="prompt" rows="3" placeholder="例如：比较实验基线是否公平，并指出复现需要的数据与设备。"></textarea>
+						<div class="actions"><button id="ask">结合记忆提问</button><button id="save-note">存为 Zotero 笔记</button><button id="apply-keywords">将关键词加入标签</button><button id="to-draft">追加到写作草稿</button></div>
+						<details class="presentation-options"><summary>组会与答辩材料</summary><div class="checks">
+							<label><input type="checkbox" name="slide-part" value="研究背景" checked="checked"/>背景</label>
+							<label><input type="checkbox" name="slide-part" value="研究创新与贡献" checked="checked"/>创新</label>
+							<label><input type="checkbox" name="slide-part" value="实验方法与数据" checked="checked"/>方法与数据</label>
+							<label><input type="checkbox" name="slide-part" value="结果对比与局限" checked="checked"/>结果与局限</label>
+							<label><input type="checkbox" name="slide-part" value="逐页演讲稿"/>讲稿</label></div><button id="presentation">生成演示大纲</button>
+						</details>
+						<div class="section-heading"><h2>分析与证据</h2><select id="history" aria-label="分析历史"><option value="">尚无记录</option></select><button id="clear-memory">清除此篇记忆</button></div>
+						<p class="muted">AI 分析需核对原文；点击证据可回到附件。未配置模型时不会生成模拟回答。</p>
+						<div id="result" class="empty">选择一篇论文，开始建立可追溯的研究笔记。</div><div id="questions" class="actions"></div>
+					</div>
+				</div>
+			</section>
+			<section id="view-graph" class="view" hidden="hidden"><h2>文献关系</h2><p class="muted">基于当前选中文献的共享标签与 Zotero 相关条目。连线不代表论文引用关系。点击节点查看文献。</p><div id="graph"></div><div id="graph-edges"></div></section>
+			<section id="view-writing" class="view" hidden="hidden">
+				<div class="writing-grid"><aside><h2>章节导航</h2><div id="outline"></div><h3>可用引用</h3><div id="citations"></div></aside>
+					<div><label for="draft-title">项目标题</label><input id="draft-title" value="未命名研究"/>
+						<p class="muted">草稿按选中文献集合隔离。Markdown 标题组织章节；$…$ 为行内公式，$$…$$ 为独立公式。</p>
+						<textarea id="draft" class="editor" spellcheck="false" aria-label="论文 Markdown 草稿" placeholder="# 引言&#10;&#10;写下研究问题与证据。&#10;&#10;## 方法&#10;&#10;$$E = mc^2$$"></textarea>
+						<div class="actions"><button id="save-draft" class="primary">保存草稿</button><button id="preview-draft">预览公式与排版</button><button id="lint">检查公式与引用</button><select id="export-format" aria-label="导出格式"><option value="docx">Word DOCX</option><option value="latex">LaTeX</option><option value="pptx">PowerPoint PPTX</option><option value="markdown">Markdown 资料包</option></select><button id="export">导出投稿材料</button><button id="biblatex">导出 BibLaTeX</button></div>
+						<div id="draft-preview" class="markdown-preview" hidden="hidden"></div>
+						<div id="lint-result" role="status"></div>
+					</div></div>
+			</section>
+			<section id="view-schedule" class="view" hidden="hidden"><h2>研究任务</h2><p class="muted">任务与当前文献项目一起保存在本地。到期状态在工作台内显示。</p><div class="task-form"><input id="task-title" aria-label="任务名称" placeholder="例如：复现基线实验"/><input id="task-date" type="date" aria-label="截止日期"/><button id="add-task" class="primary">添加任务</button></div><div id="tasks"></div></section>
+			<section id="view-settings" class="view" hidden="hidden">
+				<div class="settings-grid"><div><h2>模型连接</h2><p class="muted">仅在点击分析、翻译或提问时，将选中文献的文本片段、批注和近期记忆发送到下面的接口。</p>
+					<label for="endpoint">接口基础地址</label><input id="endpoint" type="url" placeholder="https://api.example.com/v1 或 http://localhost:11434/v1"/>
+					<label for="model">模型名称</label><input id="model" placeholder="填写服务商提供的模型 ID"/>
+					<label for="api-key">API 密钥</label><input id="api-key" type="password" autocomplete="off" placeholder="留空保持已保存密钥；密钥不会写入项目文件"/><button id="forget-key">删除当前接口密钥</button>
+					<label for="template">默认论文分析模板</label><textarea id="template" rows="6"></textarea>
+				</div><div><h2>期刊与格式</h2><p class="muted">选择目标期刊提供的 CSL、Word 参考文档或 Pandoc LaTeX 模板。未指定时使用 Pandoc 默认格式。</p>
+					<label for="documentLanguage">稿件语言与参考文献本地化</label><select id="documentLanguage"><option value="en-US">English</option><option value="zh-CN">简体中文</option></select>
+					<label for="pandoc">Pandoc 可执行文件</label><div class="path-field"><input id="pandoc"/><button data-pick="pandoc">选择</button></div>
+					<label for="csl">期刊 CSL 文件</label><div class="path-field"><input id="csl"/><button data-pick="csl">选择</button></div>
+					<label for="referenceDoc">Word 参考样式 reference.docx</label><div class="path-field"><input id="referenceDoc"/><button data-pick="referenceDoc">选择</button></div>
+					<label for="latexTemplate">Pandoc LaTeX 模板</label><div class="path-field"><input id="latexTemplate"/><button data-pick="latexTemplate">选择</button></div>
+					<p class="muted">DOCX 使用原生 Word 公式和 CSL 静态引文。Zotero 动态引文请继续使用原生 Word 插件。</p>
+					<h3>当前论文的期刊指标</h3><label for="metric-value">影响因子（需人工核验）</label><input id="metric-value" type="number" min="0" step="0.001"/><label for="metric-year">指标年份</label><input id="metric-year" type="number" min="1900" max="2200"/><label for="metric-source">可核验来源网址</label><input id="metric-source" type="url"/>
+				</div></div><div class="actions"><button id="save-settings" class="primary">保存设置</button><button id="save-metric">保存此篇期刊指标</button></div><p id="compatibility" class="muted"></p>
+			</section>
+		</main>
+	</div>
+</body>
+</html>

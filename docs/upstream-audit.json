@@ -1,0 +1,65 @@
+[
+  {
+    "repository": "AkariAsai/OpenScholar",
+    "url": "https://github.com/AkariAsai/OpenScholar",
+    "commit": "0e9b8fb912273d3dae39e593da86e4f6d3bf8de1",
+    "license": "Apache-2.0",
+    "license_url": "https://github.com/AkariAsai/OpenScholar/blob/main/LICENSE"
+  },
+  {
+    "repository": "allenai/ai2-scholarqa-lib",
+    "url": "https://github.com/allenai/ai2-scholarqa-lib",
+    "commit": "a96232870bdb0bd763f0131320e8377c6deb575e",
+    "license": "Apache-2.0",
+    "license_url": "https://github.com/allenai/ai2-scholarqa-lib/blob/main/LICENSE"
+  },
+  {
+    "repository": "Future-House/paper-qa",
+    "url": "https://github.com/Future-House/paper-qa",
+    "commit": "57e89f7223b0960d5ee5ea048c69e3c47e088572",
+    "license": "Apache-2.0",
+    "license_url": "https://github.com/Future-House/paper-qa/blob/main/LICENSE"
+  },
+  {
+    "repository": "stanford-oval/storm",
+    "url": "https://github.com/stanford-oval/storm",
+    "commit": "fb951af7744dab086e34962e9bc6fe878e145f83",
+    "license": "MIT",
+    "license_url": "https://github.com/stanford-oval/storm/blob/main/LICENSE"
+  },
+  {
+    "repository": "khoj-ai/openpaper",
+    "url": "https://github.com/khoj-ai/openpaper",
+    "commit": "d461200c98562cdf80ca9c264dc76530570a7787",
+    "license": "AGPL-3.0",
+    "license_url": "https://github.com/khoj-ai/openpaper/blob/master/LICENSE"
+  },
+  {
+    "repository": "yilewang/llm-for-zotero",
+    "url": "https://github.com/yilewang/llm-for-zotero",
+    "commit": "5be02f51a9bdf9b143439c95eed07bd62a34cb68",
+    "license": "AGPL-3.0",
+    "license_url": "https://github.com/yilewang/llm-for-zotero/blob/main/LICENSE"
+  },
+  {
+    "repository": "lifan0127/ai-research-assistant",
+    "url": "https://github.com/lifan0127/ai-research-assistant",
+    "commit": "9bbcd116f045587a9bc21b422e949b55e07e1cb6",
+    "license": "AGPL-3.0",
+    "license_url": "https://github.com/lifan0127/ai-research-assistant/blob/main/LICENSE"
+  },
+  {
+    "repository": "papersgpt/papersgpt-for-zotero",
+    "url": "https://github.com/papersgpt/papersgpt-for-zotero",
+    "commit": "952d5a3462c4457d078cc47eeb6ba75402e52647",
+    "license": "AGPL-3.0",
+    "license_url": "https://github.com/papersgpt/papersgpt-for-zotero/blob/main/LICENSE"
+  },
+  {
+    "repository": "deepseek-ai/deepseek-harness",
+    "commit": "d347e703908d0406b7a7ef80e3a0e594d86b2215",
+    "license": "MIT",
+    "url": "https://github.com/deepseek-ai/deepseek-harness",
+    "license_url": "https://github.com/deepseek-ai/deepseek-harness/blob/master/LICENSE"
+  }
+]

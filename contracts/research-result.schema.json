@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Research engine result v1 (target service contract)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "claims",
+    "evidence",
+    "artifacts",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "claim",
+          "claim_type",
+          "evidence_ids",
+          "verification_status",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1
+          },
+          "claim_type": {
+            "enum": [
+              "author_claim",
+              "observation",
+              "inference",
+              "insufficient_evidence"
+            ]
+          },
+          "evidence_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "verification_status": {
+            "enum": [
+              "unverified",
+              "supported",
+              "partially_supported",
+              "contradicted",
+              "insufficient_evidence"
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "paper_id",
+          "evidence_text",
+          "locator"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "paper_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "section": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "locator": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "pdf",
+                  "docx",
+                  "metadata",
+                  "web"
+                ]
+              },
+              "page": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "part": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "paragraph": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "origin",
+          "evidence_ids",
+          "version",
+          "uri"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "note",
+              "pptx",
+              "docx",
+              "latex",
+              "data_chart",
+              "source_figure",
+              "illustration"
+            ]
+          },
+          "origin": {
+            "enum": [
+              "model_generated",
+              "data_rendered",
+              "source_extracted",
+              "user_authored",
+              "mixed"
+            ]
+          },
+          "evidence_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "uri": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "parent_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "model",
+        "pipeline",
+        "skill_version",
+        "created_at"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "pipeline": {
+          "type": "string"
+        },
+        "skill_version": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "upstream_commits": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

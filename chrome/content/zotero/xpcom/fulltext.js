@@ -492,6 +492,7 @@ Zotero.Fulltext = Zotero.FullText = new function () {
 		switch (mimeType) {
 			case 'application/pdf':
 			case 'text/html':
+			case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
 			case 'application/epub+zip':
 				return true;
 		}
@@ -800,6 +801,15 @@ Zotero.Fulltext = Zotero.FullText = new function () {
 		
 		if (contentType == 'application/epub+zip') {
 			return this.indexEPUB(path, item.id, complete);
+		}
+
+		if (contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+			const { extractDOCX } = ChromeUtils.importESModule('chrome://zotero/content/xpcom/research/docx.mjs');
+			let document = await extractDOCX(path);
+			let text = complete ? document.text : document.text.slice(0, maxLength);
+			await writeCacheFile(item, text, maxLength, complete);
+			await indexString(text, item.id, { indexedChars: text.length, totalChars: document.text.length });
+			return true;
 		}
 
 		if (!Zotero.MIME.isTextType(contentType)) {

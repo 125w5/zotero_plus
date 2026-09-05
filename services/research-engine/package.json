@@ -1,0 +1,22 @@
+{
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-system-prompt": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-tools": "0.0.1-rc.1",
+    "pptxgenjs": "4.0.1"
+  },
+  "name": "@easysch/research-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "test": "node --test test/engine.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "jszip": "3.10.1"
+  }
+}

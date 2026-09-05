@@ -4,3 +4,16 @@ build/
 .signatures.json
 tmp
 app/win/codesign
+app/build-temp/
+
+# Local credentials, libraries and generated artifacts must never be published.
+.env
+.env.*
+!.env.example
+**/provider-setup.json
+**/logins.json
+**/key4.db
+**/cert9.db
+**/workspace.json
+**/research.sqlite*
+**/zotero.sqlite*
