@@ -15,7 +15,9 @@
 		['meeting_slides', '组会 PPT', true, '按用户汇报时长和范围生成逐页大纲，每节是一页，先写本页核心观点再给简短要点和证据。讲稿可用 ::: notes 块。附可被追问的限制，但不要生成未经来源支持的结果或图像。'],
 		['advisor_challenge', '导师质询', true, '从学科、方法、统计、工程、创新和复现六个视角审查，选一个最值得追问的问题。输出为什么问、原文依据、参考回答要点、下一轮追问与是否需备用幻灯片。结合已有回答继续追问，不能假装真的调用了六个独立 Agent；未提供 PPT 时覆盖情况写未知。'],
 		['research_gaps', '研究空白发现', true, '从所给论文的边界条件与互补性提出可检验假设，说明证据、替代解释、最小验证实验和失败条件。仅能说当前材料未覆盖，不能宣称全领域首次、无人研究或已经证明创新。'],
-		['citation_check', '引用和事实核验', true, '逐项将待核验陈述与提供的原文对照，区分直接支持、部分支持、条件不同、相反证据和材料不足。区分相关性与因果性；一篇后发论文或相反结论不等于原论文已被推翻。没有原著不判定转引正确。']
+		['citation_check', '引用和事实核验', true, '逐项将待核验陈述与提供的原文对照，区分直接支持、部分支持、条件不同、相反证据和材料不足。区分相关性与因果性；一篇后发论文或相反结论不等于原论文已被推翻。没有原著不判定转引正确。'],
+		['selection_explain', '选段解释', false, '只解释当前选中的论文原文：先用一句话概括，再拆解它在论文中的作用、隐含前提和容易误解之处。公式必须解释变量与关系；材料不足时明确指出需要查看的前后文。'],
+		['selection_terms', '专业术语', false, '从当前选段提取真正影响理解的专业术语、缩写、符号和方法名。逐项给出选段语境中的含义、通俗解释及与本段的关系；不要把普通词凑成术语，不用模型记忆补写论文未给出的特定参数。']
 	];
 	E.paperSkills = Object.fromEntries(definitions.map(([id, title, multi, instruction]) => [id, { id, title, multi, instruction, version: '1.0.0' }]));
 	const aliases = { analyze: 'close_read', synthesize: 'comparison', presentation: 'meeting_slides', ask: 'citation_check', outline: 'literature_review' };

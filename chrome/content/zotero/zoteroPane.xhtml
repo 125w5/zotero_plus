@@ -1031,6 +1031,9 @@
 
 		<!-- Tag Selector -->
 		<menupopup id="tag-menu">
+			<menuitem id="create-tag-study-set" data-l10n-id="easysch-tag-create-study-set"
+				oncommand="ZoteroPane.tagSelector.createStudySet(); event.stopPropagation();"/>
+			<menuseparator/>
 			<menuitem id="assign-color-tag" label="&zotero.tagSelector.assignColor;"
 				oncommand="ZoteroPane.tagSelector.openColorPickerWindow(); event.stopPropagation();"/>
 			<menuitem id="rename-tag" label="&zotero.tagSelector.renameTag;"

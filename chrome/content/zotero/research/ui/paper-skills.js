@@ -2,6 +2,7 @@ Object.assign(EasySchUI, {
 	initPaperSkills() {
 		let select = this.$('paper-skill');
 		for (let skill of Object.values(this.E.paperSkills)) {
+			if (skill.id.startsWith('selection_')) continue;
 			let option = this.el('option', skill.title); option.value = skill.id; select.append(option);
 		}
 		select.value = 'close_read';

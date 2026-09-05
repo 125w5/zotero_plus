@@ -7,6 +7,10 @@ easysch-writing = Manuscript
 easysch-schedule = Research tasks
 easysch-settings = Model and journal
 easysch-refresh = Read Zotero selection
+easysch-tag-create-study-set =
+    .label = Create dynamic study set from tag
+easysch-open-docx =
+    .label = Open DOCX in Zotero
 
 easysch-section =
     .label = Research workspace

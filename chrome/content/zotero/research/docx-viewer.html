@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN">
+<head>
+	<meta charset="utf-8"/>
+	<title>DOCX 阅读器</title>
+	<link rel="stylesheet" href="docx-viewer.css"/>
+	<script src="docx-viewer.js" defer="defer"></script>
+</head>
+<body>
+	<header>
+		<div><span class="eyebrow">DOCX · ZOTERO</span><h1 id="title">正在读取…</h1><p id="meta"></p></div>
+		<div class="actions"><input id="search" type="search" placeholder="搜索正文"/><button id="index">建立全文索引</button><button id="external">用系统编辑器打开</button></div>
+	</header>
+	<div id="notice">忠实显示正文、标题、脚注/尾注文字和表格；复杂浮动版式与嵌入图片暂不显示。</div>
+	<div id="selection-tools" hidden="hidden"><strong>选中文本</strong><button data-mode="selection_explain">解释</button><button data-mode="selection_terms">专业术语</button><button id="translate">翻译</button><span id="selection-status"></span></div>
+	<main><nav id="outline" aria-label="文档大纲"></nav><article id="document"></article><aside id="inspector"><h2>论文助手</h2><p>在正文中选中文字，可原位解释、提取术语或翻译。</p><div id="result"></div></aside></main>
+</body>
+</html>
