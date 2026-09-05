@@ -44,6 +44,26 @@ var Plugin = new (function() {
 	this.LAST_INSTALLED_FILE_UPDATE = "9.0.6pre";
 	
 	var zoteroPluginInstaller;
+
+	// Avoid creating Word Startup directories on computers without Word.
+	// Manual install still runs the upstream diagnostics and repair flow.
+	this.isAvailable = async function () {
+		const iface = Components.interfaces.nsIWindowsRegKey;
+		for (let root of [iface.ROOT_KEY_CURRENT_USER, iface.ROOT_KEY_LOCAL_MACHINE]) {
+			for (let branch of ['SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\WINWORD.EXE',
+				'SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\App Paths\\WINWORD.EXE']) {
+				let key = Components.classes['@mozilla.org/windows-registry-key;1'].createInstance(iface);
+				try {
+					key.open(root, branch, iface.ACCESS_READ);
+					let exe = key.readStringValue('').replace(/^"|"$/g, '');
+					if (await IOUtils.exists(exe)) return true;
+				}
+				catch (_) {}
+				finally { try { key.close(); } catch (_) {} }
+			}
+		}
+		return false;
+	};
 	
 	this.install = async function(zpi) {
 		// get Zotero.dot file
