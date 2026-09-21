@@ -309,37 +309,10 @@ export function insertHTML(pos, html) {
 		let nodes = slice.content.content;
 		let docSizeBefore = state.tr.doc.content.size;
 		if (pos === null) {
-			let { tr } = state;
-			let { selection } = tr;
-			pos = selection.to;
-
-			let $pos = tr.doc.resolve(pos);
-			$pos = tr.doc.resolve($pos.posAtIndex(0, 1));
-			let range = $pos.blockRange($pos);
-			let slice = new Slice(Fragment.fromArray(nodes), 0, 0);
-			if (!selection.$from.nodeBefore) {
-				if ($pos.parent.content.size) {
-					pos = state.tr.doc.content.size;
-					tr.replace(pos, pos, slice);
-				}
-				else {
-					tr.replace(range.start, range.end, slice);
-					pos = range.start - 3;
-				}
-			}
-			else {
-				if ($pos.parent.content.size) {
-					tr.replace(range.end, range.end, slice);
-					pos = range.end - 1;
-				}
-				else {
-					tr.replace(range.start + 1, range.end, slice);
-					pos = range.start - 3;
-				}
-			}
-			pos += tr.doc.content.size - docSizeBefore;
-			tr.setSelection(new TextSelection(tr.doc.resolve(pos))).scrollIntoView();
-			dispatch(tr);
+			// Let ProseMirror map the selection through the insertion. Computing
+			// a new cursor from the size delta breaks in table cells and atom nodes.
+			const slice = new Slice(Fragment.fromArray(nodes), 0, 0);
+			dispatch(state.tr.replaceSelection(slice).scrollIntoView());
 		}
 		else if (Number.isInteger(pos)) {
 			let slice = new Slice(Fragment.fromArray(nodes), 0, 0);
