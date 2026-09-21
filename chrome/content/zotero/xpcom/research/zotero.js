@@ -13,6 +13,31 @@
 			.filter(item => item?.isRegularItem() || item?.isPDFAttachment() || item?.attachmentContentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 		return [...new Map(items.map(item => [item.id, item])).values()].map(Z.describe);
 	};
+	Z.pptCandidates=async()=>{
+		const items=await Zotero.Items.getAll(Zotero.Libraries.userLibraryID,true,false);
+		return items.filter(item=>item.isRegularItem()||item.isPDFAttachment()).map(Z.describe).sort((a,b)=>a.title.localeCompare(b.title));
+	};
+	Z.localPDF = async itemOrID => {
+		const item = typeof itemOrID === 'number' ? await Zotero.Items.getAsync(itemOrID) : itemOrID;
+		if (!item || item.deleted) return null;
+		const attachments = item.isAttachment() ? [item] : item.isRegularItem() ? await Zotero.Items.getAsync(item.getAttachments()) : [];
+		for (const attachment of attachments) {
+			if (!attachment.isPDFAttachment() || attachment.deleted) continue;
+			const path = await attachment.getFilePathAsync();
+			if (path && await IOUtils.exists(path)) return attachment;
+		}
+		return null;
+	};
+	Z.readingCandidates = async () => {
+		const candidates = await Z.pptCandidates(), result = [];
+		for (const paper of candidates) if (await Z.localPDF(paper.id)) result.push(paper);
+		return result;
+	};
+	Z.revealPDF = async id => {
+		const attachment = await Z.localPDF(id);
+		if (!attachment) throw Error('附件尚未下载到本机');
+		Zotero.File.pathToFile(await attachment.getFilePathAsync()).reveal();
+	};
 	Z.uri = function (item, pageIndex) {
 		let library = Zotero.Libraries.get(item.libraryID);
 		let scope = library.libraryType === 'group' ? `groups/${library.groupID}` : 'library';
@@ -22,6 +47,11 @@
 	};
 	Z.sources = async function (papers, selection) {
 		let sources = [], warnings = [];
+		if(selection?.text && selection.attachmentID){
+			const attachment=await Zotero.Items.getAsync(selection.attachmentID);
+			const docx=attachment.attachmentContentType==='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+			return {sources:[{id:'P1-S',paperKey:E.core.paperKey(papers[0]),label:docx?'DOCX 当前选段':`当前选段 · PDF 第 ${(selection.pageIndex??0)+1} 页`,text:selection.text,uri:Z.uri(attachment,selection.pageIndex),attachmentID:attachment.id,pageIndex:selection.pageIndex,docx}],warnings};
+		}
 		let budget = Math.floor(60000 / Math.max(1, papers.length));
 		for (let [index, paper] of papers.entries()) {
 			let item = await Zotero.Items.getAsync(paper.id);
@@ -35,7 +65,8 @@
 				let attachment = Zotero.Items.get(selection.attachmentID);
 				sources.push({ id: `${prefix}-S`, paperKey: E.core.paperKey(paper), label: '当前选段',
 					text: selection.text.slice(0, 12000), uri: Z.uri(attachment, selection.pageIndex),
-					attachmentID: attachment.id, pageIndex: selection.pageIndex });
+					attachmentID: attachment.id, pageIndex: selection.pageIndex,
+					docx: attachment.attachmentContentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 			}
 			let attachments = item.isAttachment() ? [item] : await Zotero.Items.getAsync(item.getAttachments());
 			for (let docx of attachments.filter(a => a.attachmentContentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
@@ -67,9 +98,22 @@
 				used += chunk.length;
 				sources.push({ id: `${prefix}-A${annotation.key}`, paperKey: E.core.paperKey(paper),
 					label: `批注 · ${annotation.annotationPageLabel || '页码未知'}`, text: chunk,
-					uri: Z.uri(pdf, position.pageIndex), attachmentID: pdf.id, pageIndex: position.pageIndex });
+					uri: Z.uri(pdf, position.pageIndex), attachmentID: pdf.id, pageIndex: position.pageIndex, position, annotationKey: annotation.key });
 			}
 			try {
+				// Prefer paragraph anchors; fall back to page text, never pretend a
+				// random full-document slice has an exact PDF position.
+				const state=E.store.get(),index=state.manuscriptIndex?.[pdf.id],document=state.manuscriptDocuments?.[index?.documentKey];
+				let paragraphs=document?.paragraphs?.filter(p=>p.sourceText?.trim());
+				if(!paragraphs?.length&&E.runArtifactEngine){
+					try{const extracted=await E.runArtifactEngine({operation:'assets-text',pdf:await pdf.getFilePathAsync()});paragraphs=extracted.pages.map(p=>({sourceText:p.text,pageIndex:p.pageIndex}));}catch(_){/* PDFWorker fallback below */}
+				}
+				if(paragraphs?.length){
+					const remaining=Math.max(0,budget-used-docxUsed);if(!remaining){warnings.push(`${paper.title}：批注和文档已占满上下文预算，未加入额外 PDF 正文。`);continue;}const limit=Math.max(1,Math.floor(remaining/paragraphs.length));
+					for(const [i,p]of paragraphs.entries())if(p.sourceText.trim())sources.push({id:`${prefix}-L${i+1}`,paperKey:E.core.paperKey(paper),label:`正文 · PDF 第 ${p.pageIndex+1} 页`,text:p.sourceText.slice(0,limit),uri:Z.uri(pdf,p.pageIndex),attachmentID:pdf.id,pageIndex:p.pageIndex,position:p.position});
+					if(paragraphs.some(p=>p.sourceText.length>limit))warnings.push(`${paper.title}：已按页取样，回答仅依据提供的段落。`);
+					continue;
+				}
 				let { text } = await Zotero.PDFWorker.getFullText(pdf.id, null);
 				if (!text?.trim()) { warnings.push(`${paper.title}：PDF 无可提取文字，扫描件需先 OCR。`); continue; }
 				let remaining = budget - used - docxUsed;
@@ -95,7 +139,9 @@
 		}
 		else if (source.attachmentID) {
 			await Zotero.Reader.open(source.attachmentID,
-				Number.isInteger(source.pageIndex) ? { pageIndex: source.pageIndex } : undefined);
+				{ ...(Number.isInteger(source.pageIndex) ? { pageIndex: source.pageIndex } : {}),
+					...(source.position ? { position: source.position } : {}),
+					...(source.annotationKey ? { annotationID: source.annotationKey } : {}) });
 		}
 		else Zotero.launchURL(source.uri);
 	};
@@ -118,7 +164,7 @@
 		let h = E.core.escapeHTML;
 		let body = `<h1>EasySch · ${h(paper.title)}</h1><p>AI 辅助分析，请核对原文。</p>`;
 		for (let section of record.result.sections) {
-			body += `<h2>${h(section.heading)}</h2><p>${h(section.body).replace(/\n/g, '<br/>')}</p><p>`;
+			body += `<h2>${h(section.heading)}</h2>${E.noteContentHTML(section.body)}<p>`;
 			body += section.sources.map(id => {
 				let source = record.sources.find(s => s.id === id);
 				return `<a href="${h(source.uri)}">${h(source.label)} [${h(id)}]</a>`;

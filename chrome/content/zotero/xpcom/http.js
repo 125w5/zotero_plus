@@ -329,7 +329,7 @@ Zotero.HTTP = new function () {
 			// doesn't seem to work anymore), and we should probably allow responseContentType to
 			// be set instead
 			if (options.responseCharset) {
-				xmlhttp.overrideMimeType(`text/plain; charset=${responseCharset}`);
+				xmlhttp.overrideMimeType(`text/plain; charset=${options.responseCharset}`);
 			}
 			
 			// Disable caching if requested

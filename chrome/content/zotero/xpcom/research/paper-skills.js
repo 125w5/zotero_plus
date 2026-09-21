@@ -24,7 +24,7 @@
 	E.getPaperSkill = function (mode, config = {}) {
 		let id = aliases[mode] || mode;
 		let skill = mode === 'translate' ? { id: 'translate', title: '论文翻译', version: '1.0.0', multi: false,
-			instruction: '翻译当前选段，保留公式、变量、引文、术语与单位；列出术语解释并提出 2–4 个相关问题。没有待译原文时返回材料不足，不翻译题录充当正文。' } : E.paperSkills[id];
+			instruction: '准确翻译当前选段，保留公式、变量、引文、术语、条件与单位；用简洁学术中文，不增加解释或后续问题。没有待译原文时返回材料不足，不翻译题录充当正文。' } : E.paperSkills[id];
 		if (!skill) throw new Error('未知论文技能');
 		let override = config.paperSkillOverrides?.[id];
 		return { ...skill, instruction: override?.instruction || skill.instruction, version: override?.version || skill.version, customized: !!override?.instruction };

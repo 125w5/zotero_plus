@@ -2,6 +2,7 @@
 (function (R) {
 	R.requestProvider = async function (url, options = {}, timeout = 30000) {
 		let win = Zotero.getMainWindow(), controller = new win.AbortController();
+		const external=options.signal,abort=()=>controller.abort();external?.addEventListener('abort',abort,{once:true});if(external?.aborted)abort();
 		let timer = win.setTimeout(() => controller.abort(), timeout);
 		try {
 			let response = await win.fetch(url, { ...options, signal: controller.signal, redirect: 'error' });
@@ -9,14 +10,14 @@
 			return await response.text();
 		}
 		catch (e) { throw new Error(controller.signal.aborted ? '服务请求超时，请重试' : (e.message.startsWith('服务返回 HTTP') ? e.message : '无法连接服务，请检查网络或代理')); }
-		finally { win.clearTimeout(timer); }
+		finally { win.clearTimeout(timer);external?.removeEventListener('abort',abort); }
 	};
 	R.configureProviders = async function (data) {
 		if (data.deepseek) await R.credentials.set('https://api.deepseek.com', data.deepseek);
 		if (data.easyscholar) await R.saveMetricsKey(data.easyscholar);
 		if (data.youdaoSecret) await R.credentials.set('https://openapi.youdao.com', data.youdaoSecret);
 		await R.store.update(s => {
-			if (data.deepseek) Object.assign(s.settings, { endpoint: 'https://api.deepseek.com', model: 'deepseek-v4-flash' });
+			if (data.deepseek) Object.assign(s.settings, { endpoint: 'https://api.deepseek.com', model: 'deepseek-flash' });
 			if (data.youdaoAppID) s.settings.youdaoAppID = data.youdaoAppID;
 		});
 	};
@@ -41,7 +42,7 @@
 					let models = JSON.parse(await R.requestProvider('https://api.deepseek.com/models', { headers }));
 					let model = R.settings().model;
 					if (!models.data?.some(m => m.id === model)) {
-						model = ['deepseek-v4-flash', 'deepseek-chat'].find(id => models.data?.some(m => m.id === id));
+						model = ['deepseek-flash', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-v4-pro', 'deepseek-reasoner'].find(id => models.data?.some(m => m.id === id));
 						if (!model) throw new Error('账户未提供可用的对话模型');
 						await R.store.update(s => { s.settings.model = model; });
 					}
@@ -61,7 +62,7 @@
 		}
 		return results;
 	};
-	R.translateYoudao = async function (text, to = 'zh-CHS') {
+	R.translateYoudao = async function (text, to = 'zh-CHS', {signal} = {}) {
 		if (!text?.trim()) throw new Error('请先选择或输入待翻译文字');
 		if (text.length > 5000) throw new Error('一次最多翻译 5000 字符，请分段选择');
 		let appKey = R.settings().youdaoAppID, secret = await R.credentials.get('https://openapi.youdao.com');
@@ -75,7 +76,7 @@
 		let sign = [...new Uint8Array(digest)].map(n => n.toString(16).padStart(2, '0')).join('');
 		let body = new win.URLSearchParams({ q, from: 'auto', to, appKey, salt, curtime, signType: 'v3', sign });
 		let data = JSON.parse(await R.requestProvider('https://openapi.youdao.com/api', {
-			method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+			method: 'POST', signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
 		}));
 		if (String(data.errorCode) !== '0') throw new Error(`有道翻译错误码 ${data.errorCode || '未知'}（请检查密钥、服务授权和余额）`);
 		let translation = data.translation?.join('\n');

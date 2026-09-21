@@ -3,7 +3,7 @@
 		let { FilePicker } = ChromeUtils.importESModule('chrome://zotero/content/modules/filePicker.mjs');
 		let fp = new FilePicker();
 		fp.init(win, title, mode === 'folder' ? fp.modeGetFolder : fp.modeOpen);
-		if (extension) fp.appendFilter(extension.toUpperCase(), '*.' + extension);
+		if (extension) fp.appendFilter(extension.toUpperCase(), extension.split(';').map(x => '*.' + x).join('; '));
 		if (await fp.show() === fp.returnCancel) return null;
 		return fp.file;
 	};

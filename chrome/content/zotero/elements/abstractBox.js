@@ -53,6 +53,7 @@
 
 		set item(item) {
 			this.blurOpenField();
+			if (item?.isAttachment() && item.parentItem) item = item.parentItem;
 			super.item = item;
 			if (item?.isRegularItem()) {
 				this.hidden = false;

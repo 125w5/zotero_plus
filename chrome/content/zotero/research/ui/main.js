@@ -20,22 +20,27 @@ var EasySchUI = {
 	projectKey() {
 		return this.papers.length ? this.papers.map(this.E.core.paperKey).sort().join('|') : 'local-draft';
 	},
-	project() { return this.E.store.get().projects[this.projectKey()] || { title: '未命名研究', draft: '', tasks: [] }; },
+	project() { return { title: '未命名研究', draft: '', tasks: [], ...this.E.store.get().projects[this.projectKey()] }; },
 	async updateProject(update) {
 		let key = this.projectKey();
 		await this.E.store.update(s => { let p = s.projects[key] ||= { title: '未命名研究', draft: '', tasks: [] }; update(p); });
 	},
 	show(tab) {
+		if (this.activeView !== tab) this.status('');
+		this.activeView = tab;
 		for (let view of document.querySelectorAll('.view')) view.hidden = view.id !== 'view-' + tab;
-		for (let button of document.querySelectorAll('[data-tab]')) button.classList.toggle('active', button.dataset.tab === tab);
-		this.$('view-title').textContent = document.querySelector(`[data-tab="${tab}"]`).textContent;
+		for (let button of document.querySelectorAll('[data-tab]')) button.classList.toggle('active', button.dataset.tab === (tab==='journal'?'settings':tab));
+		this.$('view-title').textContent = tab==='journal'?'设置':document.querySelector(`[data-tab="${tab}"]`)?.textContent||'工作台';
 		if (tab === 'graph') this.renderGraph();
-		if (tab === 'writing') this.renderOutline();
+		if (tab === 'writing') { this.renderOutline(); this.renderManuscriptProjects?.(); }
 		if (tab === 'schedule') this.renderTasks();
+		if (tab === 'search') this.prepareDiscovery();
+		this.renderSurfaceSteps?.();
 	},
 	async refresh() {
 		await this.saveDraft(false);
 		let papers = this.E.library.selection();
+		papers = (await Promise.all(papers.map(async p => await this.E.library.localPDF(p.id) ? p : null))).filter(Boolean);
 		if (papers.length > 12) throw new Error('一次最多选择 12 篇论文，以保留足够的单篇证据上下文');
 		this.papers = papers;
 		this.selection = null;
@@ -62,6 +67,8 @@ var EasySchUI = {
 		this.bind('refresh', () => this.refresh());
 		this.bind('cancel', () => this.E.ai.cancel());
 		this.initResearch(); this.initWriting(); this.initSettings(); this.initMeetings(); this.initSearch(); this.initPaperSkills();
+		this.initPPTStudio(); this.initFlow();this.initDiscovery();this.initKnowledge();this.initWritingCards(); await this.initTasks();
+		this.initManuscriptProjects();await this.initSurface();
 		this.loadSettings();
 		this.loadProject();
 		if (window.frameElement?.researchSelection) await this.setSelection(window.frameElement?.researchSelection);

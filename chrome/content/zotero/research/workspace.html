@@ -5,6 +5,7 @@
 	<title>EasySch · 简单研究</title>
 	<link rel="localization" href="easysch.ftl"/>
 	<link rel="stylesheet" href="workspace.css"/>
+	<link rel="stylesheet" href="ppt-studio.css"/>
 	<link rel="stylesheet" href="vendor/katex.min.css"/>
 	<script src="vendor/marked.js" defer="defer"></script>
 	<script src="vendor/purify.js" defer="defer"></script>
@@ -15,13 +16,23 @@
 	<script src="ui/research.js" defer="defer"></script>
 	<script src="ui/paper-skills.js" defer="defer"></script>
 	<script src="ui/writing.js" defer="defer"></script>
+	<script src="ui/manuscript-projects.js" defer="defer"></script>
 	<script src="ui/search.js" defer="defer"></script>
 	<script src="ui/settings.js" defer="defer"></script>
+	<script src="ui/asset-layouts.js" defer="defer"></script>
 	<script src="ui/meetings.js" defer="defer"></script>
-</head>
+	<script src="vendor/ppt-graph.js" defer="defer"></script>
+	<script src="ui/ppt-main.js" defer="defer"></script>
+	<script src="ui/ppt-flow.js" defer="defer"></script>
+	<script src="ui/ppt-picker.js" defer="defer"></script>
+	<script src="ui/ppt-contributions.js" defer="defer"></script>
+	<script src="ui/ppt-editor.js" defer="defer"></script>
+	<script src="ui/ppt-diagram.js" defer="defer"></script>
+	<script src="ui/ppt-crop.js" defer="defer"></script>
+<script src="ui/flow.js" defer="defer"></script><script src="ui/tasks.js" defer="defer"></script><script src="ui/discovery.js" defer="defer"></script><script src="ui/knowledge.js" defer="defer"></script><script src="ui/writing-cards.js" defer="defer"></script><link rel="stylesheet" href="appearance.css"><script src="appearance.js"></script><script type="module" src="prompt-entry.mjs"></script><style>.project-create{max-width:760px;padding:24px;background:var(--bg,#fff);border:1px solid #d7dce2;border-radius:10px}.project-create>input,.project-create>textarea{display:block;width:100%;margin:12px 0;padding:12px}.project-create>textarea{min-height:110px}.project-create button{margin:8px 8px 0 0}.project-card{max-width:900px}.project-goal{color:var(--muted,#59616d);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.project-secondary{margin-left:14px}</style><link rel="stylesheet" href="surface.css"><script src="ui/surface.js" defer="defer"></script><link rel="stylesheet" href="brand/brand.css"></head>
 <body>
 	<aside class="rail">
-		<div class="brand"><span class="brand-icon">E</span><div><strong>EasySch</strong><small data-l10n-id="easysch-subtitle">简单研究</small></div></div>
+		<div class="brand"><span class="brand-icon" aria-hidden="true"></span><div><strong>EasySch</strong><small data-l10n-id="easysch-subtitle">简单研究</small></div></div>
 		<p class="eyebrow">RESEARCH WORKSPACE</p>
 		<nav aria-label="工作台">
 			<button data-tab="research" class="active" data-l10n-id="easysch-research">文献研究</button>
@@ -88,7 +99,8 @@
 		<button id="meeting-save">保存项目</button><button id="meeting-outline">生成逐页大纲</button>
 		<label><input id="meeting-approved" type="checkbox"/> 我已核对大纲和证据来源</label>
 		<button id="meeting-layout">AI 页面与方法图规划</button>
-		<button id="meeting-data">导入图表数据 JSON</button>
+		<button id="meeting-render">渲染实际 PPTX 逐页预览</button>
+		<button id="meeting-data">导入 CSV / XLSX 数据</button>
 		<button id="meeting-export">导出可编辑 PPTX 与图形</button>
 		<p>核对页面计划后导出。方法图同时保存 SVG/draw.io；数据图必须提供原始数据。导出后仍需检查逐页视觉效果。</p>
 		<details><summary>页面计划（可修改 JSON）</summary><textarea id="meeting-slide-plan" rows="12" aria-label="页面计划 JSON"></textarea><button id="meeting-preview">按当前计划刷新逐页预览</button></details>

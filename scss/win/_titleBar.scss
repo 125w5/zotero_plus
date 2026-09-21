@@ -49,7 +49,8 @@
 }
 
 .titlebar-icon {
-	background-image: url(chrome://zotero/skin/z.svg);
+	mask: url(chrome://zotero/content/research/brand/easysch-symbol-white.png) center / contain no-repeat;
+	@include light-dark(background-color, #000, #fff);
 	width: 16px;
 	height: 16px;
 	z-index: 2;
@@ -59,6 +60,9 @@
 	margin-block: 10px;
 	margin-inline: 12px;
 }
+
+:root[data-easysch-appearance="light"] .titlebar-icon { background-color: #000; }
+:root[data-easysch-appearance="dark"] .titlebar-icon { background-color: #fff; }
 
 
 // Following rules from https://searchfox.org/mozilla-central/source/browser/themes/windows/browser.css

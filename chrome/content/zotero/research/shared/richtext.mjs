@@ -1,0 +1,1 @@
+export function sliceRuns(runs,start,end){let offset=0;return runs.flatMap(run=>{const left=Math.max(start-offset,0),right=Math.min(end-offset,run.text.length);offset+=run.text.length;return right>left?[{...run,text:run.text.slice(left,right)}]:[];});}

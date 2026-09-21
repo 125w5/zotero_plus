@@ -781,7 +781,9 @@ Zotero.Plugins = new function () {
 		let blockedPlugins = getBlockedPlugins();
 		let id = addon.id;
 		let version = addon.version;
-		let blockedReason = false;
+		let blockedReason = addon.isCompatible === false
+			? '此插件不兼容当前版本，已暂停加载；插件文件与文库数据保留'
+			: false;
 		if (blockedPlugins[id]) {
 			for (let blockedVersion of blockedPlugins[id].versionRanges) {
 				if (typeof blockedVersion === "string") {

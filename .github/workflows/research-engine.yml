@@ -1,0 +1,27 @@
+name: Research engine
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --prefix services/research-engine
+      - run: node scripts/test-paper-skills.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyMuPDF==1.27.2.2 openpyxl==3.1.5 python-docx==1.2.0
+      - run: python services/research-engine/pdf/test_assets.py
+      - run: python services/research-engine/manuscript/test_document.py
+      - run: sudo apt-get update && sudo apt-get install -y libreoffice-impress poppler-utils fonts-noto-cjk
+      - run: npm run build:browser --prefix services/research-engine
+      - run: npm test --prefix services/research-engine
+        env:
+          EASYSCH_TEST_SOFFICE: /usr/bin/libreoffice
+          EASYSCH_TEST_PDFTOPPM: /usr/bin/pdftoppm

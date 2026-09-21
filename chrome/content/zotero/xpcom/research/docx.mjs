@@ -39,7 +39,27 @@ export function parsePart(xml, part, Parser = DOMParser) {
 	let tables = nodes(doc, 'tbl').map(table => nodes(table, 'tr').map(row =>
 		[...row.children].filter(c => c.namespaceURI === ns && c.localName === 'tc').map(textOf)));
 	let citations = nodes(doc, 'instrText').map(n => n.textContent).filter(t => /ZOTERO_ITEM|ZOTERO_BIBL|\bCITATION\b/.test(t));
-	return { paragraphs, tables, citations };
+	// Keep body order for the reader; table paragraphs remain available to indexing.
+	let paragraphNodes = nodes(doc, 'p').filter(p => !excluded(p));
+	let paragraphByIndex = new Map(paragraphs.map(p => [p.index, p]));
+	let paragraphByNode = new Map(paragraphNodes.map((node, index) => [node, paragraphByIndex.get(index + 1)]));
+	let blocks = [];
+	let walk = node => {
+		if (excluded(node) || (node.namespaceURI === ns && ['del', 'moveFrom'].includes(node.localName))) return;
+		if (node.namespaceURI === ns && node.localName === 'p') {
+			let paragraph = paragraphByNode.get(node);
+			if (paragraph) blocks.push({ type: 'paragraph', ...paragraph });
+			return;
+		}
+		if (node.namespaceURI === ns && node.localName === 'tbl') {
+			blocks.push({ type: 'table', part, rows: [...node.children].filter(n => n.localName === 'tr').map(row =>
+				[...row.children].filter(n => n.localName === 'tc').map(textOf)) });
+			return;
+		}
+		for (let child of node.children || []) walk(child);
+	};
+	walk(doc.documentElement);
+	return { paragraphs, tables, citations, blocks };
 }
 
 export async function extractDOCX(path) {
@@ -47,7 +67,7 @@ export async function extractDOCX(path) {
 	let zip = new ZipReader(Zotero.File.pathToFile(path));
 	try {
 		if (!zip.hasEntry('word/document.xml')) throw new Error('文件不是有效 DOCX（缺少正文）');
-		let output = { paragraphs: [], tables: [], citations: [] }, total = 0;
+		let output = { paragraphs: [], tables: [], citations: [], blocks: [] }, total = 0;
 		for (let part of parts) {
 			if (!zip.hasEntry(part)) continue;
 			total += zip.getEntry(part).realSize;

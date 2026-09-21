@@ -36,6 +36,11 @@ Zotero.FileHandlers = {
 		}
 		
 		Zotero.debug('Opening ' + path);
+		if (item.attachmentContentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+			&& Zotero.Research?.openDOCX) {
+			await Zotero.Research.openDOCX(item.id);
+			return true;
+		}
 		
 		let readerType = item.attachmentReaderType;
 		

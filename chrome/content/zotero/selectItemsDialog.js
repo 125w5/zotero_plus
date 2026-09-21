@@ -25,6 +25,7 @@
 
 import CollectionTree from 'zotero/collectionTree';
 import CollectionViewItemTree from 'zotero/collectionViewItemTree';
+import { COLUMNS } from 'zotero/itemTreeColumns';
 
 var itemsView;
 var collectionsView;
@@ -64,6 +65,10 @@ var doLoad = async function () {
 	if(io.singleSelection) document.getElementById("zotero-items-tree").setAttribute("seltype", "single");
 	
 	itemsView = await CollectionViewItemTree.init(document.getElementById('zotero-items-tree'), {
+		// A selector needs identifiable titles, not the main library's complete
+		// metrics dashboard. Extra columns squeezed the title to zero width.
+		...(isSelectItemsDialog ? { columns: COLUMNS.filter(c => ['title', 'firstCreator', 'year'].includes(c.dataKey))
+			.map(c => ({ ...c, minWidth: c.dataKey === 'title' ? 200 : 55 })) } : {}),
 		onSelectionChange: () => {
 			if (isEditBibliographyDialog) {
 				Zotero_Bibliography_Dialog.treeItemSelected();

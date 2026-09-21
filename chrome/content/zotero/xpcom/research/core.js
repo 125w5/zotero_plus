@@ -60,9 +60,6 @@
 		});
 		let questions = Array.isArray(result.questions)
 			? result.questions.filter(q => typeof q === 'string' && q.trim()).slice(0, 4) : [];
-		if (mode === 'translate' && questions.length < 2) {
-			throw new Error('翻译结果缺少至少两个后续问题，请重试');
-		}
 		return { sections, questions, keywords: Array.isArray(result.keywords)
 			? result.keywords.filter(k => typeof k === 'string').slice(0, 15) : [] };
 	};

@@ -232,6 +232,9 @@ var Zotero_Tabs = new function () {
 			}
 		},
 		restoreState: {
+			'research-notebook': async tab => {await Zotero.Research.notebook.open(tab.data.projectID,{select:!!tab.selected});return {};},
+			manuscript: async tab => { await Zotero.Research.manuscripts.open(tab.data.projectID,{select:!!tab.selected}); return {}; },
+			researchDocx: async tab => { if (Zotero.Items.exists(tab.data.itemID)) await Zotero.Research.openDOCX(tab.data.itemID); return {}; },
 			research: async () => { return {}; },
 			library: async (tab, _tabIndex) => {
 				this.rename('zotero-pane', tab.title);
@@ -283,6 +286,10 @@ var Zotero_Tabs = new function () {
 			}
 		},
 		getTitle: {
+			'research-notebook': async tab => '素材库 · '+(Zotero.Research.manuscripts.get(tab.data.projectID)?.title||tab.title),
+			manuscript: async tab => '论文装配 · '+(Zotero.Research.manuscripts.get(tab.data.projectID)?.title||tab.title),
+			research: async tab => tab.title || 'EasySch 科研工作台',
+			researchDocx: async tab => Zotero.Items.get(tab.data.itemID)?.attachmentFilename || tab.title || 'DOCX',
 			reader: async (tab) => {
 				let item = Zotero.Items.get(tab.data.itemID);
 				return item ? item.getTabTitle() : "";
@@ -410,7 +417,7 @@ var Zotero_Tabs = new function () {
 		if (!tab) {
 			return;
 		}
-		document.title = (tab.title.length ? tab.title + ' - ' : '') + Zotero.appName;
+		document.title = (Zotero.Prefs.get('extensions.easysch.testProfile', true) ? '【验收文库】 ' : '') + (tab.title.length ? tab.title + ' - ' : '') + Zotero.appName;
 
 		let panel = this.tabsMenuPanel;
 		if (panel.visible) {
@@ -1180,10 +1187,15 @@ var Zotero_Tabs = new function () {
 				popup.remove();
 			}
 		});
+		menuitem = document.createXULElement('menuitem');
+		menuitem.setAttribute('label', '添加页面…');
+		menuitem.addEventListener('command', () => Zotero.Research.openPageMenu(window, document.getElementById('tab-bar-container')));
+		popup.appendChild(menuitem);
 		if (id !== 'zotero-pane') {
 			// Show in library
 			menuitem = document.createXULElement('menuitem');
 			menuitem.setAttribute('label', Zotero.getString('general.showInLibrary'));
+			menuitem.hidden = !tab.data.itemID;
 			menuitem.addEventListener('command', () => {
 				let { tab } = this._getTab(id);
 				let itemID = tab.data.itemID;
@@ -1289,7 +1301,7 @@ var Zotero_Tabs = new function () {
 						items: [item],
 						tabType: tab.type,
 						tabID: id,
-						tabSubType: item.attachmentReaderType,
+						tabSubType: item?.attachmentReaderType,
 					};
 					return ret;
 				}

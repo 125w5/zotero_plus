@@ -15,79 +15,35 @@
 	E.windows = new Set();
 	E.panels = new Set();
 	E.start = async function () {
+		await E.initDistribution();
 		await E.importProviderSetup();
 		// Storage is initialized before library windows open.
 		let pandoc = Zotero.Prefs.get('extensions.easysch.pandoc', true);
 		if (pandoc && !E.settings().pandoc && await IOUtils.exists(pandoc)) {
 			await E.store.update(s => { s.settings.pandoc = pandoc; });
 		}
-		let main = Zotero.getMainWindow();
-		E.setTimeout = main.setTimeout.bind(main);
-		E.clearTimeout = main.clearTimeout.bind(main);
-		E.ai = E.createAI({ fetch: main.fetch.bind(main), controller: () => new main.AbortController(),
+		// Research services survive closing/reopening the main window. Timers must
+		// belong to the application, and each AI request uses the current window.
+		const timers = ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
+		E.setTimeout = timers.setTimeout;
+		E.clearTimeout = timers.clearTimeout;
+		await E.preparePassageSearch();
+		E.manuscripts.startArticleIndex();
+		E.ai = E.createAI({ fetch: (...args) => Zotero.getMainWindow().fetch(...args), controller: () => new (Zotero.getMainWindow().AbortController)(),
 			settings: E.settings, credential: endpoint => E.credentials.get(endpoint), store: E.store,
 			collect: E.library.sources });
 		for (let win of Zotero.getMainWindows()) E.addWindow(win);
-		E.readerHandler = ({ reader, doc, params, append }) => {
-			if (!params.annotation?.text) return;
-			let attachment = Zotero.Items.get(reader.itemID);
-			let paperID = attachment.parentID || attachment.id;
-			let selection = { paperID, attachmentID: attachment.id, text: params.annotation.text,
-				pageIndex: params.annotation.position?.pageIndex };
-			let output = doc.createElement('div');
-			output.style.cssText = 'white-space:pre-wrap;width:min(520px,80vw);max-height:360px;overflow:auto;padding:10px;margin-top:6px;border-top:1px solid #ccd7da;user-select:text';
-			let renderRecord = record => {
-				output.replaceChildren();
-				for (let section of record.result.sections) {
-					let heading = doc.createElement('strong'); heading.textContent = section.heading;
-					let body = doc.createElement('p'); body.textContent = section.body; body.style.margin = '4px 0 8px';
-					output.append(heading, body);
-					for (let id of section.sources) {
-						let source = record.sources.find(value => value.id === id);
-						if (!source) continue;
-						let evidence = doc.createElement('button'); evidence.textContent = `[${id}] ${source.label}`; evidence.title = source.text;
-						evidence.addEventListener('click', () => E.library.openSource(source)); output.append(evidence);
-					}
-				}
-				if (record.result.keywords?.length) { let terms = doc.createElement('p'); terms.textContent = `术语：${record.result.keywords.join(' · ')}`; output.append(terms); }
-			};
-			let action = (label, handler) => {
-				let button = doc.createElement('button'); button.textContent = label; button.className = 'easysch-reader-action';
-				button.addEventListener('click', async () => {
-					button.disabled = true;
-					try { await handler(); }
-					catch (error) { output.textContent = error.message; }
-					finally { button.disabled = false; }
-				});
-				append(button);
-			};
-			for (let [label, mode] of [['翻译', 'translate'], ['AI 解释', 'selection_explain'], ['专业术语', 'selection_terms']]) {
-				action(label, async () => {
-					output.textContent = '正在提取选段与原文证据…';
-					let paper = await Zotero.Items.getAsync(paperID);
-					let record = await E.ai.run({ mode, papers: [E.library.describe(paper)], selection,
-						onStatus: text => { output.textContent = text; } });
-					renderRecord(record);
-				});
-			}
-			action('生成示意图', async () => {
-				output.textContent = '正在生成基于选段的图形计划…';
-				let paper = await Zotero.Items.getAsync(paperID);
-				let diagram = await E.planSelectionDiagram({ paper: E.library.describe(paper), selection,
-					onStatus: text => { output.textContent = text; } });
-				output.replaceChildren();
-				let parsed = new doc.defaultView.DOMParser().parseFromString(diagram.svg, 'image/svg+xml').documentElement;
-				parsed.setAttribute('style', 'width:100%;height:auto;display:block'); output.append(doc.importNode(parsed, true));
-				let note = doc.createElement('p'); note.textContent = '示意图只表达当前选段，不补写未提供的步骤。'; output.append(note);
-				let save = doc.createElement('button'); save.textContent = '保存可编辑 SVG';
-				save.addEventListener('click', async () => { let path = await E.saveSelectionDiagram(diagram); if (path) { note.textContent = `已保存：${path}`; await E.reveal(path); } });
-				output.append(save);
-			});
-			action('更多 · 工作台', () => E.open(selection));
-			append(output);
-		};
+  E.readerHandler=({reader,doc,params,append})=>{
+   if(!params.annotation?.text)return;
+   const a=params.annotation,attachment=Zotero.Items.get(reader.itemID),selection={paperID:attachment.parentID||attachment.id,attachmentID:attachment.id,text:a.text,pageIndex:a.position?.pageIndex,position:JSON.parse(JSON.stringify(a.position||{})),sortIndex:a.sortIndex};
+   E.renderQuickTranslation({reader,doc,selection,append});
+  };
 		Zotero.Reader.registerEventListener('renderTextSelectionPopup', E.readerHandler, E.id);
+		E.installReaderContext();
+		E.installReaderTools();
+		// Research tools live in the home workbench; the native Reader keeps notes and selection translation.
 		E.registerSidebar();
+		E.registerReaderPanes();
 		Zotero.addShutdownListener(() => E.stop());
 	};
 	E.addWindow = function (win) {
@@ -116,6 +72,11 @@
 		itemMenu?.addEventListener('popupshowing', updateDocxEntry);
 		itemMenu?.append(docxEntry);
 		E.addViewMenu(win);
+		E.installNavigation(win);
+		E.studio.addEntries(win);
+		win.document.getElementById('easysch-ppt-toolbar')?.remove();
+		E.installHomeMenu(win);
+		E.manuscripts.syncLibrary().catch(e=>Zotero.logError(e));
 		if (!Zotero.Prefs.get('extensions.easysch.columnLayoutV2', true)) {
 			E.applyView(win, ['title', 'firstCreator', 'year', 'research_tags', 'research_impact_factor', 'research_journalTags', 'dateAdded']);
 			Zotero.Prefs.set('extensions.easysch.columnLayoutV2', true, true);
@@ -124,6 +85,13 @@
 		E.windows.add(win);
 	};
 	E.removeWindow = function (win) {
+		win._researchCalendar?.dispose();
+		const pane=win.document.getElementById('zotero-items-pane');
+		if(pane?._researchContext){pane.removeEventListener('contextmenu',pane._researchContext,true);delete pane._researchContext;}
+		win.document.getElementById('research-home-menu')?.remove();
+		win.document.getElementById('research-item-actions')?.remove();
+		win.document.getElementById('easysch-ppt-toolbar')?.remove();
+		win.document.getElementById('easysch-ppt-context')?.remove();
 		win.document.getElementById('easysch-open')?.remove();
 		win.document.getElementById('easysch-views')?.remove();
 		let docxEntry = win.document.getElementById('easysch-open-docx');
@@ -136,6 +104,7 @@
 	};
 	E.open = function (selection) {
 		let main = Zotero.getMainWindow();
+		if (!selection) { const reader=Zotero.Reader.getByTabID(main.Zotero_Tabs.selectedID);const attachment=reader&&Zotero.Items.get(reader.itemID);if(attachment)selection={paperID:attachment.parentID||attachment.id,attachmentID:attachment.id,text:''}; }
 		let existing = main.document.getElementById('easysch-workspace-frame');
 		if (existing) {
 			main.Zotero_Tabs.select(existing.parentElement.id);
@@ -170,7 +139,7 @@
 		frame.setAttribute('style', 'width:100%;height:100%;border:0;flex:1');
 		frame.docxItemID = attachmentID;
 		let title = item.attachmentFilename || item.getField('title') || 'DOCX';
-		let { container } = main.Zotero_Tabs.add({ type: 'research-docx', title, data: { itemID: attachmentID }, select: true });
+		let { container } = main.Zotero_Tabs.add({ type: 'researchDocx', title, data: { itemID: attachmentID }, select: true });
 		container.style.display = 'flex';
 		container.append(frame);
 		frame.src = 'chrome://zotero/content/research/docx-viewer.html';
@@ -179,7 +148,16 @@
 	E.stop = async function () {
 		E.ai?.cancel();
 		if (E.sidebarID) Zotero.ItemPaneManager.unregisterSection(E.sidebarID);
+		if (E.overviewID) Zotero.ItemPaneManager.unregisterSection(E.overviewID);
+		for (const id of E.readerPaneIDs || []) Zotero.ItemPaneManager.unregisterSection(id);
+		if (E.noteLinkObserver) Zotero.Notifier.unregisterObserver(E.noteLinkObserver);
+		if (E.readerToolHandlers) {
+			Zotero.Reader.unregisterEventListener('renderToolbar', E.readerToolHandlers.toolbar);
+			Zotero.Reader.unregisterEventListener('createAnnotationContextMenu', E.readerToolHandlers.context);
+		}
 		Zotero.Reader.unregisterEventListener('renderTextSelectionPopup', E.readerHandler);
+		if(E.readerContextHandler)Zotero.Reader.unregisterEventListener('createViewContextMenu',E.readerContextHandler);
+		if(E.assetToolbar)Zotero.Reader.unregisterEventListener('renderToolbar', E.assetToolbar);
 		for (let win of [...E.windows]) E.removeWindow(win);
 		for (let win of [...E.panels]) win.close();
 		E.panels.clear();

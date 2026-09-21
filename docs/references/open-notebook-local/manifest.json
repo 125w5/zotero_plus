@@ -1,0 +1,26 @@
+{
+  "source": "E:\\workspace\\zotero-main\\open-notebook-main\\open-notebook-main",
+  "commit": "archive without git metadata; locked by SHA-256",
+  "files": [
+    {
+      "file": "LICENSE",
+      "sha256": "5262176eef0dc9e46c8825249000585f115b7ef5fab500bf1f530717bf2ce0b9",
+      "use": "license"
+    },
+    {
+      "file": "frontend/src/lib/utils/source-context.ts",
+      "sha256": "161503f2340edb36e659ec3924f53cb8c0109f91b19f70651de26005428be046",
+      "use": "adapted runtime logic"
+    },
+    {
+      "file": "frontend/src/components/sources/SourceCard.tsx",
+      "sha256": "19ea4854f20a5125c78cc50068bd657800ce48b4a5081a9c21e94761a3630024",
+      "use": "design reference only"
+    },
+    {
+      "file": "frontend/src/components/sources/ChatPanel.tsx",
+      "sha256": "cb9b0b9b70bdef02a0deea6edc01cdcb98fcbeff050306283784f0d3f05d3227",
+      "use": "design reference only"
+    }
+  ]
+}

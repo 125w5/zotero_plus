@@ -986,6 +986,14 @@ var ZoteroPane = new function () {
 		
 		// Tab navigation: Ctrl-Tab / Ctrl-Shift-Tab
 		if (event.ctrlKey && !event.altKey && !event.metaKey && event.key == 'Tab') {
+			if (event.defaultPrevented) return;
+			if (event.isComposing || event.keyCode === 229) return;
+			if (Zotero_Tabs.selectedType === 'manuscript') {
+				const frame = document.querySelector('#' + Zotero_Tabs.selectedID + ' iframe');
+				if (frame?.contentWindow.ManuscriptUI?.composing) return;
+				if (frame?.contentWindow.ManuscriptUI?.handleCompletionKey?.(event)) return;
+			}
+
 			if (event.shiftKey) {
 				Zotero_Tabs.selectPrev();
 				event.preventDefault();
@@ -5587,6 +5595,8 @@ var ZoteroPane = new function () {
 		let { noLocateOnMissing } = options;
 		for (let i = 0; i < items.length; i++) {
 			let item = items[i];
+			let projectID = Zotero.Research?.manuscripts?.projectForItem(item);
+			if (projectID) { await Zotero.Research.manuscripts.open(projectID); continue; }
 			if (item.isRegularItem()) {
 				// Prefer local file attachments
 				let attachment = await item.getBestAttachment();

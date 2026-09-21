@@ -54,9 +54,27 @@ async function getReader(signatures) {
 		for (let file of required) {
 			if (!await fs.pathExists(path.join(targetDir, file))) throw new Error(`Incomplete reader build: ${file}`);
 		}
-		signatures['reader'] = { hash };
+		 signatures['reader'] = { hash };
 	}
 	
+	// EasySch builds the modified reader locally. The upstream commit hash does
+	// not change for uncommitted source edits, so overlay the actual webpack
+	// output instead of silently shipping a cached upstream reader.
+	const localDir = path.join(modulePath, 'build', 'zotero');
+	if (await fs.pathExists(path.join(localDir, 'reader.js'))) {
+		async function copyChanged(dir, relative = '') {
+			for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+				const rel = path.join(relative, entry.name), source = path.join(dir, entry.name), destination = path.join(targetDir, rel);
+				if (entry.isDirectory()) { await copyChanged(source, rel); continue; }
+				if (!entry.isFile()) continue;
+				const bytes = await fs.readFile(source);
+				if (!await fs.pathExists(destination) || !bytes.equals(await fs.readFile(destination))) {
+					await fs.ensureDir(path.dirname(destination));await fs.writeFile(destination, bytes);
+				}
+			}
+		}
+		await copyChanged(localDir);
+	}
 	const t2 = Date.now();
 
 	return {

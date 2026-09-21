@@ -235,6 +235,25 @@
 			}
 
 			this.renderCustomSections();
+			// Keep the paper's first page and abstract together in library and Reader.
+			const overview = this.getCustomPanes().find(p => p.dataset.pane.includes('research-overview'));
+			if (overview) {
+				const abstract = this.querySelector('abstract-box');
+				if (overview !== this._paneParent.firstElementChild) this._paneParent.prepend(overview);
+				if (abstract && overview.nextElementSibling !== abstract) overview.after(abstract);
+			}
+			// Use the former related-items area for reader evidence, keeping the
+			// stored Zotero relationships intact.
+			// Attachment note editors also contain a related-box. Only reorder
+			// direct item panes, or evidence ends up inside a hidden note editor.
+			const related = this.getPane('related');
+			const evidence = this.getCustomPanes().filter(p => /research-(images|references)/.test(p.dataset.pane))
+				.sort((a, b) => Number(a.dataset.pane.includes('references')) - Number(b.dataset.pane.includes('references')));
+			let evidenceAnchor = related;
+			if (evidenceAnchor) for (const pane of evidence) {
+				if (evidenceAnchor.nextElementSibling !== pane) evidenceAnchor.after(pane);
+				evidenceAnchor = pane;
+			}
 			this._restorePinnedPane();
 
 			let panes = this.getPanes();
@@ -250,6 +269,7 @@
 				box.tabID = this.tabID;
 				box.tabType = this.tabType;
 				box.item = item;
+				if (box === related && evidence.length) box.hidden = true;
 				box.extraItems = this.extraItems;
 				box.collectionTreeRows = this.collectionTreeRows;
 				if (this.extraItems.length > 0) {
@@ -430,6 +450,8 @@
 		initPaneOrder(order) {
 			let panes = this.getPanes();
 			let paneIDs = panes.map(elem => elem.dataset.pane);
+			const overviewID = paneIDs.find(id => id.includes('research-overview'));
+			if (overviewID) order = [overviewID, 'abstract', ...order.filter(id => id !== overviewID && id !== 'abstract')];
 
 			// Compare the order of paneIDs with the given order
 			let isOrderDifferent = false;

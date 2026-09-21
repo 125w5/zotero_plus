@@ -47,7 +47,7 @@
 			this.clickable = false;
 			this.saveOnEdit = false;
 			this.showTypeMenu = false;
-			this.hideEmptyFields = false;
+			this.hideEmptyFields = !this._researchAllFields;
 			this.clickByRow = false;
 			this.preventFocus = false;
 			
@@ -123,7 +123,7 @@
 									<div id="retraction-hide"><button/></div>
 								</div>
 							</div>
-							<div id="info-table"></div>
+							<html:button class="research-fields-toggle" type="button">编辑完整信息</html:button><div id="info-table"></div>
 						</div>
 					</html:div>
 				</collapsible-section>
@@ -136,6 +136,15 @@
 		
 		init() {
 			this.initCollapsibleSection();
+			const compactEdit = this.querySelector('.research-fields-toggle');
+			if (compactEdit) {
+				compactEdit.classList.add('section-custom-button');
+				compactEdit.addEventListener('mousedown', e => e.stopPropagation());
+				compactEdit.addEventListener('keydown', e => e.stopPropagation());
+				compactEdit.addEventListener('click', e => e.stopPropagation());
+				this.querySelector('collapsible-section > .head')?.append(compactEdit);
+			}
+			this.querySelector('.research-fields-toggle')?.addEventListener('click', () => {this._researchAllFields=!this._researchAllFields;this.hideEmptyFields=!this._researchAllFields;this.querySelector('.research-fields-toggle').textContent=this._researchAllFields?'收起空白字段':'编辑完整信息';this._forceRenderAll();});
 			this._creatorTypeMenu.addEventListener('command', this._handleCreatorTypeChange);
 
 			this._id('zotero-creator-transform-menu').addEventListener('popupshowing', this._handleCreatorTransformMenuShowing);
@@ -202,7 +211,7 @@
 			this.clickable = false;
 			this.saveOnEdit = false;
 			this.showTypeMenu = false;
-			this.hideEmptyFields = false;
+			this.hideEmptyFields = !this._researchAllFields;
 			this.clickByRow = false;
 			
 			switch (val) {

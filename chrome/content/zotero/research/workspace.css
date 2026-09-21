@@ -47,3 +47,40 @@ main { overflow:auto; flex:1; }.view { padding:24px 30px; }.research-grid { disp
 .slide-canvas svg { width:100%; min-height:0; flex:1; }
 .slide-canvas small { margin-top:auto; color:#58707c; }
 @media(max-width:1100px) { #view-meetings { grid-template-columns:1fr; } }
+
+/* Compact native-tool presentation: keep the existing navigation and controls. */
+:root { --bg:Canvas; --surface:Canvas; --text:CanvasText; --muted:GrayText; --line:color-mix(in srgb, CanvasText 18%, Canvas); --accent:Highlight; --soft:color-mix(in srgb, Highlight 10%, Canvas); }
+body { font:menu; line-height:1.5; }
+.rail { width:180px; padding:18px 12px; }
+.brand { margin-bottom:20px; gap:0; }
+.brand-icon,.brand small,.eyebrow { display:none; }
+.brand strong { font-size:15px; }
+nav { gap:3px; }
+nav button { padding:7px 10px; border-radius:4px; }
+header { padding:14px 20px; }
+h1 { font-size:21px; letter-spacing:0; }
+button,input,textarea,select { border-radius:4px; }
+.view { padding:18px 20px; }
+.primary { background:Highlight; color:HighlightText; border-color:Highlight; }
+.primary:hover { background:Highlight; color:HighlightText; filter:brightness(.95); }
+@media(min-width:1101px){#view-meetings{grid-template-columns:minmax(0,1fr) minmax(280px,340px)}#view-meetings>.card:last-child{position:sticky;top:0;max-height:calc(100vh - 130px);overflow:auto}}
+.flow-more { margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:8px; }
+.flow-more>summary { cursor:pointer; font-weight:600; padding:4px; }
+.flow-more[open]>summary { margin-bottom:12px; }
+.flow-more button { margin:4px; }
+.flow-guide { color:var(--muted); padding:10px 0; }
+.flow-tabs { display:flex; gap:8px; margin:16px 0; }
+.knowledge-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+.knowledge-candidate { border-style:dashed; }
+#research-paper-picker label { padding:8px; border-bottom:1px solid var(--line); }
+#writing-cards textarea { width:100%; margin:10px 0; box-sizing:border-box; }
+.task { flex-wrap:wrap; }.task>details { max-width:100%; }.task input[type=checkbox] { flex:0 0 auto; width:auto; }
+.task-form button { flex-shrink:0;white-space:nowrap; }
+#view-search>.actions { display:grid;grid-template-columns:130px minmax(0,1fr) auto;gap:10px;align-items:center; }
+.writing-grid { grid-template-columns:150px minmax(320px,1fr) minmax(260px,320px);gap:18px;align-items:start; }
+#writing-cards { margin-top:0; }#writing-cards button { margin:4px 0; }#writing-insert-preview { padding:10px; }
+#view-settings .settings-grid { grid-template-columns:minmax(300px,650px); }
+@media(max-width:1100px){.writing-grid{grid-template-columns:130px minmax(320px,1fr)}#writing-cards{grid-column:2}}
+
+/* Outcome-focused literature collection, inside the existing workspace. */
+.discovery-controls{display:flex;align-items:center;gap:12px;margin:16px 0}.discovery-more{position:relative}.discovery-more[open]{padding:8px;background:var(--bg,#fff);border:1px solid var(--line,#d4d8dd);border-radius:8px}.discovery-more[open] button{display:block;margin:6px 0}.discovery-other-search{margin:18px 0;color:var(--muted,#59616d)}.discovery-other-search[open] .actions{margin-top:12px}.discovery-paper{max-width:1000px;padding:18px 22px}.discovery-paper h3{margin:0 0 8px}.discovery-paper>button{float:right}.discovery-paper details{margin-top:12px;clear:both}.discovery-summary{font-weight:600}.discovery-picker{width:min(680px,80vw);max-height:80vh;background:var(--bg,#fff);color:var(--text,#252a31);border:1px solid var(--line,#d4d8dd);border-radius:12px;padding:24px}.discovery-picker input{width:100%;padding:10px}.discovery-picker>div{max-height:50vh;overflow:auto}.discovery-picker>div button{display:block;width:100%;text-align:left;margin:6px 0}

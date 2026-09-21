@@ -789,8 +789,8 @@
 		};
 
 		handleButtonClick = async (event) => {
-			let button = event.target;
-			let pane = button.dataset.pane;
+			let button = event.target.closest('.btn[data-pane]');
+			let pane = button?.dataset.pane;
 			if (!pane) return;
 			switch (pane) {
 				case "context-notes":
@@ -815,6 +815,10 @@
 								scrollType = 'instant';
 							}
 							// Call scrolling before expanding the pane to avoid flickering
+							// Selecting a section is an explicit request to read it, even
+							// when its previous state was collapsed.
+							const targetPane = this.container.getEnabledPane(pane);
+							if (targetPane) targetPane.open = true;
 							await this.container.scrollToPane(pane, scrollType);
 							break;
 						case 2:

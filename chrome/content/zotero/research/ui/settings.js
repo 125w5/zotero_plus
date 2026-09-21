@@ -1,5 +1,18 @@
 Object.assign(EasySchUI, {
 	initSettings() {
+		if (this.E.hasBundledProviders) {
+			const area = this.$('provider-status');
+			const row = document.createElement('p');
+			row.className = 'muted';
+			row.textContent = '已内置模型、翻译与期刊接口，可直接使用，也可在下方配置自己的 API。';
+			const restore = document.createElement('button');
+			restore.type = 'button'; restore.textContent = '恢复内置接口';
+			restore.onclick = async () => {
+				try { await this.E.applyBundledProviders({ reset: true }); this.loadSettings(); this.status('已恢复安装包内置接口'); }
+				catch (_) { this.status('恢复失败，请重新安装完整安装包。', true); }
+			};
+			row.append(' ', restore); area.before(row);
+		}
         this.bind('save-youdao', async () => {
             await this.E.configureProviders({ youdaoAppID: this.$('youdao-app-id').value.trim(), youdaoSecret: this.$('youdao-secret').value.trim() });
             this.$('youdao-secret').value = ''; this.loadProviderStatus(); this.status('有道配置已保存');

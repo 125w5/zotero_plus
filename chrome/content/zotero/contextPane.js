@@ -137,6 +137,16 @@ var ZoteroContextPane = new function () {
 	};
 
 	this.update = () => {
+		if (!_contextPane) return;
+		// Research pages own their panels. Keep the reader's saved open state,
+		// but do not reserve an empty native pane when switching away from PDF.
+		if (!Zotero_Tabs.hasContextPane(Zotero_Tabs.selectedType)) {
+			_contextPane.setAttribute('collapsed', true);
+			_contextPaneSplitter.setAttribute('hidden', true);
+			_contextPaneSplitterStacked.setAttribute('hidden', true);
+			_readerSidenav.hidden = true;
+			return;
+		}
 		if (Zotero_Tabs.selectedType === 'library') {
 			return;
 		}

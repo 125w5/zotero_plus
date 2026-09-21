@@ -34,11 +34,6 @@ Object.assign(EasySchUI, {
 			let path = await this.E.writeBib(folder, result.text);
 			this.status(`已使用 ${result.translator} 导出 ${path}；引用键由该转换器生成`);
 		});
-		this.bind('add-task', async () => {
-			let task = this.E.core.task(this.$('task-title').value, this.$('task-date').value);
-			await this.updateProject(p => p.tasks.push(task));
-			this.$('task-title').value = ''; this.renderTasks(); this.status('任务已保存');
-		});
 		window.addEventListener('keydown', event => {
 			if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
 				event.preventDefault(); this.saveDraft().catch(e => this.status(e.message, true));
@@ -49,6 +44,7 @@ Object.assign(EasySchUI, {
 		let project = this.project();
 		this.$('draft-title').value = project.title; this.$('draft').value = project.draft;
 		this.dirty = false; this.renderOutline(); this.renderTasks();
+		if(this.$('writing-card-body')){const card=this.E.store.get().writingCards?.[this.projectKey()];this.$('writing-card-body').value=card?.body||'';this.$('writing-card-type').value=card?.kind||'我的理解';}
 		let citations = this.$('citations'); citations.replaceChildren();
 		for (let paper of this.papers) {
 			let button = this.el('button', `${paper.title.slice(0, 35)}\n[@${paper.citeKey}]`);
@@ -77,24 +73,4 @@ Object.assign(EasySchUI, {
 			target.append(button);
 		}
 	},
-	renderTasks() {
-		let target = this.$('tasks'); target.replaceChildren();
-		let today = new Date(); let date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-		let tasks = this.project().tasks.slice().sort((a, b) => Number(a.done) - Number(b.done) || (a.due || '9999').localeCompare(b.due || '9999'));
-		for (let task of tasks) {
-			let row = this.el('div', undefined, 'task' + (task.done ? ' done' : ''));
-			let check = this.el('input'); check.type = 'checkbox'; check.checked = task.done; check.setAttribute('aria-label', `完成 ${task.title}`);
-			check.addEventListener('change', async () => {
-				try { await this.updateProject(p => { p.tasks.find(t => t.id === task.id).done = check.checked; }); this.renderTasks(); }
-				catch (e) { this.status(e.message, true); }
-			});
-			let due = this.el('span', task.due?.replace('T', ' ') || '未设截止日期', !task.done && task.due && Date.parse(task.due.length === 10 ? task.due + 'T23:59:59' : task.due) < Date.now() ? 'overdue' : 'muted');
-			let remove = this.el('button', '删除'); remove.addEventListener('click', async () => {
-				try { await this.updateProject(p => { p.tasks = p.tasks.filter(t => t.id !== task.id); }); this.renderTasks(); }
-				catch (e) { this.status(e.message, true); }
-			});
-			row.append(check, this.el('span', task.title, 'title'), due, remove); target.append(row);
-		}
-		if (!tasks.length) target.append(this.el('p', '为阅读、实验或投稿设置一个下一步。', 'empty'));
-	}
 });

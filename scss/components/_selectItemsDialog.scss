@@ -1,7 +1,10 @@
 #zotero-select-items-dialog {
     display: flex;
-    min-width: 800px;
-    min-height: 450px;
+    width: 820px;
+    height: 520px;
+    min-width: 600px;
+    min-height: 360px;
+    overflow: hidden;
 }
 
 #select-items-dialog {
@@ -11,7 +14,12 @@
 
     #collections-items-container {
         flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
     }
+    #zotero-items-tree-container { min-width: 0; overflow: hidden; }
+    .dialog-button-box { flex-shrink: 0; box-sizing: border-box; }
 
     #zotero-select-items-container {
         display: flex;
@@ -19,8 +27,10 @@
     }
 
     #zotero-collections-tree-container {
-        min-width: 200px;
-		min-height: 100%;
+        min-width: 170px;
+        width: 200px;
+        flex-shrink: 0;
+		min-height: 0;
         background: var(--material-sidepane);
         border-inline-end: var(--material-panedivider);
         
@@ -31,6 +41,16 @@
 
     #zotero-collections-tree {
         background: var(--material-sidepane);
+    }
+
+    .virtualized-table .row.selected {
+        background: light-dark(#e5e7eb, #42464c);
+        color: light-dark(#252a31, #f0f1f3);
+        border-radius: 5px;
+    }
+    .virtualized-table .row:not(.selected):hover {
+        background: light-dark(#f1f2f4, #33363b);
+        border-radius: 5px;
     }
 
 	#zotero-items-pane-content {

@@ -221,7 +221,7 @@ export function registerAutoRenameFileFromParent() {
 			}
 
 			for (let id of ids) {
-				if (extraData[id]?.skipRenameFile) {
+				if (extraData?.[id]?.skipRenameFile) {
 					continue;
 				}
 				

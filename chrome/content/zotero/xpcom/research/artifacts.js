@@ -2,18 +2,34 @@
 (function (E) {
 	E.readChartData = async file => {
 		if ((await IOUtils.stat(file)).size > 1000000) throw new Error('数据文件超过 1 MB');
+		if (/\.(csv|xlsx)$/i.test(file)) return E.runArtifactEngine({ operation: 'assets-dataset', file });
 		let value = JSON.parse(await IOUtils.readUTF8(file));
 		if (!Array.isArray(value) || value.length > 20) throw new Error('数据格式应为数据集数组，最多 20 组');
 		return value;
 	};
-	E.runArtifactEngine = async function (request, onStatus = () => {}) {
+	E.runArtifactEngine = async function (request, onStatus = () => {}, signal) {
+		if (signal?.aborted) throw new Error('任务已取消');
+		if (signal) {
+			let directory=PathUtils.join(Zotero.DataDirectory.dir,'easysch','task-cancel');await IOUtils.makeDirectory(directory,{ignoreExisting:true});
+			request.cancelFile=PathUtils.join(directory,Zotero.Utilities.randomString(20)+'.cancel');
+		}
+		if (request.operation?.startsWith('assets-')) {
+			request.python = Zotero.Prefs.get('extensions.easysch.assetPython', true);
+			request.cacheRoot = PathUtils.join(Zotero.DataDirectory.dir, 'easysch', 'asset-cache');
+		}
+		if (request.operation === 'export') {
+			let soffice = Zotero.Prefs.get('extensions.easysch.soffice', true);
+			let poppler = Zotero.Prefs.get('extensions.easysch.poppler', true);
+			if (soffice && poppler) request.render = { soffice, pdftoppm: PathUtils.join(poppler, 'pdftoppm.exe'), pdftotext: PathUtils.join(poppler, 'pdftotext.exe') };
+		}
 		let command = Zotero.Prefs.get('extensions.easysch.engineNode', true);
 		let entry = Zotero.Prefs.get('extensions.easysch.engineEntry', true);
-		if (!command || !entry || !await IOUtils.exists(command) || !await IOUtils.exists(entry)) throw new Error('产物引擎未配置，请运行 scripts/setup-research-engine.ps1 后用工作台启动器启动');
+		if (!command || !entry || !await IOUtils.exists(command) || !await IOUtils.exists(entry)) throw new Error('文档处理工具缺失，请重新安装完整的 EasySch 安装包。');
 		let { Subprocess } = ChromeUtils.importESModule('resource://gre/modules/Subprocess.sys.mjs');
 		let proc = await Subprocess.call({ command, arguments: [entry], stderr: 'pipe' });
+		let cancel = () => IOUtils.writeUTF8(request.cancelFile,'cancel').catch(()=>proc.kill()); signal?.addEventListener('abort', cancel, { once: true });
 		let result, failure, remainder = '';
-		let timer = E.setTimeout(() => proc.kill(), 150000);
+		let timer = E.setTimeout(() => proc.kill(), 180000);
 		try {
 			let output = (async () => {
 				let chunk;
@@ -32,25 +48,46 @@
 			let errors = (async () => { while (await proc.stderr.readString()) { /* Drain without exposing private process details. */ } })();
 			await proc.stdin.write(JSON.stringify(request)); await proc.stdin.close();
 			let [status] = await Promise.all([proc.wait(), output, errors]);
+			if (signal?.aborted) throw new Error('任务已取消');
 			if (status.exitCode || failure || !result) throw new Error(failure || '产物引擎失败或超时；原文未修改');
 			return result;
 		}
-		finally { E.clearTimeout(timer); }
+		finally { E.clearTimeout(timer); signal?.removeEventListener('abort', cancel); if(request.cancelFile) await IOUtils.remove(request.cancelFile,{ignoreAbsent:true}); }
+	};
+	E.previewImage = async path => {
+		let bytes = await IOUtils.read(path);
+		let win = Zotero.getMainWindow();
+		let blob = new win.Blob([bytes], { type: /\.jpe?g$/i.test(path)?'image/jpeg':/\.webp$/i.test(path)?'image/webp':'image/png' });
+		return new Promise(resolve => { let reader = new win.FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(blob); });
+	};
+	E.previewPresentation = async (request, status, signal) => {
+		let key = E.assets.key(['ppt-layout-2', request.plan, request.record, request.datasets, (request.assets || []).map(a => [a.id, a.assetHash, a.uri])]);
+		let python=Zotero.Prefs.get('extensions.easysch.assetPython',true), cacheEnabled=python&&await IOUtils.exists(python);
+		let cached = cacheEnabled ? await E.runArtifactEngine({ operation: 'assets-cache-get', key },status,signal) : {miss:true};
+		if (!cached.miss && cached.previews && await IOUtils.exists(cached.path) && (await Promise.all(cached.previews.map(p => IOUtils.exists(p)))).every(Boolean)) {
+			status('页面与素材未变化，复用实际 PPTX 逐页预览'); return { ...cached, cacheHit: true };
+		}
+		let directory = PathUtils.join(Zotero.DataDirectory.dir, 'easysch', 'asset-cache', 'previews');
+		await IOUtils.makeDirectory(directory, { ignoreExisting: true });
+		let result = await E.runArtifactEngine({ ...request, operation: 'export', directory }, status, signal);
+		if (cacheEnabled && result.previews) await E.runArtifactEngine({ operation: 'assets-cache-put', key, layer: 'ppt', value: result });
+		return result;
 	};
 	E.planPresentation = async function (meeting, onStatus) {
 		let assembly = await E.runArtifactEngine({ operation: 'prompt' });
-		let config = E.settings(), endpoint = E.core.endpoint(config.endpoint);
+		let config = await E.resolveModel(E.settings()), endpoint = E.core.endpoint(config.endpoint);
 		let key = await E.credentials.get(endpoint);
 		let win = Zotero.getMainWindow(), abort = new win.AbortController();
 		let timer = E.setTimeout(() => abort.abort(), 120000);
 		try {
-			onStatus('正在规划页面与方法图…');
+			onStatus(E.aiProgress(config.model,'正在规划页面与方法图'));
 			let response = await win.fetch(endpoint + '/chat/completions', { method: 'POST', redirect: 'error', signal: abort.signal,
 				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
 				body: JSON.stringify({ model: config.model, temperature: 0.2, max_tokens: 7000,
 					...(new URL(endpoint).hostname === 'api.deepseek.com' ? { thinking: { type: 'disabled' }, response_format: { type: 'json_object' } } : {}),
-					messages: [{ role: 'system', content: assembly.sections.map(s => s.text).join('\n\n') }, { role: 'user', content: JSON.stringify({
+					messages: [{ role: 'system', content: assembly.sections.map(s => s.text).join('\n\n') + (meeting.assets?.length ? '\n优先使用已确认的论文原图，返回 version:2。至少60%内容页使用 kind:asset；不得连续三页同布局。asset页格式：{kind:"asset",title,layoutType:"original"或"method"或"results"或"question"或"formula",assetIDs:[输入素材ID],sources:[对应证据ID],slidePurpose,claim,assetReason,speakerFocus,bullets:[最多3条各120字内],notes}。不得假装看到图片像素；图注不足时注明待核对。不得用通用关系图替代已有论文图。' : '') }, { role: 'user', content: JSON.stringify({
 						title: meeting.title, minutes: meeting.minutes, outline: meeting.outline.result, datasets: meeting.datasets || [],
+						assets: (meeting.assets || []).map(a => ({ id: a.id, sourceID: 'A-' + a.id, label: a.label, caption: a.caption, page: a.page, kind: a.kind })),
 						sources: meeting.outline.sources.map(s => ({ id: s.id, label: s.label, text: s.text.slice(0, 4000) })) }) }] }) });
 			if (!response.ok) throw new Error(`页面规划接口返回 HTTP ${response.status}`);
 			let payload = await response.json();
@@ -62,27 +99,10 @@
 		}
 		finally { E.clearTimeout(timer); }
 	};
-	E.selectionDiagramSVG = function (slide) {
-		let xml = value => E.core.escapeHTML(value);
-		let nodes = slide.nodes.map((node, index) => ({ ...node,
-			x: 55 + (index % 3) * 195, y: 115 + Math.floor(index / 3) * 125, w: 150, h: 58 }));
-		let byID = new Map(nodes.map(node => [node.id, node]));
-		let lines = slide.edges.map(edge => {
-			let from = byID.get(edge.from), to = byID.get(edge.to);
-			let ax = from.x + from.w / 2, ay = from.y + from.h / 2;
-			let bx = to.x + to.w / 2, by = to.y + to.h / 2;
-			let dx = bx - ax, dy = by - ay;
-			let aScale = Math.min(from.w / 2 / Math.max(Math.abs(dx), 0.001), from.h / 2 / Math.max(Math.abs(dy), 0.001));
-			let bScale = Math.min(to.w / 2 / Math.max(Math.abs(dx), 0.001), to.h / 2 / Math.max(Math.abs(dy), 0.001));
-			let x1 = ax + dx * aScale, y1 = ay + dy * aScale;
-			let x2 = bx - dx * bScale, y2 = by - dy * bScale;
-			return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#287b89" stroke-width="2" marker-end="url(#arrow)"/>`;
-		}).join('');
-		let boxes = nodes.map(node => `<rect x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" rx="9" fill="#e8f3f4" stroke="#287b89"/><text x="${node.x + node.w / 2}" y="${node.y + node.h / 2 + 5}" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="14">${xml(node.label.slice(0, 20))}</text>`).join('');
-		return `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#287b89"/></marker></defs><rect width="640" height="360" fill="white"/><text x="32" y="48" font-family="Microsoft YaHei, sans-serif" font-size="22" font-weight="700" fill="#17364a">${xml(slide.title)}</text>${lines}${boxes}</svg>`;
-	};
+	E.diagramCore = () => ChromeUtils.importESModule('chrome://zotero/content/research/shared/diagram.mjs');
+	E.selectionDiagramSVG = slide => E.diagramCore().diagramSVG(slide);
 	E.planSelectionDiagram = async function ({ paper, selection, onStatus = () => {} }) {
-		let config = E.settings();
+		let config = await E.resolveModel(E.settings());
 		if (!config.endpoint || !config.model) throw new Error('请先在设置中填写模型接口和模型名称');
 		let endpoint = E.core.endpoint(config.endpoint);
 		let key = await E.credentials.get(endpoint);
@@ -92,7 +112,7 @@
 		let win = Zotero.getMainWindow(), abort = new win.AbortController();
 		let timer = E.setTimeout(() => abort.abort(), 120000);
 		try {
-			onStatus('正在把选段转换为可编辑方法图…');
+			onStatus(E.aiProgress(config.model,'正在生成可编辑方法图'));
 			let response = await win.fetch(endpoint + '/chat/completions', { method: 'POST', redirect: 'error', signal: abort.signal,
 				headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) },
 				body: JSON.stringify({ model: config.model, temperature: 0.1, max_tokens: 1800,
@@ -102,17 +122,7 @@
 			if (!response.ok) throw new Error(`方法图接口返回 HTTP ${response.status}`);
 			let payload = await response.json();
 			let slide = JSON.parse(String(payload.choices?.[0]?.message?.content || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
-			if (typeof slide.title !== 'string' || !slide.title.trim() || slide.title.length > 70
-				|| !Array.isArray(slide.nodes) || slide.nodes.length < 2 || slide.nodes.length > 6
-				|| !Array.isArray(slide.edges) || slide.edges.length > 8) throw new Error('模型返回的方法图结构无效');
-			let ids = new Set();
-			for (let node of slide.nodes) {
-				if (!node || typeof node.id !== 'string' || !/^[A-Za-z0-9_-]{1,32}$/.test(node.id) || ids.has(node.id)
-					|| typeof node.label !== 'string' || !node.label.trim() || node.label.length > 40) throw new Error('方法图节点无效');
-				ids.add(node.id);
-			}
-			for (let edge of slide.edges) if (!ids.has(edge.from) || !ids.has(edge.to) || edge.from === edge.to) throw new Error('方法图连线无效');
-			slide.sources = ['P1-S'];
+			E.diagramCore().validateDiagram(slide, ['P1-S']);
 			return { slide, sources: [source], svg: E.selectionDiagramSVG(slide) };
 		}
 		finally { E.clearTimeout(timer); }
@@ -123,6 +133,8 @@
 		let name = diagram.slide.title.replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').slice(0, 60) || 'method-diagram';
 		let path = PathUtils.join(folder, `${name}-${Date.now()}.svg`);
 		await IOUtils.writeUTF8(path, diagram.svg);
+		await IOUtils.writeUTF8(path.replace(/\.svg$/, '.drawio'), E.diagramCore().diagramDrawio(diagram.slide));
+		await IOUtils.writeUTF8(path.replace(/\.svg$/, '.json'), JSON.stringify({slide:diagram.slide,sources:diagram.sources}, null, 2));
 		return path;
 	};
 })(EasySch);

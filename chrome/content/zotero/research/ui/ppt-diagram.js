@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+Object.assign(EasySchUI,{
+ async pptMountGraph(container,s){
+  if(!window.PPTGraph)throw Error('图形编辑器未打包，请重新构建前端');
+  const graph=await PPTGraph.mount(container,s.diagram,async diagram=>{await this.pptPatch(x=>{const page=x.slides.find(p=>p.id===s.id);page.diagram=diagram;page.status='user_edited';},true);this.status('节点位置与连线已保存');});
+  if(!container.isConnected){graph.dispose();return;}this.pptGraph=graph;
+ },
+ pptDiagramProperties(parent,s){
+  const M=this.E.studio.model;const details=this.el('details');details.open=true;details.id='ppt-diagram-editor';details.append(this.el('summary','编辑示意图：拖动节点或修改下方文字'));parent.append(details);
+  const type=this.pptField('示意图类型',s.diagram.diagramType,details,{tag:'select'});for(const [id,label] of Object.entries(M.DIAGRAM_TYPES)){const o=this.el('option',label);o.value=id;type.append(o);}type.value=s.diagram.diagramType;
+  type.onchange=async()=>{await this.pptPatch(x=>{const diagram=x.slides.find(p=>p.id===s.id).diagram;diagram.diagramType=type.value;delete diagram.positions;},true);this.renderPPT();};
+  for(const n of s.diagram.nodes){const row=this.el('div');row.className='ppt-node-row';const input=this.pptField(n.id,n.label,row);input.className='ppt-node-label';input.dataset.nodeId=n.id;input.onchange=async()=>{await this.pptPatch(x=>{x.slides.find(p=>p.id===s.id).diagram.nodes.find(v=>v.id===n.id).label=input.value;},true);this.pptGraph?.getCellById(n.id)?.attr('label/text',input.value);this.status('节点文字已保存');};this.pptButton('删除节点',async()=>{await this.pptPatch(x=>{const g=x.slides.find(p=>p.id===s.id).diagram;g.nodes=g.nodes.filter(v=>v.id!==n.id);g.edges=g.edges.filter(e=>e.source!==n.id&&e.target!==n.id);},true);this.renderPPT();},row);details.append(row);}
+  this.pptButton('增加我的解释节点',async()=>{await this.pptPatch(x=>{const g=x.slides.find(p=>p.id===s.id).diagram;g.nodes.push({id:'node-'+Date.now(),label:'我的解释',detail:'',evidenceIDs:[],userAdded:true});delete g.positions;},true);this.renderPPT();},details);
+  for(const [i,e] of s.diagram.edges.entries()){const row=this.el('div');row.className='ppt-edge-row';const source=this.pptField('起点',e.source,row,{tag:'select'}),target=this.pptField('终点',e.target,row,{tag:'select'});for(const n of s.diagram.nodes)for(const select of [source,target]){const o=this.el('option',n.label);o.value=n.id;select.append(o);}source.value=e.source;target.value=e.target;const relation=this.pptField('关系文字',e.relation,row);relation.className='ppt-edge-label';const save=async()=>{if(source.value===target.value)throw Error('不能连接到同一节点');await this.pptPatch(x=>{x.slides.find(p=>p.id===s.id).diagram.edges[i]={source:source.value,target:target.value,relation:relation.value};},true);this.renderPPT();};this.pptButton('保存连线',save,row);this.pptButton('删除连线',async()=>{await this.pptPatch(x=>x.slides.find(p=>p.id===s.id).diagram.edges.splice(i,1),true);this.renderPPT();},row);details.append(row);}
+  this.pptButton('增加连线',async()=>{if(s.diagram.nodes.length<2)throw Error('至少需要两个节点');await this.pptPatch(x=>x.slides.find(p=>p.id===s.id).diagram.edges.push({source:s.diagram.nodes[0].id,target:s.diagram.nodes[1].id,relation:'待修改关系'}),true);this.renderPPT();},details);
+  this.pptButton('ELK 自动排列',async()=>{await this.pptPatch(x=>delete x.slides.find(p=>p.id===s.id).diagram.positions,true);this.renderPPT();},details);
+  this.pptButton('导出 SVG 与 draw.io',()=>this.pptTask(async(status,signal)=>{const folder=await this.E.pick(window,'选择示意图保存目录','folder');if(!folder)return;const diagram=this.E.studio.get(this.pptDraft.id).slides.find(p=>p.id===s.id).diagram;M.validateDiagram(diagram,this.pptDraft.sources,{allowManual:true});const result=await this.E.runArtifactEngine({operation:'diagram-layout',diagram},status,signal);const name='diagram-'+Date.now();await this.E.studio.saveDiagram(folder,name,result);}),details);
+ }
+});

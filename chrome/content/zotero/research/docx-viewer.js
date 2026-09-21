@@ -45,11 +45,26 @@ async function init() {
 	$('title').textContent = preview.filename;
 	let data = preview.document;
 	$('meta').textContent = `${data.paragraphs.length} 段 · ${data.tables.length} 表 · ${data.citations.length} 个引用字段`;
-	for (let paragraph of data.paragraphs) {
+	let lastPart = 'word/document.xml';
+	for (let paragraph of data.blocks) {
+		if (paragraph.part !== lastPart) {
+			$('document').append(el('h2', ({ 'word/comments.xml': '文档批注（非正文）', 'word/footnotes.xml': '脚注', 'word/endnotes.xml': '尾注' })[paragraph.part] || paragraph.part));
+			lastPart = paragraph.part;
+		}
+		if (paragraph.type === 'table') {
+			let table = el('table'); table.className = 'search-block';
+			for (let cells of paragraph.rows) {
+				let row = el('tr');
+				for (let cell of cells) row.append(el('td', cell));
+				table.append(row);
+			}
+			$('document').append(table);
+			continue;
+		}
 		let level = /(?:heading|标题)\s*([1-6])/i.exec(paragraph.style || '')?.[1]
 				|| (paragraph.outlineLevel !== '' ? String(Number(paragraph.outlineLevel) + 1) : '');
 		let node = el(level ? `h${Math.min(6, Number(level))}` : 'p', paragraph.text,
-			level ? `paragraph heading heading-${level}` : 'paragraph');
+			level ? `paragraph search-block heading heading-${level}` : 'paragraph search-block');
 		node.id = `paragraph-${paragraph.part.replace(/\W/g, '-')}-${paragraph.index}`;
 		$('document').append(node);
 		if (level && Number(level) <= 3) {
@@ -57,15 +72,6 @@ async function init() {
 			link.addEventListener('click', () => node.scrollIntoView({ behavior: 'smooth', block: 'start' }));
 			$('outline').append(link);
 		}
-	}
-	for (let rows of data.tables) {
-		let table = el('table');
-		for (let cells of rows) {
-			let row = el('tr');
-			for (let cell of cells) row.append(el('td', cell));
-			table.append(row);
-		}
-		$('document').append(table);
 	}
 	document.addEventListener('selectionchange', () => {
 		let selection = document.getSelection();
@@ -84,8 +90,9 @@ async function init() {
 	$('external').addEventListener('click', () => window.parent.Zotero.launchFile(preview.path));
 	$('search').addEventListener('input', () => {
 		let query = $('search').value.trim().toLocaleLowerCase();
-		for (let node of document.querySelectorAll('.paragraph')) node.hidden = !!query && !node.textContent.toLocaleLowerCase().includes(query);
+		for (let node of document.querySelectorAll('.search-block')) node.hidden = !!query && !node.textContent.toLocaleLowerCase().includes(query);
 	});
+	window.docxReady = true;
 }
 window.addEventListener('DOMContentLoaded', () => init().catch((error) => {
 	$('title').textContent = 'DOCX 打开失败'; $('meta').textContent = error.message;

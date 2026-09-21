@@ -13,6 +13,15 @@ easysch-open-docx =
     .label = 在 Zotero 中打开 DOCX
 
 easysch-section =
-    .label = 科研工作台
+    .label = 学术对话
 easysch-sidenav =
-    .tooltiptext = 科研工作台
+    .tooltiptext = 学术对话
+easysch-paper-overview =
+    .label = 首页预览
+    .tooltiptext = PDF 首页与图片证据
+easysch-image-evidence =
+    .label = 图片证据
+    .tooltiptext = 原图、中文解读与来源
+easysch-paper-references =
+    .label = 本文参考文献
+    .tooltiptext = 本文引用的论文（含未匹配条目）

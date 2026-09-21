@@ -1,0 +1,130 @@
+/* Coauthor is a contained conversation inside the existing bottom dock. */
+html[data-appearance] #ai {
+ padding:10px 22px 12px;
+ background:var(--bg);
+ border-top:1px solid var(--line);
+ box-shadow:none;
+ backdrop-filter:none;
+ overflow:visible;
+}
+html[data-appearance] #ai .ai-panel {
+ width:min(100%,1020px);
+ height:100%;
+ min-height:0;
+ align-self:center;
+ display:flex;
+ flex-direction:column;
+ background:var(--surface);
+ border:1px solid var(--line);
+ border-radius:14px;
+ box-shadow:0 3px 14px #19243109;
+ overflow:hidden;
+}
+html[data-appearance] #ai .ai-heading {
+ position:static;
+ flex:none;
+ min-height:45px;
+ padding:9px 18px;
+ gap:10px;
+ border-bottom:1px solid var(--line);
+ background:var(--surface);
+}
+#ai .ai-heading .easysch-symbol{width:23px;height:23px}
+#ai .ai-heading .easysch-wordmark{font-size:17px}
+#ai .ai-heading .easysch-brand{gap:7px}
+html[data-appearance] #ai .ai-dock-title{font-size:12px;color:var(--muted);font-weight:400;border-left:1px solid var(--line);padding-left:10px}
+html[data-appearance] #ai .ai-heading #ai-context{background:transparent;padding:0;max-width:38%;font-size:11px}
+html[data-appearance] #ai #collapse-chat{padding:3px 7px;margin-left:auto;border-radius:5px}
+html[data-appearance] #ai #collapse-chat:hover{background:var(--soft);color:var(--text)}
+html[data-appearance] #ai #ai-history{
+ width:100%;
+ padding:12px 18px;
+ flex:1;
+ min-height:0;
+ overflow:auto;
+ overscroll-behavior:contain;
+}
+html[data-appearance] #ai #chat{gap:12px;padding:0}
+html[data-appearance] #ai .coauthor-message{max-width:88%;line-height:1.75;font-size:13px;border-radius:9px;padding:9px 12px}
+html[data-appearance] #ai .coauthor-message.from-user{background:var(--soft);border-bottom-right-radius:3px}
+html[data-appearance] #ai .coauthor-message.from-assistant{max-width:100%;padding:2px 0 8px;background:transparent}
+#ai .message-meta{margin-bottom:4px;font-size:10px}
+#ai .coauthor-message .research-content{line-height:1.75}
+#ai .coauthor-message .research-content :is(table,pre){max-width:100%}
+#ai .coauthor-message .research-content table{margin:8px 0}
+#ai .coauthor-message .research-content .katex-display{margin:10px 0;overflow-x:auto;overflow-y:hidden}
+html[data-appearance] #ai .coauthor-empty{padding:10px 0 16px;font-size:12px}
+html[data-appearance] #ai .coauthor-empty strong{font-size:14px;margin-bottom:7px}
+html[data-appearance] #ai #ai-form{
+ display:flex;
+ flex-direction:column;
+ flex-wrap:nowrap;
+ align-items:stretch;
+ gap:0;
+ width:100%;
+ flex:none;
+ padding:10px 14px 9px;
+ margin:0;
+ border:0;
+ border-top:1px solid var(--line);
+ border-radius:0;
+ background:var(--surface);
+ box-shadow:none;
+ min-height:0;
+}
+html[data-appearance] #ai #ai-form:focus-within{border-color:var(--line);box-shadow:inset 0 2px 0 #718aa34d}
+html[data-appearance] #ai #ai-prompt{
+ width:100%;
+ flex:none;
+ min-height:36px;
+ height:36px;
+ padding:6px 3px;
+ margin:0;
+ border:0;
+ background:transparent;
+ font-size:13px;
+ line-height:22px;
+}
+#ai .ai-compose-actions{display:flex;align-items:center;gap:9px;min-width:0;margin-top:5px}
+html[data-appearance] #ai #ai-mode{margin:0;max-width:142px;height:28px;min-height:28px;font-size:11px;border:0;background:var(--soft);color:var(--text);border-radius:6px}
+#ai .compose-key-hint{font-size:10px;color:var(--muted)}
+html[data-appearance] #ai #ask-ai{margin:0 0 0 auto;min-height:29px;padding:5px 12px;font-size:12px;border:0;border-radius:7px;background:#344f67;color:#fff}
+html[data-appearance=dark] #ai #ask-ai{background:#bed1e3;color:#182531}
+html[data-appearance] #ai #ask-ai:hover{filter:brightness(1.12)}
+html[data-appearance] #ai #ask-ai:disabled{opacity:.5;cursor:wait}
+html[data-appearance] #ai #cancel-ai{margin:0;min-height:29px;padding:5px 10px;background:var(--soft);border:0;border-radius:7px;font-size:12px}
+html[data-appearance] #ai #ai-form .prompt-templates{
+ position:static;
+ order:0;
+ left:auto;right:auto;bottom:auto;
+ flex-basis:auto;
+ gap:5px;
+ padding:6px 0 2px;
+ margin:0;
+ border:0;
+ border-radius:0;
+ box-shadow:none;
+ background:transparent;
+}
+html[data-appearance] #ai #ai-form .prompt-templates>small{display:none}
+html[data-appearance] #ai #ai-form .prompt-templates button{min-height:25px;padding:3px 8px;font-size:11px;background:var(--soft);border:1px solid transparent;border-radius:5px}
+html[data-appearance] #ai #ai-form .prompt-templates button:hover{border-color:var(--accent)}
+#ai #ai-form .prompt-templates summary{font-size:11px}
+html[data-appearance] #ai #ai-notice{width:100%;margin:0;padding:8px 18px;border-radius:0;border-top:1px solid var(--line);font-size:12px}
+#ai .coauthor-activity{padding:10px 0;font-size:12px}
+html[data-appearance] #ai.collapsed{height:64px!important;padding:7px 22px}
+html[data-appearance] #ai.collapsed .ai-panel{border-radius:10px;box-shadow:none}
+#ai.collapsed .ai-heading{display:none!important}
+html[data-appearance] #ai.collapsed #ai-form{flex-direction:row;align-items:center;gap:10px;height:100%;padding:5px 9px;border:0}
+html[data-appearance] #ai.collapsed #ai-form:focus-within{box-shadow:none}
+html[data-appearance] #ai.collapsed .ai-collapsed-name{display:inline-flex;align-items:center;gap:7px;align-self:center;border:0;background:transparent;padding:3px 5px;margin:0;font-size:12px;font-weight:500}
+#ai .ai-collapsed-name .easysch-symbol{width:22px;height:22px}
+html[data-appearance] #ai.collapsed #ai-prompt{width:0;flex:1;height:32px!important;min-height:32px;padding:5px 0}
+#ai.collapsed .ai-compose-actions{margin:0}
+#ai.collapsed :is(.compose-key-hint,#ai-mode,.prompt-templates){display:none!important}
+@media(max-width:700px){
+ html[data-appearance] #ai,html[data-appearance] #ai.collapsed{padding-inline:8px}
+ #ai .compose-key-hint,#ai .ai-heading #ai-context{display:none}
+ html[data-appearance] #ai #ai-history{padding:10px 12px}
+ html[data-appearance] #ai .ai-heading{padding-inline:12px}
+}

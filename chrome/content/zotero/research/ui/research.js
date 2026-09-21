@@ -1,10 +1,17 @@
 Object.assign(EasySchUI, {
+	showPaperActions(paper, anchor) {
+		this.$('reading-paper-menu')?.remove();const menu=this.el('div',undefined,'reading-paper-menu');menu.id='reading-paper-menu';menu.setAttribute('role','menu');
+		const rect=anchor.getBoundingClientRect();menu.style.cssText=`position:fixed;left:${Math.min(rect.left,innerWidth-220)}px;top:${Math.min(rect.bottom,innerHeight-120)}px;z-index:100;background:var(--panel,#fff);color:var(--text,#222);border:1px solid var(--line,#ccc);border-radius:10px;padding:8px;box-shadow:0 6px 22px #0002`;
+		const add=(label,fn)=>{const button=this.el('button',label);button.setAttribute('role','menuitem');button.style.display='block';button.style.width='100%';button.onclick=async()=>{menu.remove();try{await fn();}catch(e){this.status(e.message,true);}};menu.append(button);};
+		add('打开 PDF',async()=>{const pdf=await this.E.library.localPDF(paper.id);if(pdf)await this.E.library.openSource({attachmentID:pdf.id});});add('在文件夹中显示',()=>this.E.library.revealPDF(paper.id));add('关闭菜单',()=>{});document.body.append(menu);menu.querySelector('button').focus();menu.onkeydown=e=>{if(e.key==='Escape'){menu.remove();anchor.focus();}};
+		setTimeout(()=>document.addEventListener('pointerdown',e=>{if(!menu.contains(e.target))menu.remove();},{once:true}),0);
+	},
 	initResearch() {
 		for (let [id, mode] of [['analyze', 'analyze'], ['translate', 'translate'], ['synthesize', 'synthesize'],
 			['make-outline', 'outline'], ['ask', 'ask'], ['presentation', 'presentation']]) this.bind(id, () => this.run(mode));
 		this.bind('save-note', async () => {
 			if (!this.record || !this.current) throw new Error('请先选择分析记录');
-			await this.E.library.note(this.current, this.record); this.status('已保存为原生 Zotero 子笔记');
+			this.previewResearchNote();
 		});
 		this.bind('apply-keywords', async () => {
 			if (!this.record || !this.current) throw new Error('请先生成分析');
@@ -33,17 +40,18 @@ Object.assign(EasySchUI, {
 	renderPapers() {
 		let list = this.$('paper-list'); list.replaceChildren(); this.$('paper-count').textContent = this.papers.length;
 		for (let paper of this.papers) {
-			let button = this.el('button', undefined, 'paper' + (paper.id === this.current?.id ? ' selected' : ''));
+			let button = this.el('button', undefined, 'reading-paper' + (paper.id === this.current?.id ? ' selected' : ''));
 			button.append(this.el('strong', paper.title), this.el('small', `${paper.authors || '作者未录入'} · ${paper.year || '年份未知'}`));
-			button.addEventListener('click', () => { if (!this.busy) { this.current = paper; this.renderPapers(); } }); list.append(button);
+			button.addEventListener('click', () => { if (!this.busy) { this.current = paper; this.selection=null; this.$('selection-box').hidden=true;this.renderPapers(); } }); button.ondblclick=async()=>{const pdf=await this.E.library.localPDF(paper.id);if(pdf)await this.E.library.openSource({attachmentID:pdf.id});}; button.oncontextmenu=e=>{e.preventDefault();this.showPaperActions?.(paper,button);}; list.append(button);
 		}
-		let details = this.$('paper-details'); details.replaceChildren();
+		let details = this.$('paper-details');for(const child of details.children)child._overviewOff?.();details.replaceChildren();
 		if (this.current) {
 			let p = this.current;
+			const overview=this.el('div');details.append(overview);this.E.renderPaperOverview(overview,this.E.getCachedItem(p.id),{abstract:true});
 			let metric = this.E.metrics.get(this.E.issn(this.E.getCachedItem(p.id)))?.[0];
 			details.append(this.el('h2', p.title), this.el('p', p.authors || '作者信息未录入', 'muted'),
-				this.el('p', `${p.journal || '期刊未录入'} · ${p.year || '年份未知'} · DOI ${p.doi || '未录入'}`, 'muted'),
-				this.el('small', metric ? `影响因子 ${metric.impact_factor ?? "—"}（${metric.metric_year}，${metric.source}）` : '影响因子：未核验', 'muted'));
+				this.el('p', [p.journal,p.year,p.doi&&'DOI '+p.doi].filter(Boolean).join(' · '), 'muted'));
+			if(metric?.impact_factor!=null)details.append(this.el('small',`影响因子 ${metric.impact_factor}（${metric.metric_year}，${metric.source}）`,'muted'));
 		}
 		this.renderHistory(); this.loadMetric();
 	},
@@ -58,6 +66,8 @@ Object.assign(EasySchUI, {
 		this.record = records[0] || null; this.renderResult();
 	},
 	renderResult() {
+		this.renderSurfaceSteps?.();
+		if(this.$('research-choose-papers'))this.updateReadingActions?.();
 		let target = this.$('result'); target.replaceChildren(); this.$('questions').replaceChildren();
 		target.className = this.record ? '' : 'empty';
 		if (!this.record) { target.textContent = '选择一篇论文，开始建立可追溯的研究笔记。'; return; }
@@ -115,31 +125,4 @@ Object.assign(EasySchUI, {
 		}
 		finally { this.busy = false; this.$('cancel').hidden = true; for (let id of actions) this.$(id).disabled = false; }
 	},
-	renderGraph() {
-		let target = this.$('graph'); target.replaceChildren(); this.$('graph-edges').replaceChildren();
-		let { nodes, edges } = this.E.core.graph(this.papers);
-		if (!nodes.length) { target.append(this.el('p', '请先读取 Zotero 选中文献。', 'empty')); return; }
-		let svgNS = 'http://www.w3.org/2000/svg';
-		let make = (tag, attrs) => { let n = document.createElementNS(svgNS, tag); for (let [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
-		let svg = make('svg', { viewBox: '0 0 860 470', role: 'img', 'aria-label': '选中文献的标签与相关条目网络' });
-		let points = new Map(nodes.map((node, i) => [node.id, { x: 430 + 285 * Math.cos(i / nodes.length * Math.PI * 2), y: 235 + 155 * Math.sin(i / nodes.length * Math.PI * 2) }]));
-		for (let edge of edges) {
-			let a = points.get(edge.from), b = points.get(edge.to);
-			svg.append(make('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'graph-edge' }));
-			let from = nodes.find(n => n.id === edge.from), to = nodes.find(n => n.id === edge.to);
-			this.$('graph-edges').append(this.el('p', `${from.title} ↔ ${to.title}：${edge.label}`));
-		}
-		for (let node of nodes) {
-			let p = points.get(node.id);
-			let group = make('g', { class: 'graph-node', tabindex: '0', role: 'button', 'aria-label': node.title });
-			let title = make('title', {}); title.textContent = node.title;
-			let label = make('text', { x: p.x, y: p.y + 42, 'text-anchor': 'middle' }); label.textContent = node.title.slice(0, 21) + (node.title.length > 21 ? '…' : '');
-			let initial = make('text', { x: p.x, y: p.y + 4, 'text-anchor': 'middle' }); initial.textContent = nodes.indexOf(node) + 1;
-			group.append(title, make('circle', { cx: p.x, cy: p.y, r: 24 }), initial, label);
-			let open = () => { if (!this.busy) { this.current = node; this.renderPapers(); this.show('research'); } };
-			group.addEventListener('click', open); group.addEventListener('keydown', e => { if (e.key === 'Enter') open(); }); svg.append(group);
-		}
-		target.append(svg);
-		if (!edges.length) this.$('graph-edges').textContent = '当前文献没有共享标签或显式关联，可在 Zotero 中添加标签和相关条目。';
-	}
 });

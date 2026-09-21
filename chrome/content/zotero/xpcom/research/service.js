@@ -5,7 +5,7 @@ Zotero.Research = {
 			EasySch: this };
 		this.id = 'easysch-builtin';
 		this.rootURI = 'chrome://zotero/content/xpcom/research/';
-		for (let name of ['core', 'paper-skills', 'storage', 'zotero', 'ai', 'export', 'artifacts', 'database', 'metrics-provider', 'providers', 'search', 'columns', 'sidebar', 'meetings', 'app']) {
+		for (let name of ['core', 'paper-skills', 'storage', 'zotero', 'model-service', 'ai', 'export', 'artifacts', 'assets', 'asset-reader', 'database', 'metrics-provider', 'providers', 'distribution', 'search', 'discovery', 'arxiv', 'columns', 'sidebar', 'meetings', 'ppt-studio', 'ppt-studio-ai', 'workflow', 'manuscript', 'manuscript-writing', 'manuscript-automation', 'manuscript-index', 'content-renderer', 'notebook', 'reader-results', 'reader-tools', 'reader-panes', 'evidence-links', 'academic-assistant', 'app']) {
 			Services.scriptloader.loadSubScript(this.rootURI + name + '.js', scope, 'UTF-8');
 		}
 		await this.initDatabase();

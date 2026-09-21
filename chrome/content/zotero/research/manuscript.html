@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>论文装配</title>
+<link rel="stylesheet" href="manuscript.css"><link rel="stylesheet" href="vendor/katex.min.css">
+<script src="vendor/katex.js"></script><script type="module" src="manuscript/main.mjs"></script><link rel="stylesheet" href="appearance.css"><script src="appearance.js"></script><link rel="stylesheet" href="surface.css"><link rel="stylesheet" href="brand/brand.css"><link rel="stylesheet" href="manuscript/coauthor.css"></head>
+<body><header><span id="project-title"></span><nav id="steps" aria-label="装配流程"></nav><button id="preview">预览 Word</button><button id="export">导出 DOCX</button></header>
+<div id="workspace"><aside id="left"><nav id="left-tabs"></nav><div id="library"></div><div class="resize-panel" data-panel="leftWidth"></div></aside>
+<main><div id="tools"><button id="toggle-left" title="收起或展开左栏">◧</button><div id="insert-tools"></div><button id="toggle-right" title="收起或展开详情">◨</button></div><div id="recommendation"></div><div id="canvas" tabindex="-1"></div></main>
+<aside id="right"><div class="resize-panel" data-panel="rightWidth"></div><div id="details"></div></aside></div>
+<section id="ai" hidden aria-label="AI 共创"><div class="ai-grip" title="拖动调整对话高度"></div>
+<div class="ai-panel">
+ <div class="ai-heading"><span class="easysch-brand"><span class="easysch-symbol" aria-hidden="true"></span><span class="easysch-wordmark">EasySch</span></span><span class="ai-dock-title">AI 共创</span><small id="ai-context"></small><button id="collapse-chat" type="button" title="收起为输入栏">收起 ⌄</button></div>
+ <div id="ai-history"><div id="chat"></div><div id="diff"></div></div>
+ <div id="ai-notice" role="status" hidden></div>
+ <form id="ai-form">
+  <button class="ai-collapsed-name" type="button" title="展开 AI 共创"><span class="easysch-symbol" aria-hidden="true"></span><span>AI 共创</span></button>
+  <textarea id="ai-prompt" rows="1" aria-label="AI 共创输入" placeholder="写下问题或目标，围绕当前段落继续…"></textarea>
+  <div class="ai-compose-actions"><select id="ai-mode" aria-label="AI 模式，空输入按 Tab 切换" title="选择共创方式"></select><small class="compose-key-hint">Enter 发送 · Shift+Enter 换行</small><button id="ask-ai" title="Enter 发送，Shift+Enter 换行">发送 ↑</button><button type="button" id="cancel-ai" hidden>停止</button></div>
+ </form>
+</div></section>
+<footer><button id="toggle-ai">⌃ AI 共创</button><span id="status" role="status">正在恢复项目…</span><button id="cancel-task" hidden>取消当前任务</button><button id="check">检查证据与缺失内容</button><span id="save-status">尚未保存</span></footer>
+<dialog id="popover"><button id="close-popover" aria-label="关闭">×</button><div id="popover-content"></div></dialog></body></html>

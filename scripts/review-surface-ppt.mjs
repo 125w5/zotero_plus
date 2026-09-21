@@ -1,0 +1,15 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {renderStudioDeck} from '../services/research-engine/src/studio-render.mjs';
+import {renderAndInspect} from '../services/research-engine/src/render.mjs';
+import {themeFor} from '../chrome/content/zotero/research/shared/ppt-model.mjs';
+const [statePath,draftID,outputDir]=process.argv.slice(2);
+if(!statePath||!draftID||!outputDir)throw Error('用法：node scripts/review-surface-ppt.mjs <workspace.json> <draftID> <output-directory>');
+const state=JSON.parse(await fs.readFile(statePath,'utf8')),draft=state.pptDrafts[draftID];
+if(!draft)throw Error('草稿不存在');
+const directory=path.resolve(outputDir),toolsRoot=path.resolve('../.tools');
+await fs.mkdir(directory,{recursive:true});
+const deck=await renderStudioDeck({plan:{version:3,title:draft.title,theme:themeFor(draft),slides:draft.slides},evidence:draft.sources,assets:draft.assets,datasets:draft.datasets,directory});
+const review=await renderAndInspect(deck,{soffice:path.join(toolsRoot,'libreoffice/program/soffice.exe'),pdftoppm:path.join(toolsRoot,'poppler/Library/bin/pdftoppm.exe')});
+await fs.writeFile(path.join(directory,'acceptance.json'),JSON.stringify({testType:'existing real-model draft; direct exporter invocation, not UI export',draftID:draft.id,sourceUnmodified:true,review},null,2));
+console.log(JSON.stringify({slides:deck.slides,path:deck.path,review}));

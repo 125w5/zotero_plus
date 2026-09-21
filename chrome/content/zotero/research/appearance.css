@@ -1,0 +1,33 @@
+html[data-appearance]{color-scheme:light;--bg:#f1f2f4;--surface:#fff;--text:#20242a;--muted:#59636f;--line:#cfd5dc;--accent:#315e89;--soft:#eaf0f6;--paper:#fff;--ink:#171a1f;--warning:#765509}
+html[data-appearance=dark]{color-scheme:dark;--bg:#1e2228;--surface:#292f37;--text:#ecedf0;--muted:#b8c0cb;--line:#56616e;--accent:#adccef;--soft:#354353;--paper:#23272e;--ink:#f0f1f3;--warning:#f0ce82}
+/* Shared aliases keep older material controls on the active theme. */
+html[data-appearance]{--panel:var(--surface);--fg:var(--text);--selected:var(--soft)}
+html[data-appearance] body{background:var(--bg);color:var(--text)}
+html[data-appearance] :is(dialog,header,footer,aside,#tools,#ai,.card,.material,.section-card,.evidence-node,#inspector,article:not(.paper)){background:var(--surface);color:var(--text);border-color:var(--line)}
+html[data-appearance] :is(button,input,textarea,select,dialog button,dialog input,dialog textarea){background:var(--surface);color:var(--text);border-color:var(--line);color-scheme:inherit}
+html[data-appearance] :is(input,textarea)::placeholder{color:var(--muted);opacity:1}
+html[data-appearance] button:hover,html[data-appearance] button.active,html[data-appearance] .section-card.active{background:var(--soft);color:var(--text)}
+html[data-appearance] button.primary{background:#315e89;color:#fff;border-color:#315e89}
+html[data-appearance] .paper{background:var(--paper);color:var(--ink)}
+html[data-appearance] :is(.muted,.empty,.badge,summary,.material p,.material small,#recommendation,#save-status){color:var(--muted)}
+html[data-appearance] :is(.block.selected,.block:focus-within){background:var(--paper);color:var(--ink)}
+html[data-appearance] .block-placeholder{background:var(--soft);color:var(--warning)}
+html[data-appearance] :is(td,th){border-color:var(--line)!important;color:var(--ink)}
+html[data-appearance] th{background:var(--soft)}
+html[data-appearance] :is(td.cell-selected,th.cell-selected){background:var(--soft)!important;outline:2px solid var(--accent)}
+html[data-appearance] .diff-before{background:var(--soft);color:var(--text);border-left:3px solid #c06960}
+html[data-appearance] .diff-after{background:var(--soft);color:var(--text);border-left:3px solid #5b9975}
+html[data-appearance] dialog::backdrop{background:#19212d55}
+html[data-appearance] #grid button.highlight{background:#315e89;color:#fff}
+#writing-appearance{font-size:12px;width:auto;max-width:110px;padding:4px}
+.outline-block{display:block;width:100%;text-align:left;margin:4px 0 4px 10px;max-width:calc(100% - 10px)}
+.outline-block.selected,.material[aria-selected=true]{outline:2px solid var(--accent)}
+.theme-card{border:1px solid var(--line);padding:12px;margin:10px 0;border-radius:6px}.theme-card p{white-space:pre-wrap}
+html[data-appearance] #steps button.active{background:var(--soft);color:var(--text)}
+html[data-appearance] :is(.heading,#selection-tools){color:var(--text)}
+html[data-appearance] :is(#selection-tools,nav:not(#steps):not(#left-tabs)){background:var(--surface)}
+html[data-appearance] #notice{background:var(--soft);color:var(--warning);border-color:var(--line)}
+html[data-appearance] .slide-canvas :is(td,th){color:inherit}
+html[data-appearance] .editable:empty::before{color:var(--muted)}
+html[data-appearance] label:has(>input[type=checkbox]){display:flex;align-items:flex-start;gap:9px;line-height:1.6}
+html[data-appearance] label>input[type=checkbox]{display:inline-block;width:auto;flex:0 0 auto;margin:4px 0 0;accent-color:#315e89}

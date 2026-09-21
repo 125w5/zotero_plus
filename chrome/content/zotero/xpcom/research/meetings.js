@@ -30,7 +30,10 @@
 			if (m.turns.length && !answer.trim()) throw new Error('请先回答上一轮问题，或说明不知道及缺少的证据');
 			let record = await R.ai.run({ mode: 'ask', papers: await this.papers(id), onStatus,
 				prompt: JSON.stringify({ task: '导师追问训练。评估本次回答的准确性、原文依据和回避点；只提出一个有针对性的下一轮问题。首轮根据组会选题提问。区分论文证据和推断，不把历史AI回答当事实。',
-					topic: m.topic, advisorFocus: m.advisor, outline: m.outline?.result, history: m.turns.slice(-6).map(t => ({ answer: t.answer, feedback: t.record.result })), answer }) });
+					topic: m.topic, advisorFocus: m.advisor, outline: m.outline?.result,
+					visualEvidence: (m.assets || []).map(a => ({ figure: a.label, page: a.page, caption: a.caption, context: a.references, uri: a.uri })),
+					visualLimit: '只收到图注与正文，不得声称看过像素或猜测误差线；针对未明确的样本量、基线和图文支持关系提问。',
+					history: m.turns.slice(-6).map(t => ({ answer: t.answer, feedback: t.record.result })), answer }) });
 			await R.store.update(s => { s.meetings[id].turns.push({ answer, record }); });
 			return record;
 		},

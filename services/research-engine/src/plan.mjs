@@ -1,16 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { validateAssetSlide } from './asset-slides.mjs';
+import { validateStudioPlan } from '../../../chrome/content/zotero/research/shared/ppt-model.mjs';
 const text = (value, max, label) => {
   if (typeof value !== 'string' || !value.trim() || value.length > max) throw new Error(`Invalid ${label}`);
   return value;
 };
 export function validatePlan(plan, evidence) {
+  if(plan.version===3)return validateStudioPlan(plan,evidence,plan.assets||[]);
   text(plan.title, 100, 'title');
   if (!Array.isArray(plan.slides) || !plan.slides.length || plan.slides.length > 40) throw new Error('Expected 1–40 slides');
   const ids = new Set(evidence.map(s => s.id));
   for (const slide of plan.slides) {
     text(slide.title, 70, 'slide title');
     if (!Array.isArray(slide.sources) || slide.sources.some(id => !ids.has(id))) throw new Error('Unknown evidence');
-    if (!['text', 'diagram', 'chart'].includes(slide.kind)) throw new Error('Unknown slide kind');
+    if (!['text', 'diagram', 'chart', 'table', 'asset'].includes(slide.kind)) throw new Error('Unknown slide kind');
+    if (slide.kind === 'asset') validateAssetSlide(slide);
+    if (slide.role && !['title','research_question','conclusions','method','comparison','data','limitations','next_steps'].includes(slide.role)) throw new Error('Unknown page role');
+    if (slide.kind === 'table') {
+      if (!Array.isArray(slide.rows) || !slide.rows.length || slide.rows.length > 5) throw new Error('Expected 1–5 comparison rows');
+      let columns = slide.rows[0]?.length;
+      if (columns < 2 || columns > 4) throw new Error('Expected 2–4 comparison columns');
+      for (const row of slide.rows) {
+        if (!Array.isArray(row) || row.length !== columns) throw new Error('Inconsistent table columns');
+        row.forEach(cell => text(cell, 50, 'table cell'));
+      }
+    }
     if (slide.kind === 'text') {
       if (!Array.isArray(slide.bullets) || !slide.bullets.length || slide.bullets.length > 4) throw new Error('Expected 1–4 points');
       slide.bullets.forEach(v => text(v, 100, 'point'));
@@ -31,9 +45,14 @@ export function validatePlan(plan, evidence) {
     if (slide.kind === 'chart') {
       // The planner may select a dataset, never supply numerical observations.
       text(slide.datasetID, 80, 'dataset ID');
-      if (!['bar', 'line'].includes(slide.chartType)) throw new Error('Unsupported chart type');
+      if (!['bar', 'line', 'scatter', 'heatmap'].includes(slide.chartType)) throw new Error('Unsupported chart type');
       if ('values' in slide || 'series' in slide) throw new Error('Model-generated data is forbidden');
     }
+  }
+  if (plan.version >= 2) {
+    const content=plan.slides.filter(s=>s.role!=='title');
+    if(content.filter(s=>['asset','chart'].includes(s.kind)).length / Math.max(1,content.length) < .6) throw new Error('论文视觉证据不足 60%；请补选原图或真实数据，不能用装饰图补数');
+    for(let i=2;i<plan.slides.length;i++) if(new Set(plan.slides.slice(i-2,i+1).map(s=>s.layoutType||s.kind)).size===1) throw new Error('连续三页布局相同，请调整讲述方式');
   }
   return plan;
 }

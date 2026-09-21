@@ -17,3 +17,14 @@ app/build-temp/
 **/workspace.json
 **/research.sqlite*
 **/zotero.sqlite*
+__pycache__/
+*.pyc
+dist/
+**/easysch-provider-defaults.json
+**/easysch-provider-setup.json
+
+# Local acceptance outputs (may contain personal research data).
+/docs/artifacts/
+/docs/screenshots/
+.tools/
+output/

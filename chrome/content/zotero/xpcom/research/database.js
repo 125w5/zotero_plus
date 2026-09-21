@@ -79,19 +79,19 @@
 		let key = field.slice('research_'.length);
 		if (key === 'tags') return item.getTags().map(t => t.tag).join(' · ');
 		if (key === 'journalTags') {
-			let m = R.metrics.get(R.issn(item))?.[0];
+			let m = R.currentMetric?.(item) || R.metrics.get(R.issn(item))?.[0];
 			return m ? [m.impact_factor, m.jcr_quartile, m.cas_large_category, m.indexing, m.ccf].filter(v => v != null).join(' · ') : '';
 		}
 		if (key === 'firstAuthor') {
 			let author = item.getCreators().find(c => c.creatorTypeID === Zotero.CreatorTypes.getID('author'));
 			return author ? [author.firstName, author.lastName].filter(Boolean).join(' ') : '';
 		}
-		let list = R.metrics.get(R.issn(item)) || [], metric = list[0];
+		let list = R.metrics.get(R.issn(item)) || [], metric = R.currentMetric?.(item) || list[0];
 		if (key === 'publicationIF') {
 			let year = Number((item.getField('date', true) || '').slice(0, 4));
 			return list.find(m => m.metric_year === year)?.impact_factor ?? '';
 		}
-		if (key === 'metricInfo') return metric ? `${metric.metric_year} · ${metric.source}` : '';
+		if (key === 'metricInfo') return metric ? `${metric.metric_year || "年份未标明"} · ${metric.source}` : '';
 		if (R.metricFields.includes(key)) return metric?.[key] ?? '';
 		return R.states.get(R.key(item))?.[key] ?? (key === 'reading' ? '未读' : '');
 	};

@@ -48,6 +48,20 @@ async function getZoteroNoteEditor(signatures) {
 		signatures['note-editor'] = { hash };
 	}
 	
+	const localDir = path.join(modulePath, 'build', 'zotero');
+	const localTarget = path.join(__dirname, '..', 'build', 'resource', 'note-editor');
+	if (await fs.pathExists(path.join(localDir, 'editor.js'))) {
+		async function copyChanged(dir, relative = '') {
+			for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+				const rel = path.join(relative, entry.name), source = path.join(dir, entry.name), destination = path.join(localTarget, rel);
+				if (entry.isDirectory()) { await copyChanged(source, rel);continue; }
+				if (!entry.isFile()) continue;
+				const bytes = await fs.readFile(source);
+				if (!await fs.pathExists(destination) || !bytes.equals(await fs.readFile(destination))) { await fs.ensureDir(path.dirname(destination));await fs.writeFile(destination, bytes); }
+			}
+		}
+		await copyChanged(localDir);
+	}
 	const t2 = Date.now();
 
 	return {

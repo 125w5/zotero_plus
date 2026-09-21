@@ -36,6 +36,7 @@
 								type="search" timeout="250">
 							</search-textbox>
 						</vbox>
+						<html:button class="easysch-note-sort" title="笔记排序" aria-label="笔记排序" style="align-self:center;margin-right:8px;padding:5px 8px;border:1px solid #aaa6;border-radius:6px;color:inherit;background:transparent;">时间 ↓</html:button>
 					</hbox>
 					<vbox style="display: flex; min-width: 0; flex-direction: row;" flex="1">
 						<html:div class="notes-list-container" tabindex="-1">
@@ -160,6 +161,17 @@
 			this.standaloneNoteContainer = this.querySelector('.context-note-standalone');
 			this.tabNotesDeck = this.querySelector('.zotero-context-pane-tab-notes-deck');
 			this.input = this.querySelector("search-textbox");
+			const sort = this.querySelector('.easysch-note-sort');
+			const updateSortLabel = () => { sort.textContent = Zotero.Prefs.get('extensions.easysch.noteSort', true) === 'page' ? '页码 ↑' : '时间 ↓'; };
+			updateSortLabel();
+			sort.onclick = () => {
+				const popup = document.createXULElement('menupopup');this.querySelector('popupset').append(popup);
+				for (const [value, label] of [['time', '按修改时间（最新优先）'], ['page', '按 PDF 页码']]) {
+					const item = document.createXULElement('menuitem');item.setAttribute('label', label);
+					item.addEventListener('command', () => { Zotero.Prefs.set('extensions.easysch.noteSort', value, true);updateSortLabel();this._updateNotesList(); });popup.append(item);
+				}
+				popup.addEventListener('popuphidden', () => popup.remove(), { once:true });popup.openPopup(sort, 'after_end');
+			};
 			this.input.addEventListener('command', () => {
 				this.notesList.expanded = false;
 				this._updateNotesList();
@@ -347,6 +359,12 @@
 			let editor;
 
 			if (isChild) {
+				// One pinned editor per reader tab; otherwise returning to a tab
+				// restores the first (old) note instead of the newly saved note.
+				for (const old of this.tabNotesDeck.querySelectorAll(`:scope > [data-tab-id="${Zotero_Tabs.selectedID}"]`)) {
+					old.querySelector('note-editor')?.saveSync();
+					old.remove();
+				}
 				let vbox = document.createXULElement('vbox');
 				vbox.setAttribute('data-tab-id', Zotero_Tabs.selectedID);
 				vbox.style.display = 'flex';
@@ -447,7 +465,7 @@
 				}
 				notes = await s.search();
 				notes = Zotero.Items.get(notes);
-				if (Zotero.Prefs.get('sortNotesChronologically.reader')) {
+				if (Zotero.Prefs.get('extensions.easysch.noteSort', true) !== 'page') {
 					notes.sort((a, b) => {
 						a = a.dateModified;
 						b = b.dateModified;
@@ -455,11 +473,8 @@
 					});
 				}
 				else {
-					let collation = Zotero.getLocaleCollation();
 					notes.sort((a, b) => {
-						let aTitle = Zotero.Items.getSortTitle(a.getNoteTitle());
-						let bTitle = Zotero.Items.getSortTitle(b.getNoteTitle());
-						return collation.compareString(1, aTitle, bTitle);
+						return (Zotero.Research.notePage(a) - Zotero.Research.notePage(b)) || b.dateModified.localeCompare(a.dateModified);
 					});
 				}
 				

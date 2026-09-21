@@ -424,6 +424,7 @@ const TabBar = forwardRef(function (props, ref) {
 				className="tab-bar-inner-container"
 				onWheel={handleWheel}
 				onMouseLeave={handleTabBarMouseLeave}
+				onContextMenu={event => { if (!event.target.closest('.tab,button')) { event.preventDefault(); event.stopPropagation(); Zotero.Research.openPageMenu(window, event.currentTarget, event); } }}
 			>
 				<div className="pinned-tabs">
 					<div
@@ -481,6 +482,9 @@ const TabBar = forwardRef(function (props, ref) {
 							onTabMouseDown={handleTabMouseDown}
 							onAudioStatusClick={handleAudioStatusClick}
 						/>)}
+						<button className="easysch-new-tab" aria-label="添加页面" title="添加页面"
+							onClick={event => Zotero.Research.openPageMenu(window, event.currentTarget)}
+							onContextMenu={event => { event.preventDefault(); event.stopPropagation(); Zotero.Research.openPageMenu(window, event.currentTarget); }}><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg></button>
 						<div ref={spacerRef} className="spacer"></div>
 					</div>
 				</div>

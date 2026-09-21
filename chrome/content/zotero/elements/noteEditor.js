@@ -160,6 +160,7 @@
 			requestIdleCallback(() => this.setToggleContextPaneButtonMode());
 
 			await this._editorInstance._initPromise;
+			Zotero.Research?.installNoteTools?.(this);
 			this._resolveInitPromise();
 		};
 

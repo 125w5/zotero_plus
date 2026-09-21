@@ -1,0 +1,10 @@
+.easysch-symbol{display:inline-block;flex:none;width:28px;height:28px;background:#000;mask:url('easysch-symbol-white.png') center/contain no-repeat}
+html[data-appearance=dark] .easysch-symbol{background:#fff}
+.easysch-brand{display:inline-flex;align-items:center;gap:10px;white-space:nowrap;color:#111}
+html[data-appearance=dark] .easysch-brand{color:#fff}
+.easysch-wordmark{font-family:Georgia,'Times New Roman',serif;font-size:21px;letter-spacing:.03em;font-weight:500}
+.rail .brand{gap:10px;align-items:center;margin-bottom:24px}
+.rail .brand .brand-icon{display:inline-block;width:34px;height:34px;border-radius:0;background:#000;mask:url('easysch-symbol-white.png') center/contain no-repeat;font-size:0}
+html[data-appearance=dark] .rail .brand .brand-icon{background:#fff}
+.rail .brand strong{font-family:Georgia,'Times New Roman',serif;font-size:22px;letter-spacing:.03em;font-weight:500;color:#000}
+html[data-appearance=dark] .rail .brand strong{color:#fff}
