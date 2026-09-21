@@ -1,4 +1,5 @@
 import Page from './page';
+import { lineRects, strikePositions } from '../../../chrome/content/zotero/research/shared/annotation-geometry.mjs';
 import { p2v, v2p } from './lib/coordinates';
 import {
 	getLineSelectionRanges,
@@ -3693,12 +3694,12 @@ class PDFView {
 			color,
 			sortIndex: selectionRange.sortIndex,
 			pageLabel: this._getPageLabel(selectionRange.position.pageIndex, true),
-			position: selectionRange.position,
+			position: { ...selectionRange.position, rects: lineRects(selectionRange.position.rects) },
 			text: selectionRange.text
 		};
 		if (selectionRanges.length === 2) {
 			let selectionRange = selectionRanges[1];
-			annotation.position.nextPageRects = selectionRange.position.rects;
+			annotation.position.nextPageRects = lineRects(selectionRange.position.rects);
 			annotation.text += ' ' + selectionRange.text;
 		}
 		return annotation;
@@ -4117,6 +4118,19 @@ class PDFView {
 	}
 
 	_handleKeyDown(event) {
+		if (event.isComposing || event.keyCode === 229) return;
+		if (event.key === 'Delete' && !event.ctrlKey && !event.metaKey && !event.altKey
+			&& !this._readOnly && !event.target.closest?.('input,textarea,[contenteditable="true"],.textAnnotation')
+			&& this._selectionRanges.length && !this._selectionRanges[0].collapsed) {
+			const selected = this._getAnnotationFromSelectionRanges(this._selectionRanges, 'highlight');
+			if (selected) {
+				event.preventDefault();event.stopImmediatePropagation();
+				for (const position of strikePositions(selected.position)) {
+					this._onAddAnnotation({type:'ink',position,color:'#e33b46',text:selected.text,comment:'',tags:[{name:'删除线'}],pageLabel:this._getPageLabel(position.pageIndex,true),sortIndex:selected.sortIndex},true);
+				}
+				this.clearSelection();return;
+			}
+		}
 		// TODO: Cursor should be updated on key down/up as well. I.e. for shift and text selection
 		// TODO: Arrows keys should modify selection range when holding shift
 		if (this._textAnnotationFocused()) {
@@ -4133,7 +4147,7 @@ class PDFView {
 			'Shift-ArrowDown'
 		].includes(key);
 
-		if (event.target.classList.contains('textAnnotation')) {
+		if (event.target.classList?.contains('textAnnotation')) {
 			return;
 		}
 		// Set text layer selection again, because previous press of Option-Escape

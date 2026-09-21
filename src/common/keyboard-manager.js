@@ -31,6 +31,10 @@ export class KeyboardManager {
 	}
 
 	_handleKeyDown(event, view) {
+		if (event.isComposing || event.keyCode === 229) return;
+		// Text entry owns deletion even while a PDF annotation remains selected.
+		if (['Delete', 'Backspace'].includes(event.key)
+			&& (event.target.isContentEditable || event.target.closest?.('input, textarea, [contenteditable="true"]'))) return;
 		let ctrl = event.ctrlKey;
 		let cmd = event.metaKey && isMac();
 		// Primary modifier

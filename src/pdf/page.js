@@ -199,18 +199,18 @@ export default class Page {
 		let { chars } = pageData;
 		let position = this._p2v(annotation.position);
 		let rects;
-		let pdfRect;
+		let pdfRects;
 		if (position.nextPageRects && position.pageIndex + 1 === this._pageIndex) {
 			rects = position.nextPageRects;
-			pdfRect = annotation.position.nextPageRects[0];
+			pdfRects = annotation.position.nextPageRects;
 		}
 		else {
 			rects = position.rects;
-			pdfRect = annotation.position.rects[0];
+			pdfRects = annotation.position.rects;
 		}
 		let width = 1 * this._scale;
-		for (let rect of rects) {
-			let rotation = this._getTextRotation(chars, pdfRect);
+		for (let [index, rect] of rects.entries()) {
+			let rotation = this._getTextRotation(chars, pdfRects[index]);
 			let [x1, y1, x2, y2] = rect;
 			let rect2 = (
 				rotation === 0 && [x1, y2 - width, x2, y2]

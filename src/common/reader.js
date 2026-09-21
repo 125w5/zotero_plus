@@ -887,6 +887,7 @@ class Reader {
 		if (this._state.readOnly && !['pointer', 'hand'].includes(params.type)) {
 			return;
 		}
+		if (this.applySelectionTool(params.type)) return;
 		let tool = this._state.tool;
 		if (params.type && tool.type !== params.type) {
 			tool = this._tools[params.type];
@@ -901,6 +902,7 @@ class Reader {
 	}
 
 	toggleTool(type) {
+		if (this.applySelectionTool(type)) return;
 		let tool = this._state.tool;
 		if (tool.type === type) {
 			this._updateState({ tool: this._tools.pointer });
@@ -909,6 +911,18 @@ class Reader {
 			this._updateState({ tool: this._tools[type] });
 		}
 		this.setSelectedAnnotations([]);
+	}
+
+	applySelectionTool(type) {
+		if (this._state.readOnly || !['highlight', 'underline'].includes(type)) return false;
+		const view = this._lastView || this._primaryView;
+		if (view?._selectionRanges?.length && !view._selectionRanges[0].collapsed) {
+			const annotation = view._getAnnotationFromSelectionRanges(view._selectionRanges, type, this._tools[type].color);
+			if (annotation) { view._onAddAnnotation(annotation, true); view.clearSelection(); return true; }
+		}
+		const selected = this._state.annotations.filter(a => this._state.selectedAnnotationIDs.includes(a.id) && ['highlight', 'underline'].includes(a.type));
+		if (selected.length) { this._annotationManager.updateAnnotations(selected.map(a => ({ id: a.id, type }))); return true; }
+		return false;
 	}
 
 	setFilter(filter) {

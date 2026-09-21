@@ -27,7 +27,7 @@ function SelectionPopup(props) {
 			className="selection-popup"
 			rect={props.params.rect}
 			anchorPoint={props.params.anchorPoint}
-			uniqueRef={{}}
+			uniqueRef={props.params.annotation}
 			padding={20}
 			preferTop={props.params.preferTop}
 			preferLeft={props.params.preferLeft}
@@ -46,13 +46,13 @@ function SelectionPopup(props) {
 					tabIndex={-1}
 					className={cx('highlight', { active: props.textSelectionAnnotationMode === 'highlight' })}
 					title={l10n.getString('reader-highlight-text')}
-					onClick={() => props.onChangeTextSelectionAnnotationMode('highlight')}
+					onClick={() => { props.onChangeTextSelectionAnnotationMode('highlight'); props.onAddAnnotation({ ...props.params.annotation, type: 'highlight', color: '#ffd400' }); }}
 				><IconHighlight/></button>
 				<button
 					tabIndex={-1}
 					className={cx('underline', { active: props.textSelectionAnnotationMode === 'underline' })}
 					title={l10n.getString('reader-underline-text')}
-					onClick={() => props.onChangeTextSelectionAnnotationMode('underline')}
+					onClick={() => { props.onChangeTextSelectionAnnotationMode('underline'); props.onAddAnnotation({ ...props.params.annotation, type: 'underline', color: '#2ea8e5' }); }}
 				><IconUnderline/></button>
 			</div>
 			{props.enableAddToNote &&

@@ -21,17 +21,17 @@ function AnnotationPopup(props) {
 				enableComment={!(props.readOnly || annotation.readOnly) || annotation.comment}
 				enableTags={!(props.readOnly || annotation.readOnly) || annotation.tags.length > 0}
 				onUpdate={(comment) => {
-					props.onChange({ id: popupAnnotation.id, comment });
+					props.onChange({ id: annotation.id, comment });
 				}}
 				onColorChange={(color) => {
-					props.onChange({ id: popupAnnotation.id, color });
+					props.onChange({ id: annotation.id, color });
 				}}
 				onOpenTagsPopup={props.onOpenTagsPopup}
 				onChange={props.onChange}
 				onOpenPageLabelPopup={props.onOpenPageLabelPopup}
 				onOpenContextMenu={props.onOpenAnnotationContextMenu}
 				onDragStart={(event) => {
-					props.onSetDataTransferAnnotations(event.dataTransfer, [popupAnnotation]);
+					props.onSetDataTransferAnnotations(event.dataTransfer, [annotation]);
 				}}
 			/>
 		</ViewPopup>

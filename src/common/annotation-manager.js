@@ -117,6 +117,10 @@ class AnnotationManager {
 	}
 
 	updateAnnotations(annotations) {
+		// Rendering an image or closing a comment editor can finish after its
+		// annotation was deleted (including through a linked note). Never revive it.
+		annotations = annotations.filter(annotation => this._getAnnotationByID(annotation.id));
+		if (!annotations.length) return;
 		let changedAnnotations = new Map();
 		// Validate data
 		for (let annotation of annotations) {
