@@ -152,7 +152,7 @@ function Toolbar(props) {
 				><IconGoBack/></button>
 				<div className="divider"/>
 				{['pdf', 'epub'].includes(props.type) && (
-					<React.Fragment>
+					<div className="page-navigation">
 						<button
 							className="toolbar-button pageUp"
 							title={l10n.getString('reader-previous-page')}
@@ -162,6 +162,31 @@ function Toolbar(props) {
 							onClick={props.onNavigateToPreviousPage}
 							aria-describedby="numPages"
 						><IconChevronUp/></button>
+						<input
+							ref={pageInputRef}
+							type="text"
+							id="pageNumber"
+							className="toolbar-text-input"
+							title={l10n.getString(
+								(props.type === 'pdf' || props.usePhysicalPageNumbers)
+									? 'reader-page'
+									: 'reader-location'
+							)}
+							defaultValue=""
+							size="4"
+							tabIndex={-1}
+							autoComplete="off"
+							onKeyDown={handlePageNumberKeydown}
+							onBlur={handlePageNumberBlur}
+						/>
+						{props.pagesCount > 0 && (
+							<span id="numPages" className="page-count">
+								{props.pageLabel && props.pageIndex + 1 != props.pageLabel && (
+									<span className="physical-page">{props.pageIndex + 1}</span>
+								)}
+								<span aria-hidden="true">/</span> {props.pagesCount}
+							</span>
+						)}
 						<button
 							className="toolbar-button pageDown"
 							title={l10n.getString('reader-next-page')}
@@ -171,30 +196,7 @@ function Toolbar(props) {
 							onClick={props.onNavigateToNextPage}
 							aria-describedby="numPages"
 						><IconChevronDown/></button>
-					</React.Fragment>
-				)}
-				{['pdf', 'epub'].includes(props.type) && (
-					<input
-						ref={pageInputRef}
-						type="input"
-						id="pageNumber"
-						className="toolbar-text-input"
-						title={l10n.getString(
-							(props.type === 'pdf' || props.usePhysicalPageNumbers)
-								? 'reader-page'
-								: 'reader-location'
-						)}
-						defaultValue=""
-						size="4"
-						min="1"
-						tabIndex={-1}
-						autoComplete="off"
-						onKeyDown={handlePageNumberKeydown}
-						onBlur={handlePageNumberBlur}
-					/>)}
-				{props.pageLabel && (
-					<span id="numPages">&nbsp;<div>{!(props.type === 'pdf' && props.pageIndex + 1 == props.pageLabel)
-						&& (props.pageIndex + 1)} / {props.pagesCount}</div></span>
+					</div>
 				)}
 			</div>
 			<div className="center tools">

@@ -47,18 +47,48 @@
 		-moz-window-dragging: no-drag;
 	}
 
+	.page-navigation {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		max-width: min(230px, 35vw);
+		padding: 2px;
+		border: var(--material-border50);
+		border-radius: 8px;
+		background: var(--material-background);
+		-moz-window-dragging: no-drag;
+
+		.pageUp svg,
+		.pageDown svg {
+			transform: rotate(-90deg);
+		}
+	}
+
 	#pageNumber {
-		width: 52px;
-		text-align: right;
+		width: 39px;
+		min-width: 39px;
+		padding-inline: 3px;
+		text-align: center;
+		border-color: transparent;
+		background: transparent;
+
+		&:hover:not(:focus) {
+			background: var(--fill-quinary);
+		}
 	}
 
 	#numPages {
-		color: var(--fill-secondary);
-		margin-left: 0;
 		display: flex;
+		align-items: center;
+		gap: 3px;
+		min-width: 0;
+		white-space: nowrap;
+		color: var(--fill-secondary);
+		font-variant-numeric: tabular-nums;
 
-		div {
-			position: absolute;
+		.physical-page {
+			font-size: 11px;
+			color: var(--fill-tertiary);
 		}
 	}
 
@@ -143,8 +173,14 @@
 		background-color: var(--fill-quarternary);
 	}
 
+	&:focus-visible {
+		outline: 2px solid var(--accent-blue);
+		outline-offset: 1px;
+	}
+
 	&[disabled] {
 		pointer-events: none;
+		opacity: .45;
 	}
 
 	.progress-ring {
