@@ -1,14 +1,27 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 (function (E) {
-	E.importWritingImage = async (suppliedPath) => {
-  const path=suppliedPath||await E.pick(Zotero.getMainWindow(),'选择图片素材','file','png;jpg;jpeg;webp');if(!path)return null;
+ const imageLocks=new Map(),pendingImageImports=new Map();
+ async function withImageLock(target,fn){const previous=imageLocks.get(target);let release;const current=new Promise(resolve=>release=resolve);imageLocks.set(target,current);if(previous)await previous;try{return await fn();}finally{release();if(imageLocks.get(target)===current)imageLocks.delete(target);}}
+ function trackImageImport(target,owner){const pending=pendingImageImports.get(target);if(pending)for(const other of pending)other.shared=true;if(owner){owner.shared=!!pending?.size;const owners=pending||new Set();owners.add(owner);pendingImageImports.set(target,owners);}}
+ function releaseImageImport(owner){if(!owner||owner.released)return;owner.released=true;const owners=pendingImageImports.get(owner.target);owners?.delete(owner);if(owners&&!owners.size)pendingImageImports.delete(owner.target);}
+ function imageReferenced(state,target,uri){const normal=target.replace(/\\/g,'/'),seen=new Set();const scan=value=>{if(typeof value==='string')return value===target||value===uri||value.replace(/\\/g,'/').includes(normal)||value.includes(uri);if(!value||typeof value!=='object'||seen.has(value))return false;seen.add(value);return Object.values(value).some(scan);};return Object.entries(state).some(([key,value])=>key!=='writingImages'&&scan(value));}
+ async function rollbackImageImport(owner){if(!owner||owner.released)return;try{if(owner.shared||(!owner.created&&!owner.indexed))return;let removeFile=false;await E.store.update(state=>{const current=state.writingImages?.[owner.key],ours=owner.indexed&&current?.at===owner.record?.at&&current?.fingerprint===owner.record?.fingerprint&&current?.uri===owner.record?.uri;if(imageReferenced(state,owner.target,owner.uri))return;if(ours)delete state.writingImages[owner.key];removeFile=owner.created&&(!current||ours);});if(removeFile&&!owner.shared)await IOUtils.remove(owner.target,{ignoreAbsent:true});}finally{releaseImageImport(owner);}}
+	E.importWritingImage = async (suppliedPath,{signal}={}) => {
+  const checkAbort=()=>{if(signal?.aborted)throw Error('已取消');};
+  const path=suppliedPath||await E.pick(Zotero.getMainWindow(),'选择图片素材','file','png;jpg;jpeg;webp');checkAbort();if(!path)return null;
   if(!/\.(png|jpe?g|webp)$/i.test(path))throw Error('请选择 PNG、JPEG 或 WebP 图片');
-  const stat=await IOUtils.stat(path);if(stat.size>15*1024*1024)throw Error('图片超过 15 MB，请先缩小图片');
-  const win=Zotero.getMainWindow(),image=new win.Image();image.src=await E.previewImage(path);try{await image.decode();}catch{throw Error('文件不是可读取的图片');}
-  const fingerprint=await Zotero.Utilities.Internal.md5Async(path),folder=PathUtils.join(E.dataDir,'writing-images');await IOUtils.makeDirectory(folder,{ignoreExisting:true});
-  const target=PathUtils.join(folder,fingerprint+path.match(/\.[^.]+$/)[0].toLowerCase());if(!await IOUtils.exists(target))await IOUtils.copy(path,target);
-  await E.store.update(s=>{s.writingImages||={};s.writingImages[target.replace(/\\/g,'/')]={uri:Zotero.File.pathToFileURI(target),at:new Date().toISOString(),fingerprint};});
-  return {path:target,fingerprint,width:image.naturalWidth,height:image.naturalHeight,title:PathUtils.filename(path)};
+  const stat=await IOUtils.stat(path);checkAbort();if(stat.size>15*1024*1024)throw Error('图片超过 15 MB，请先缩小图片');
+  const win=Zotero.getMainWindow(),image=new win.Image();image.src=await E.previewImage(path);checkAbort();try{await image.decode();}catch{throw Error('文件不是可读取的图片');}checkAbort();
+  const fingerprint=await Zotero.Utilities.Internal.md5Async(path);checkAbort();const folder=PathUtils.join(E.dataDir,'writing-images');await IOUtils.makeDirectory(folder,{ignoreExisting:true});checkAbort();
+  const target=PathUtils.join(folder,fingerprint+path.match(/\.[^.]+$/)[0].toLowerCase()),key=target.replace(/\\/g,'/'),uri=Zotero.File.pathToFileURI(target),owner=signal?{target,key,uri,created:false,indexed:false,shared:false,released:false}:null;
+  trackImageImport(target,owner);
+  const result=await withImageLock(target,async()=>{try{
+   checkAbort();if(!await IOUtils.exists(target)){checkAbort();await IOUtils.copy(path,target);if(owner)owner.created=true;}checkAbort();
+   await E.store.update(state=>{state.writingImages||={};if(!state.writingImages[key]){const record={uri,at:new Date().toISOString(),fingerprint};state.writingImages[key]=record;if(owner){owner.indexed=true;owner.record=record;}}});checkAbort();
+   return {path:target,fingerprint,width:image.naturalWidth,height:image.naturalHeight,title:PathUtils.filename(path)};
+  }catch(error){if(owner)try{await rollbackImageImport(owner);}catch(cleanupError){Zotero.logError(cleanupError);}throw signal?.aborted?Error('已取消'):error;}});
+  if(owner){Object.defineProperties(result,{rollbackImport:{value:()=>withImageLock(target,()=>rollbackImageImport(owner))},finishImport:{value:()=>releaseImageImport(owner)}});}
+  return result;
  };
 	E.openWorkflow = async (page, selection) => {
 		const w = E.open();
@@ -93,7 +106,7 @@
 		const summary = record.result.sections
 			.map((s) => s.heading + '\n' + s.body)
 			.join('\n\n');
-		const label=record.model==='原文摘录'?'原文摘录':String(record.model).includes('机器翻译')?'机器翻译':'AI 补充';
+		const label=record.model==='原文摘录'?'原文摘录':record.mode==='translate'||String(record.model).includes('机器翻译')?'机器翻译':'AI 补充';
 		let annotation = new Zotero.Item('annotation'),
 			note;
 		annotation.libraryID = attachment.libraryID;

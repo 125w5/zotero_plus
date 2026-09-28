@@ -20,6 +20,10 @@
 			&& ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) {
 			throw new Error('远程接口必须使用 HTTPS；本机接口可使用 HTTP');
 		}
+		// This OpenAI-compatible gateway publishes its endpoints under /v1, while
+		// its shareable connection URL is the bare origin. Normalize both forms to
+		// one credential scope before appending /chat or /images paths.
+		if (url.hostname === 'openai.goldgom.top' && url.pathname === '/') url.pathname = '/v1';
 		return url.href.replace(/\/$/, '').replace(/\/chat\/completions$/, '');
 	};
 	C.validateResult = (raw, sources, mode, strictEvidence = false) => {

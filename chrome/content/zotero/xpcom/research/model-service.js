@@ -4,6 +4,7 @@
 	// Custom providers keep their explicit model; /models is not universal.
 	E.resolveModel = async (config, { signal, refresh = false } = {}) => {
 		const endpoint = E.core.endpoint(config.endpoint);
+		if (new URL(endpoint).hostname === 'openai.goldgom.top') return { ...config, model: 'gpt-6-luna' };
 		if (new URL(endpoint).hostname !== 'api.deepseek.com') return { ...config };
 		let entry = cache.get(endpoint);
 		if (refresh || !entry || Date.now() - entry.at > 3600000) {

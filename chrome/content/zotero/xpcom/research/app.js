@@ -41,6 +41,7 @@
 		Zotero.Reader.registerEventListener('renderTextSelectionPopup', E.readerHandler, E.id);
 		E.installReaderContext();
 		E.installReaderTools();
+		E.installReaderTranslation();
 		// Research tools live in the home workbench; the native Reader keeps notes and selection translation.
 		E.registerSidebar();
 		E.registerReaderPanes();
@@ -157,6 +158,7 @@
 		}
 		Zotero.Reader.unregisterEventListener('renderTextSelectionPopup', E.readerHandler);
 		if(E.readerContextHandler)Zotero.Reader.unregisterEventListener('createViewContextMenu',E.readerContextHandler);
+		if(E.readerTranslationToolbar)Zotero.Reader.unregisterEventListener('renderToolbar',E.readerTranslationToolbar);
 		if(E.assetToolbar)Zotero.Reader.unregisterEventListener('renderToolbar', E.assetToolbar);
 		for (let win of [...E.windows]) E.removeWindow(win);
 		for (let win of [...E.panels]) win.close();

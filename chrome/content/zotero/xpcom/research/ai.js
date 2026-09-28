@@ -39,16 +39,18 @@
                     const userInput={task:prompt,template:config.template,selectedText:selection?.text||'',memory,
                         sources:sources.map(s=>({id:s.id,label:s.label,...(!binder?{text:s.text}:{})})),...(binder?{quoteExcerpts}:{}),limitations:warnings};
                     let result, repair;
+                    const chat=ChromeUtils.importESModule('chrome://zotero/content/research/shared/chat-completion.mjs');
                     for(let attempt=0;attempt<2;attempt++) {
                         const messages=[{role:'system',content:system},{role:'user',content:JSON.stringify({...userInput,...(repair?{formatCorrection:repair}: {})})}];
+                        const stream=chat.chatRequiresStreaming(endpoint);
                         const response=await fetch(endpoint+'/chat/completions',{method:'POST',headers,signal:abort.signal,redirect:'error',
-                            body:JSON.stringify({model:config.model,temperature:.2,max_tokens:6000,
+                            body:JSON.stringify({model:config.model,temperature:.2,max_tokens:6000,...(stream?{stream:true}:{}),
                                 ...(new URL(endpoint).hostname==='api.deepseek.com'?{thinking:{type:'disabled'},response_format:{type:'json_object'}}:{}),messages})});
                         if(!response.ok)throw Error(`模型接口返回 HTTP ${response.status}；请检查模型、密钥或配额`);
-                        const payload=await response.json();
-                        if(payload.choices?.[0]?.finish_reason==='length')throw Error('回答超过输出上限；请缩小问题范围，未保存不完整结果');
+                        const completion=await chat.readChatCompletion(response,{stream});
+                        if(completion.finishReason==='length')throw Error('回答超过输出上限；请缩小问题范围，未保存不完整结果');
                         try {
-                            let raw=payload.choices?.[0]?.message?.content;
+                            let raw=completion.text;
                             if(binder)raw=binder.bindAcademicQuotes(raw,quoteExcerpts);
                             result=E.core.validateResult(raw,sources,mode,true);break;
                         } catch(error) {

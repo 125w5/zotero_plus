@@ -20,7 +20,8 @@ Object.assign(EasySchUI, {
         this.bind('test-providers', async () => {
             this.status('正在测试已配置服务（短句翻译与最小模型请求）…');
             let result = await this.E.testProviders();
-            this.$('provider-status').textContent = Object.entries(result).map(([k,v]) => k + '：' + v).join('；');
+            const labels = { ai: '学术 AI', image: '示意图', deepseek: 'DeepSeek', easyscholar: '期刊指标', youdao: '快速翻译' };
+            this.$('provider-status').textContent = Object.entries(result).map(([k,v]) => (labels[k] || k) + '：' + v).join('；');
             this.status('连接测试已结束，请查看各服务结果');
         });
 		this.bind('metrics-save-key', async () => { if (!this.$('metrics-key').value.trim()) throw new Error('请输入密钥'); await this.E.saveMetricsKey(this.$('metrics-key').value.trim()); this.$('metrics-key').value = ''; this.status('指标密钥已保存至密码管理器'); });
@@ -29,14 +30,31 @@ Object.assign(EasySchUI, {
 			let config = {};
 			for (let name of ['endpoint', 'model', 'template', 'pandoc', 'csl', 'referenceDoc', 'latexTemplate', 'documentLanguage']) config[name] = this.$(name).value.trim();
 			if (config.endpoint) config.endpoint = this.E.core.endpoint(config.endpoint);
+			if (config.endpoint && new URL(config.endpoint).hostname === 'openai.goldgom.top') {
+				if (config.model && !['gpt6luna', 'gpt-6-luna'].includes(config.model)) throw new Error('此接口只允许 GPT-6 Luna');
+				config.model = 'gpt-6-luna';
+			}
 			if (this.$('api-key').value && !config.endpoint) throw new Error('保存密钥前请填写接口地址');
+			const imageKey = this.$('image-key').value.trim();
+			config.imageEndpoint = this.$('image-endpoint').value.trim();
+			if (config.imageEndpoint) config.imageEndpoint = this.E.core.endpoint(config.imageEndpoint);
+			if (imageKey && !config.imageEndpoint) throw new Error('保存生图密钥前请填写生图接口地址');
+			if (imageKey && !/^sk-[A-Za-z0-9_-]{20,}$/.test(imageKey)) throw new Error('生图密钥格式无效');
 			if (this.$('api-key').value) await this.E.credentials.set(config.endpoint, this.$('api-key').value);
+			if (imageKey) await this.E.credentials.set(config.imageEndpoint + '/images', imageKey);
 			await this.E.store.update(s => { s.settings = { ...s.settings, ...config }; });
-			this.$('api-key').value = ''; this.status('设置已保存；密钥按接口地址隔离存储');
+			this.$('api-key').value = ''; this.$('image-key').value = ''; this.loadProviderStatus(); this.status('设置已保存；密钥按接口地址隔离存储');
 		});
 		this.bind('forget-key', async () => {
 			let endpoint = this.E.core.endpoint(this.$('endpoint').value);
 			await this.E.credentials.set(endpoint, ''); this.$('api-key').value = ''; this.status('此接口密钥已删除');
+		});
+		this.bind('forget-image-key', async () => {
+			const value = this.$('image-endpoint').value.trim() || this.E.settings().imageEndpoint;
+			if (!value) throw new Error('请先填写生图接口地址');
+			const endpoint = this.E.core.endpoint(value);
+			await this.E.credentials.set(endpoint + '/images', '');
+			this.$('image-key').value = ''; this.loadProviderStatus(); this.status('生图接口密钥已删除');
 		});
 		for (let button of document.querySelectorAll('[data-pick]')) button.addEventListener('click', async () => {
 			try {
@@ -64,12 +82,14 @@ Object.assign(EasySchUI, {
 		this.loadProviderStatus();
 		let config = this.E.settings();
 		this.$('youdao-app-id').value = config.youdaoAppID || '';
+		this.$('image-endpoint').value = config.imageEndpoint || '';
 		for (let name of ['endpoint', 'model', 'template', 'pandoc', 'csl', 'referenceDoc', 'latexTemplate', 'documentLanguage']) this.$(name).value = config[name];
 		this.E.compatibility().then(text => { this.$('compatibility').textContent = text; }).catch(e => this.status(e.message, true));
 	},
     async loadProviderStatus() {
         let flags = await this.E.providerStatus();
-        this.$('provider-status').textContent = Object.entries(flags).map(([k,v]) => k + '：' + (v ? '已保存凭据' : '未配置')).join('；');
+        const labels = { ai: '学术 AI', image: '示意图', deepseek: 'DeepSeek', easyscholar: '期刊指标', youdao: '快速翻译' };
+        this.$('provider-status').textContent = Object.entries(flags).map(([k,v]) => (labels[k] || k) + '：' + (v ? '已保存凭据' : '未配置')).join('；');
     },
 	loadMetric() {
 		let item = this.current && this.E.getCachedItem(this.current.id);

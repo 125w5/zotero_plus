@@ -8,11 +8,12 @@ export function materialViewSwitch(host,E,id,onChange){
  const mode=E.notebook.state(id).materialView||'summary';for(const b of group.children)b.setAttribute('aria-pressed',String(b.dataset.mode===mode));return mode;
 }
 export function materialDisplay(host,m,E,{mode='summary',type=materialType(m),reason='',snippet=''}={}){
- const d=host.ownerDocument,el=(tag,text,cls)=>{const n=d.createElement(tag);n.textContent=text;n.className=cls||'';return n;},A=E.manuscripts,origin=E.materialSourceInfo(m);
+ const d=host.ownerDocument,el=(tag,text,cls)=>{const n=d.createElement(tag);n.textContent=text;n.className=cls||'';return n;},A=E.manuscripts,origin=m.sourceType==='ai-illustration'?{title:'AI 生成示意图'}:E.materialSourceInfo(m);
  host.classList.add('material-display');host.dataset.display=mode;
  const name=A.titleFor?.(m)||(hasChinese(m.title)?m.title:type+'素材');
  if(mode==='source'){host.append(el('strong',origin.title,'material-heading'),el('small',type+' · '+name,'material-category'));}
  else{host.append(el('strong',name,'material-heading'));const summary=el('div',undefined,'material-excerpt');E.renderContent(summary,A.summaryFor(m));summary.title=A.summaryFor(m);host.append(summary);}
- const line=E.appendMaterialProvenance(host,m);if(mode==='source')line.querySelector('.source-paper-title').textContent=Number.isInteger(m.pageIndex)?'PDF 第 '+(m.pageIndex+1)+' 页':type;
+ if(m.sourceType==='ai-illustration')host.append(el('small','AI 生成示意图 · 构想，非论文证据','material-provenance material-origin-warning'));
+ else{const line=E.appendMaterialProvenance(host,m);if(mode==='source')line.querySelector('.source-paper-title').textContent=Number.isInteger(m.pageIndex)?'PDF 第 '+(m.pageIndex+1)+' 页':type;}
  host.title=[name,A.summaryFor(m),origin.title,type,reason,snippet].filter(Boolean).join('\n');host.setAttribute('aria-label',name+'，'+type+'，'+A.summaryFor(m));
 }

@@ -17,7 +17,16 @@ async function getZoteroNoteEditor(signatures) {
 
 	if (!('note-editor' in signatures) || signatures['note-editor'].hash !== hash) {
 		const targetDir = path.join(__dirname, '..', 'build', 'resource', 'note-editor');
+		const localDir = path.join(modulePath, 'build', 'zotero');
 		try {
+			// build-native.ps1 compiles the checked-out editor first. An upstream
+			// archive may not exist for an EasySch commit, so use that local output.
+			if (await fs.pathExists(path.join(localDir, 'editor.js'))
+				&& await fs.pathExists(path.join(localDir, 'editor.html'))) {
+				await fs.remove(targetDir);
+				await fs.copy(localDir, targetDir);
+			}
+			else {
 			const filename = hash + '.zip';
 			const tmpDir = path.join(__dirname, '..', 'tmp', 'builds', 'note-editor');
 			const url = buildsURL + 'note-editor/' + filename;
@@ -38,6 +47,7 @@ async function getZoteroNoteEditor(signatures) {
 				await fs.move(path.join(targetDir, 'zotero', entry), path.join(targetDir, entry));
 			}
 			await fs.remove(path.join(targetDir, 'zotero'));
+			}
 		}
 		catch (e) {
 			console.error(e);

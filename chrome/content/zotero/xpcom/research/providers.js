@@ -1,18 +1,34 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 (function (R) {
-	R.requestProvider = async function (url, options = {}, timeout = 30000) {
+	R.requestProvider = async function (url, options = {}, timeout = 30000, readResponse = response => response.text()) {
 		let win = Zotero.getMainWindow(), controller = new win.AbortController();
 		const external=options.signal,abort=()=>controller.abort();external?.addEventListener('abort',abort,{once:true});if(external?.aborted)abort();
 		let timer = win.setTimeout(() => controller.abort(), timeout);
 		try {
 			let response = await win.fetch(url, { ...options, signal: controller.signal, redirect: 'error' });
 			if (!response.ok) throw new Error(`服务返回 HTTP ${response.status}`);
-			return await response.text();
+			return await readResponse(response);
 		}
-		catch (e) { throw new Error(controller.signal.aborted ? '服务请求超时，请重试' : (e.message.startsWith('服务返回 HTTP') ? e.message : '无法连接服务，请检查网络或代理')); }
+		catch (e) { throw new Error(controller.signal.aborted ? '服务请求超时，请重试' : (/^(服务返回 HTTP|模型流式响应|模型响应在完成前)/.test(e.message) ? e.message : '无法连接服务，请检查网络或代理')); }
 		finally { win.clearTimeout(timer);external?.removeEventListener('abort',abort); }
 	};
 	R.configureProviders = async function (data) {
+		// Import a user-supplied OpenAI-compatible provider into the profile's
+		// password manager. The source tree and exported research data never hold keys.
+		if (data.ai) {
+			const endpoint = R.core.endpoint(data.ai.endpoint);
+			if (!['gpt6luna', 'gpt-6-luna'].includes(data.ai.model)) throw new Error('此 AI 接口只允许使用 GPT-6 Luna');
+			if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(data.ai.key || '')) throw new Error('AI 密钥格式无效');
+			await R.credentials.set(endpoint, data.ai.key);
+			await R.store.update(s => { s.settings.endpoint = endpoint; s.settings.model = 'gpt-6-luna'; });
+		}
+		if (data.image) {
+			const endpoint = R.core.endpoint(data.image.endpoint);
+			if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(data.image.key || '')) throw new Error('生图密钥格式无效');
+			// A separate credential scope is required when chat and images share a host.
+			await R.credentials.set(endpoint + '/images', data.image.key);
+			await R.store.update(s => { s.settings.imageEndpoint = endpoint; });
+		}
 		if (data.deepseek) await R.credentials.set('https://api.deepseek.com', data.deepseek);
 		if (data.easyscholar) await R.saveMetricsKey(data.easyscholar);
 		if (data.youdaoSecret) await R.credentials.set('https://openapi.youdao.com', data.youdaoSecret);
@@ -28,7 +44,10 @@
 		finally { await IOUtils.remove(file); }
 	};
 	R.providerStatus = async function () {
-		return { deepseek: !!await R.credentials.get('https://api.deepseek.com'),
+		let settings = R.settings();
+		return { ai: !!(settings.endpoint && await R.credentials.get(settings.endpoint)),
+			image: !!(settings.imageEndpoint && await R.credentials.get(settings.imageEndpoint + '/images')),
+			deepseek: !!await R.credentials.get('https://api.deepseek.com'),
 			easyscholar: !!await R.credentials.get('https://easyscholar.cc'),
 			youdao: !!R.settings().youdaoAppID && !!await R.credentials.get('https://openapi.youdao.com') };
 	};
@@ -37,7 +56,18 @@
 		for (let name of Object.keys(flags)) {
 			if (!flags[name]) { results[name] = '未配置'; continue; }
 			try {
-				if (name === 'deepseek') {
+				if (name === 'ai') {
+					const { endpoint, model } = R.settings();
+					const chat=ChromeUtils.importESModule('chrome://zotero/content/research/shared/chat-completion.mjs'),stream=chat.chatRequiresStreaming(endpoint);
+					const reply = await R.requestProvider(endpoint + '/chat/completions', {
+						method: 'POST', headers: { Authorization: 'Bearer ' + await R.credentials.get(endpoint), 'Content-Type': 'application/json' },
+						body: JSON.stringify({ model, max_tokens: 24, ...(stream ? { stream: true } : {}), messages: [{ role: 'user', content: '只回答：连接正常' }] })
+					}, 30000, response=>chat.readChatCompletion(response,{stream}));
+					if (!reply.text) throw new Error('模型未返回正文');
+					results[name] = '对话成功 · ' + model;
+				}
+				else if (name === 'image') results[name] = '凭据已保存（生图请求另行验证）';
+				else if (name === 'deepseek') {
 					let headers = { Authorization: 'Bearer ' + await R.credentials.get('https://api.deepseek.com'), 'Content-Type': 'application/json' };
 					let models = JSON.parse(await R.requestProvider('https://api.deepseek.com/models', { headers }));
 					let model = R.settings().model;

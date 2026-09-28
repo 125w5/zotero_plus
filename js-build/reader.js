@@ -8,6 +8,23 @@ const execFile = util.promisify(require('child_process').execFile);
 const { getSignatures, writeSignatures, onSuccess, onError } = require('./utils');
 const { buildsURL } = require('./config');
 
+// EasySch reader commits can change only the webpack source while retaining
+// the exact PDF.js submodule. In that case a cached parent archive provides
+// the identical PDF.js runtime and the locally built reader.js is overlaid.
+async function compatibleLocalArchive(modulePath, tmpDir, hash) {
+	if (!await fs.pathExists(path.join(modulePath, 'build', 'zotero', 'reader.js'))) return null;
+	const { stdout: revisions } = await exec('git rev-list --first-parent HEAD', { cwd: modulePath });
+	const { stdout: currentPDF } = await exec(`git rev-parse ${hash}:pdfjs/pdf.js`, { cwd: modulePath });
+	for (const revision of revisions.trim().split(/\s+/)) {
+		if (!/^[0-9a-f]{40}$/.test(revision)) continue;
+		const archive = path.join(tmpDir, revision + '.zip');
+		if (!await fs.pathExists(archive)) continue;
+		const { stdout: candidatePDF } = await exec(`git rev-parse ${revision}:pdfjs/pdf.js`, { cwd: modulePath });
+		if (candidatePDF.trim() === currentPDF.trim()) return { archive, revision };
+	}
+	return null;
+}
+
 async function getReader(signatures) {
 	const t1 = Date.now();
 
@@ -30,8 +47,15 @@ async function getReader(signatures) {
 			await fs.ensureDir(targetDir);
 			await fs.ensureDir(tmpDir);
 
-			const archive = path.join(tmpDir, filename);
-			if (!await fs.pathExists(archive)) await execFile('curl', ['-fL', url, '-o', archive]);
+			let archive = path.join(tmpDir, filename);
+			if (!await fs.pathExists(archive)) {
+				const compatible = await compatibleLocalArchive(modulePath, tmpDir, hash);
+				if (compatible) {
+					archive = compatible.archive;
+					console.log(`Using cached reader runtime ${compatible.revision}; identical PDF.js submodule, local reader bundle overlaid`);
+				}
+				else await execFile('curl', ['-fL', url, '-o', archive]);
+			}
 			// Windows unzip glob matching can omit descendants of zotero/pdf/.
 			// Extract the archive without a mask, then copy the selected platform.
 			const unpacked = path.join(tmpDir, 'unpacked-' + hash);

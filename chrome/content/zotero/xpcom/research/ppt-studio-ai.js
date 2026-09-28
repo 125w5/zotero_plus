@@ -13,7 +13,8 @@
    const messages=[{role:'system',content:system},{role:'user',content:images.length?[{type:'text',text:JSON.stringify(input)},...images.map(url=>({type:'image_url',image_url:{url}}))]:JSON.stringify(input)}];
    let value;
    for(let attempt=0;attempt<2;attempt++){
-   const response=await win.fetch(endpoint+'/chat/completions',{method:'POST',redirect:'error',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify({model:config.model,messages,temperature:.3,max_tokens:maxTokens,...(new URL(endpoint).hostname==='api.deepseek.com'?{thinking:{type:'disabled'}}:{}),response_format:{type:'json_object'},stream:!!onText})});
+   const chat=ChromeUtils.importESModule('chrome://zotero/content/research/shared/chat-completion.mjs'),stream=!!onText||chat.chatRequiresStreaming(endpoint);
+   const response=await win.fetch(endpoint+'/chat/completions',{method:'POST',redirect:'error',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify({model:config.model,messages,temperature:.3,max_tokens:maxTokens,...(new URL(endpoint).hostname==='api.deepseek.com'?{thinking:{type:'disabled'}}:{}),response_format:{type:'json_object'},stream})});
    if(!response.ok){
     const detail=await response.text();
     const error=Error(`AI 请求未完成（HTTP ${response.status}），请检查服务额度或稍后重试`);
@@ -22,9 +23,8 @@
     error.imageUnsupported=images.length>0&&[400,415,422].includes(response.status)&&/image|vision|multimodal|图片|图像/i.test(detail)&&/support|invalid|unknown|allowed|expected|不支持/i.test(detail);
     throw error;
    }
-   let text='',finishReason;
-   if(onText){const partial=ChromeUtils.importESModule('chrome://zotero/content/research/shared/json-stream.mjs').partialText,reader=response.body.getReader(),decoder=new win.TextDecoder();let buffer='';try{while(true){const chunk=await reader.read();buffer+=decoder.decode(chunk.value||new Uint8Array(),{stream:!chunk.done});const lines=buffer.split('\n');buffer=lines.pop();for(const line of lines){if(!line.startsWith('data:'))continue;const payload=line.slice(5).trim();if(!payload||payload==='[DONE]')continue;const data=JSON.parse(payload);text+=data.choices?.[0]?.delta?.content||'';finishReason=data.choices?.[0]?.finish_reason||finishReason;onText(partial(text));}if(chunk.done)break;}}finally{reader.releaseLock();}}
-   else {const result=await response.json();text=result.choices?.[0]?.message?.content;finishReason=result.choices?.[0]?.finish_reason;}
+   const partial=onText?ChromeUtils.importESModule('chrome://zotero/content/research/shared/json-stream.mjs').partialText:null;
+   const {text,finishReason}=await chat.readChatCompletion(response,{stream,onText:partial?value=>onText(partial(value)):undefined});
    if(finishReason==='length')throw Error('模型达到输出长度上限；请缩小本次内容范围，已有内容已保留');
    if(!text)throw Error('模型返回空内容');
    try{value=JSON.parse(text.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));break;}
