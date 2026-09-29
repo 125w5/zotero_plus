@@ -38,10 +38,26 @@ describe('Imported PDF image evidence',function(){
   const panel=E.openAssetPanel(reader);await wait(()=>panel.dataset.ready==='true');
   assert.isAbove(panel.querySelectorAll('article img').length,0);assert.isAbove(panel.querySelectorAll('.asset-explanation').length,0);
   assert.match(panel.querySelector('.asset-explanation').textContent,/[\u3400-\u9fff]/);
+  const thumbnail=panel.querySelector('.asset-preview-trigger');assert.exists(thumbnail);
+  thumbnail.click();await wait(()=>panel.ownerDocument.querySelector('.easysch-image-preview img')?.src);
+  const preview=panel.ownerDocument.querySelector('.easysch-image-preview');assert.exists(preview.querySelector('button'));
+  preview.click();assert.isNull(panel.ownerDocument.querySelector('.easysch-image-preview'),'点击背景关闭图片预览');
+  const originalNavigate=reader.navigate;let clickedPosition;
+  try{reader.navigate=async value=>{clickedPosition=value;return originalNavigate.call(reader,value);};thumbnail.dispatchEvent(new reader._iframeWindow.MouseEvent('dblclick',{bubbles:true,detail:2}));await wait(()=>clickedPosition);assert.isNumber(clickedPosition.pageIndex);}
+  finally{reader.navigate=originalNavigate;}
+  assert.exists(panel.querySelector('.asset-save-note'),'保存笔记无需展开更多菜单');
   const a=E.assets.active.get(pdf.id).assets.find(a=>a.kind==='figure');const pos=E.assets.position(a);await reader.navigate({pageIndex:a.pageIndex,position:pos});
   await Zotero.Promise.delay(600);
   const snapshot=await win.browsingContext.currentWindowGlobal.drawSnapshot(null,1,'white'),canvas=win.document.createElementNS('http://www.w3.org/1999/xhtml','canvas');canvas.width=snapshot.width;canvas.height=snapshot.height;canvas.getContext('2d').drawImage(snapshot,0,0);
   const blob=await new Promise(r=>canvas.toBlob(r));await IOUtils.write(PathUtils.join(folder,'native-image-evidence.png'),new Uint8Array(await blob.arrayBuffer()));snapshot.close();
-  report.native.push('原生 Gecko 阅读器：显示真实图片与中文解释，调用坐标回源；不等同于真人鼠标验收');panel.closePanel();
+  panel.querySelector(`[data-asset-id="${a.id}"] .asset-save-note`).click();
+  await wait(()=>Object.values(E.store.get('readerNoteLinks')||{}).some(link=>link.assetID===a.id&&link.attachmentID===pdf.id));
+  const link=Object.values(E.store.get('readerNoteLinks')).find(link=>link.assetID===a.id&&link.attachmentID===pdf.id);
+  await wait(()=>win.ZoteroContextPane.context._getNotesContext(pdf.libraryID)?._getCurrentEditor()?.item?.id===link.noteID);
+  assert.exists(Zotero.Items.get(link.noteID),'图片卡的可见按钮实际创建并打开原生笔记');
+  await E.store.update(state=>{for(const entry of Object.values(state.readerNoteLinks||{}))if(entry.noteID===link.noteID&&entry.annotationID===link.annotationID)delete entry.assetID;});
+  const reopened=await E.saveAssetNote(a);assert.equal(reopened.noteID,link.noteID,'旧版没有 assetID 的图片笔记应复用');assert.isTrue(reopened.reused);
+  assert.equal(Object.values(E.store.get('readerNoteLinks')).find(entry=>entry.noteID===link.noteID&&entry.annotationID===link.annotationID).assetID,a.id);
+  report.native.push('原生 Gecko 阅读器：图片单击预览、背景关闭、双击定位入口、显式笔记动作与中文解读；不等同于真人鼠标验收');panel.closePanel();
  });
 });

@@ -47,6 +47,9 @@
    if(!doc?.paragraphs?.length)throw Error('未找到可用原文段落');
    const analysisKey=documentKey+':'+ANALYSIS+':'+E.settings().model;let analysis=E.store.get().manuscriptAnalyses?.[analysisKey];
    await state(attachmentID,{documentKey,pdfHash:hash,parseVersion:PARSE,analysisKey,phase:'分析语义素材'});
+   // The document is now addressable by fingerprint. Translate it in the
+   // background during import; the reader only consumes this durable cache.
+   A.queueTranslation(attachmentID).catch(error=>Zotero.logError(error));
    if(!analysis){analysis={completed:{},total:0};}
    const chunks=[];let current=[],length=0;for(const [i,x] of doc.paragraphs.entries()){if(length+x.sourceText.length>14000&&current.length){chunks.push(current);current=[];length=0;}current.push({...x,id:'P'+i});length+=x.sourceText.length;}if(current.length)chunks.push(current);
    analysis.total=chunks.length;let errors=[];
@@ -74,9 +77,9 @@
  A.cancelArticle=id=>pending.get(Number(id))?.controller?.abort();
  A.queueArticle=id=>{
   id=Number(id);if(stopping)return Promise.resolve();
-  // Image evidence has its own resumable queue: failed text analysis must not block figures.
-	  E.assets.queueImages(id,()=>{},{changed:true}).catch(e=>Zotero.logError(e));
   if(pending.has(id))return pending.get(id).promise;
+  // Image evidence has its own resumable queue: failed text analysis must not block figures.
+  E.assets.queueImages(id,()=>{},{changed:true}).catch(e=>Zotero.logError(e));
   const job={};pending.set(id,job);state(id,{status:'queued'}).catch(e=>Zotero.logError(e));
   job.promise=queue=queue.catch(()=>{}).then(async()=>{const win=Zotero.getMainWindow();if(stopping||!win)return;job.controller=new win.AbortController();return A.indexArticle(id,()=>{},job.controller.signal);}).catch(e=>Zotero.logError(e)).finally(()=>pending.delete(id));return job.promise;
  };

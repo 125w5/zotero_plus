@@ -10,7 +10,7 @@ const pipeline=await readFile(new URL('../../../chrome/content/zotero/xpcom/rese
 const clone=x=>x===undefined?undefined:JSON.parse(JSON.stringify(x));
 function setup(count=2){
  const state={researchMaterials:{}},cache=new Map(),calls=[],shutdown=[],timers=[];
- let queue=Promise.resolve(),notify;
+ let queue=Promise.resolve(),notify,fileStamp=1,indexCalls=0;
  const E={settings:()=>({endpoint:'https://api.example.org',model:'vision-test'}),resolveModel:async c=>c,previewImage:async p=>'data:image/png;base64,'+p,
   store:{get:(...keys)=>clone(keys.reduce((v,k)=>v?.[k],state)),update:fn=>queue=queue.then(()=>fn(state))},
   manuscripts:{model:{material},assetLibrary:()=>clone(state.researchMaterials),notifyAssetsChanged(){}},
@@ -19,15 +19,46 @@ function setup(count=2){
   runArtifactEngine:async r=>{
    if(r.operation==='assets-cache-get')return clone(cache.get(r.key)||{miss:true});
    if(r.operation==='assets-cache-put'){cache.set(r.key,clone(r.value));return {};}
-   if(r.operation==='assets-index')return {pdfHash:'same-file',version:'parse-v6',assets:Array.from({length:count},(_,i)=>({id:'fig-'+i,kind:'figure',label:'Fig '+(i+1),pageIndex:i,page:i+1,pageHeight:800,bbox:[20,30,150,200],pdfHash:'same-file',caption:'A comparison of methods.',references:['The model was evaluated.'],assetHash:'hash-'+i,path:'figure'+i+'.png',extractorVersion:'parse-v6'}))};
+   if(r.operation==='assets-index'){indexCalls++;return {pdfHash:'same-file',version:'parse-v6',assets:Array.from({length:count},(_,i)=>({id:'fig-'+i,kind:'figure',label:'Fig '+(i+1),pageIndex:i,page:i+1,pageHeight:800,bbox:[20,30,150,200],pdfHash:'same-file',caption:'A comparison of methods.',references:['The model was evaluated.'],assetHash:'hash-'+i,path:'figure'+i+'.png',extractorVersion:'parse-v6'}))};}
    throw Error(r.operation);
   }};
  const items=new Map([1,2,3].map(id=>[id,{id,parentItem:{id:id+10,getField:()=> 'Paper '+id},isPDFAttachment:()=>true,getFilePathAsync:async()=>'/test.pdf'}]));
  const Zotero={Research:E,Items:{getAsync:async id=>items.get(id),get:id=>items.get(id)},getMainWindow:()=>({AbortController,TextEncoder}),addShutdownListener:fn=>shutdown.push(fn),Notifier:{registerObserver:o=>{notify=o.notify;return 'test';},unregisterObserver(){}},logError(){}};
- const ctx=vm.createContext({Zotero,ChromeUtils:{importESModule:()=>({})}});vm.runInContext(source,ctx);
+ const ctx=vm.createContext({Zotero,IOUtils:{stat:async()=>({size:100,lastModified:fileStamp})},ChromeUtils:{importESModule:()=>({})}});vm.runInContext(source,ctx);
  E.assets.key=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
- return {E,state,calls,cache,ctx,shutdown,timers,notify:(...args)=>notify(...args)};
+ return {E,state,calls,cache,ctx,shutdown,timers,get indexCalls(){return indexCalls;},changeFile:()=>fileStamp++,notify:(...args)=>notify(...args)};
 }
+test('historical IDs for one PDF region collapse, but a distinct crop remains',async()=>{
+ const f=setup(1),original=f.E.runArtifactEngine;
+ f.E.runArtifactEngine=async request=>{
+  const result=await original(request);if(request.operation!=='assets-index')return result;
+  const raw=result.assets[0];return {...result,assets:[raw,{...raw,id:'manual-fig',userModified:true,path:'manual.png'},
+   {...raw,bbox:[30,300,180,450],path:'second-crop.png',assetHash:'other-crop'}]};
+ };
+ const indexed=await f.E.assets.index(1);assert.equal(indexed.assets.length,2);assert.equal(indexed.assets[0].id,'manual-fig');
+ assert.deepEqual(clone(indexed.assets[1].bbox),[30,300,180,450]);
+ const state=await f.E.assets.queueImages(1);assert.equal(state.total,2);assert.equal(new Set(state.assetIDs).size,2);
+ assert.equal(Object.keys(f.state.researchMaterials).length,2);assert.equal(f.calls.length,2);
+});
+test('a later manual rendering of the same region retains the corrected explanation',async()=>{
+ const f=setup(1);await f.E.assets.queueImages(1);
+ const existing=Object.values(f.state.researchMaterials)[0];existing.userEdited=true;existing.summary='用户确认的图像说明';existing.revision++;
+ const original=f.E.runArtifactEngine;
+ f.E.runArtifactEngine=async request=>{
+  const result=await original(request);if(request.operation!=='assets-index')return result;
+  return {...result,assets:result.assets.map(a=>({...a,id:'manual-'+a.id,path:'manual-region.png',thumbnail:'manual-thumb.png',userModified:true}))};
+ };
+ f.changeFile();await f.E.assets.queueImages(1,()=>{},{changed:true});
+ const material=Object.values(f.state.researchMaterials)[0];
+ assert.equal(material.imagePath,'manual-region.png');assert.equal(material.thumbnail,'manual-thumb.png');
+ assert.equal(material.summary,'用户确认的图像说明');assert.equal(material.userEdited,true);
+ assert.equal(f.calls.length,1);assert.equal(Object.keys(f.state.researchMaterials).length,1);
+});
+test('unchanged PDF metadata notifications reuse image work; a changed file rechecks source',async()=>{
+ const f=setup(1);await f.E.assets.queueImages(1);assert.equal(f.indexCalls,1);
+ const second=await f.E.assets.queueImages(1,()=>{},{changed:true});assert.equal(second.status,'complete');assert.equal(f.indexCalls,1);assert.equal(f.calls.length,1);
+ f.changeFile();await f.E.assets.queueImages(1,()=>{},{changed:true});assert.equal(f.indexCalls,2);assert.equal(f.calls.length,1);
+});
 test('import notifier automatically starts images, without opening readers or requiring text AI success',async()=>{
  const f=setup(1);vm.runInContext(pipeline,f.ctx);f.E.manuscripts.indexArticle=async()=>{throw Error('text offline');};
  f.E.manuscripts.startArticleIndex();f.notify('add','item',[1]);for(const timer of f.timers.splice(0))timer();

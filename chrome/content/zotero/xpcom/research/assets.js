@@ -7,10 +7,15 @@
 		hash.init(hash.SHA256); hash.update(bytes, bytes.length);
 		return Array.from(hash.finish(false), c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
 	};
+	// Manual and extracted records can have different IDs for the exact same PDF region.
+	// Keep distinct bounding boxes; prefer a user crop when its source region is identical.
+	A.sourceKey=asset=>asset?.pdfHash&&Number.isInteger(asset.pageIndex)&&Array.isArray(asset.bbox)&&asset.bbox.length===4&&asset.bbox.every(Number.isFinite)
+		? 'source:'+asset.pdfHash+':'+asset.pageIndex+':'+asset.bbox.join(','):asset?.id?'id:'+asset.id:null;
+	A.uniqueAssets=assets=>{const output=[],positions=new Map();for(const asset of assets||[]){const key=A.sourceKey(asset),at=key===null?undefined:positions.get(key);if(at===undefined){if(key!==null)positions.set(key,output.length);output.push(asset);}else if(asset.userModified&&!output[at].userModified)output[at]=asset;}return output;};
 	A.index = async (attachmentID, status, signal, force = false) => {
 		let item = await Zotero.Items.getAsync(attachmentID), paper = item.parentItem || item;
 		let result = await E.runArtifactEngine({ operation: 'assets-index', pdf: await item.getFilePathAsync(), force }, status, signal);
-		result.assets = result.assets.map(a => ({ ...a, attachmentID, paperItemID: item.parentItem?.id||null, paperTitle: paper.getField('title'),
+		result.assets = A.uniqueAssets(result.assets).map(a => ({ ...a, attachmentID, paperItemID: item.parentItem?.id||null, paperTitle: paper.getField('title'),
 			doi: paper.getField('DOI'), authors: paper.getField('firstCreator'), uri: E.library.uri(item, a.pageIndex) }));
 		A.active.set(attachmentID, result); return result;
 	};
@@ -42,6 +47,12 @@
 			material=Object.values(s.researchMaterials).find(m=>m.sourceRecordID===sourceID(asset));
 			if(material){
 				material.imageRetained=true;
+				// A manual crop can replace an older rendering of the same PDF region.
+				// Update only image metadata; confirmed explanations and user edits stay intact.
+				if(material.imagePath!==asset.path&&(asset.userModified||!protectedMaterial(material))){
+					material.imagePath=asset.path;material.thumbnail=asset.thumbnail;
+					material.imageWidth=asset.width;material.imageHeight=asset.height;material.revision++;
+				}
 				material.sourceAnchors||=[material.anchor];
 				const n=material.sourceAnchors.findIndex(a=>a.attachmentID===anchor.attachmentID);
 				if(n<0)material.sourceAnchors.push(anchor);else material.sourceAnchors[n]=anchor;
@@ -58,6 +69,32 @@
 			s.researchMaterials[id]=material;
 		});
 		E.manuscripts.notifyAssetsChanged?.();return JSON.parse(JSON.stringify(material));
+	};
+	// The same PDF can be attached to several papers. Add their anchors in one
+	// workspace update instead of rewriting the complete material store per image.
+	A.retainExistingMaterials = async assets => {
+		const library=Object.values(E.manuscripts.assetLibrary()),bySource=new Map(library.map(m=>[m.sourceRecordID,m]));
+		const missing=[];
+		for(const asset of assets){
+			const material=bySource.get(sourceID(asset));
+			if(!material?.imageRetained||material.imagePath!==asset.path)return null;
+			if(!(material.sourceAnchors||[material.anchor]).some(a=>a?.attachmentID===asset.attachmentID&&a.paperItemID===asset.paperItemID))missing.push(asset);
+		}
+		if(missing.length){
+			await E.store.update(s=>{
+				const current=new Map(Object.values(s.researchMaterials||{}).map(m=>[m.sourceRecordID,m]));
+				for(const asset of missing){
+					const material=current.get(sourceID(asset));if(!material)continue;
+					const anchor={paperItemID:asset.paperItemID,attachmentID:asset.attachmentID,pageIndex:asset.pageIndex,position:A.position(asset),sourceText:asset.caption||'',citationItemID:asset.paperItemID};
+					material.sourceAnchors||=[material.anchor];
+					const n=material.sourceAnchors.findIndex(a=>a?.attachmentID===anchor.attachmentID);
+					if(n<0)material.sourceAnchors.push(anchor);else material.sourceAnchors[n]=anchor;
+					if(material.attachmentID===anchor.attachmentID&&material.paperItemID!==anchor.paperItemID){material.anchor=anchor;material.paperItemID=anchor.paperItemID;material.citationItemID=anchor.citationItemID;material.paperTitle=asset.paperTitle;material.revision++;}
+				}
+			});
+			E.manuscripts.notifyAssetsChanged?.();
+		}
+		return assets.map(asset=>bySource.get(sourceID(asset)).id);
 	};
 	A.saveMaterial = async (asset, status = () => {}, signal, regenerate=false) => {
 		stopped(signal);const old=await A.retainMaterial(asset);
@@ -81,35 +118,48 @@
 	const imageJobs=new Map(),imageListeners=new Set();let imageQueue=Promise.resolve(),shuttingDown=false;
 	A.onImagesChanged=fn=>{imageListeners.add(fn);return()=>imageListeners.delete(fn);};
 	A.imageState = id => E.store.get('imageIngestion',String(id));
+	A.fileSignature=async id=>{
+		if(typeof IOUtils==='undefined')return null;
+		try{const item=await Zotero.Items.getAsync(id),path=await item?.getFilePathAsync();if(!path)return null;
+			const stat=await IOUtils.stat(path);return `${stat.size}:${Number(stat.lastModified)}`;
+		}catch{return null;}
+	};
 	const imageState=async(id,patch)=>{await E.store.update(s=>{s.imageIngestion||={};s.imageIngestion[id]={...s.imageIngestion[id],...patch,updatedAt:new Date().toISOString()};});for(const fn of imageListeners)try{fn(id);}catch(e){Zotero.logError(e);}};
 	A.cancelImages=id=>imageJobs.get(Number(id))?.controller?.abort();
 	A.queueImages=(id,status=()=>{},{changed=false}={})=>{
 		id=Number(id);if(shuttingDown)return Promise.resolve();
 		if(imageJobs.has(id)){imageJobs.get(id).dirty||=changed;return imageJobs.get(id).promise;}
-		if(!changed&&A.imageState(id)?.status==='complete'&&A.imageState(id)?.analysisVersion===ANALYSIS)return Promise.resolve(A.imageState(id));
+		const previous=A.imageState(id);
+		if(!changed&&previous?.status==='complete'&&previous.analysisVersion===ANALYSIS)return Promise.resolve(previous);
 		const job={};imageJobs.set(id,job);
 		job.promise=imageQueue=imageQueue.catch(()=>{}).then(async()=>{
 			let win=Zotero.getMainWindow();
 			while(!win&&!shuttingDown){await new Promise(resolve=>E.setTimeout(resolve,1000));win=Zotero.getMainWindow();}
 			if(shuttingDown)return;
+			if(changed&&previous?.status==='complete'&&previous.analysisVersion===ANALYSIS&&previous.fileSignature){
+				const signature=await A.fileSignature(id);
+				if(signature&&signature===previous.fileSignature){await imageState(id,{status:'complete',error:null});return A.imageState(id);}
+			}
 			job.controller=new win.AbortController();await imageState(id,{status:'running',error:null});
 			try{return await A.indexImages(id,status,job.controller.signal);}
 			catch(error){await imageState(id,{status:shuttingDown?'queued':job.controller.signal.aborted?'partial':'failed',error:error.message});return A.imageState(id);}
-		}).finally(()=>{imageJobs.delete(id);if(job.dirty&&!shuttingDown&&!job.controller?.signal.aborted)A.queueImages(id).catch(e=>Zotero.logError(e));});
+		}).finally(()=>{imageJobs.delete(id);if(job.dirty&&!shuttingDown&&!job.controller?.signal.aborted)A.queueImages(id,()=>{},{changed:true}).catch(e=>Zotero.logError(e));});
 		// Persist before execution so jobs interrupted by application exit can resume.
 		imageState(id,{status:'queued',error:null}).catch(e=>Zotero.logError(e));return job.promise;
 	};
 	A.indexImages=async(id,status=()=>{},signal)=>{
 		stopped(signal);const item=await Zotero.Items.getAsync(id);if(!item?.isPDFAttachment()||item.deleted){await imageState(id,{status:'skipped',error:null});return;}
 		const previous=A.imageState(id),result=await A.index(id,status,signal);
-		const figures=result.assets.filter(a=>['figure','table','image'].includes(a.kind));
+		const figures=A.uniqueAssets(result.assets.filter(a=>['figure','table','image'].includes(a.kind)));
 		// Metadata/annotation notifications do not mean the PDF or analysis changed.
-		if(previous?.pdfHash===result.pdfHash&&previous.parseVersion===result.version&&figures.every(a=>{const m=A.materialFor(a);return m&&(protectedMaterial(m)||m.generationStatus==='complete'&&m.analysisVersion===ANALYSIS);})){
-			const assetIDs=[];
+		const existingBySource=new Map(Object.values(E.manuscripts.assetLibrary()).map(m=>[m.sourceRecordID,m]));
+		if((!previous?.pdfHash||previous.pdfHash===result.pdfHash)&&(!previous?.parseVersion||previous.parseVersion===result.version)&&figures.every(a=>{const m=existingBySource.get(sourceID(a));return m&&(protectedMaterial(m)||m.generationStatus==='complete'&&m.analysisVersion===ANALYSIS);})){
 			// A reused file may now belong to another paper or attachment. Keep all
 			// source anchors without regenerating or overwriting confirmed content.
-			for(const asset of figures){stopped(signal);assetIDs.push((await A.retainMaterial(asset)).id);}
-			await imageState(id,{status:'complete',analysisVersion:ANALYSIS,total:figures.length,completed:figures.length,reused:figures.length,assetIDs,error:null});return A.imageState(id);
+			stopped(signal);let assetIDs=await A.retainExistingMaterials(figures);
+			if(!assetIDs){assetIDs=[];for(const asset of figures){stopped(signal);assetIDs.push((await A.retainMaterial(asset)).id);}}
+			const fileSignature=await A.fileSignature(id);
+			await imageState(id,{status:'complete',pdfHash:result.pdfHash,parseVersion:result.version,fileSignature,analysisVersion:ANALYSIS,total:figures.length,completed:figures.length,reused:figures.length,assetIDs,error:null});return A.imageState(id);
 		}
 		await imageState(id,{status:'running',pdfHash:result.pdfHash,parseVersion:result.version,total:figures.length,completed:0,assetIDs:[],error:null});
 		if(previous?.pdfHash&&previous.pdfHash!==result.pdfHash)await E.store.update(s=>{for(const m of Object.values(s.researchMaterials||{})){if(m.sourceVersion===previous.pdfHash&&(m.sourceAnchors||[m.anchor]).some(a=>a?.attachmentID===id)){m.verification='stale';m.revision++;}}});
@@ -119,9 +169,9 @@
 			stopped(signal);status(`正在整理图片证据 ${i+1}/${figures.length}…`);
 			try{const saved=await A.saveMaterial(asset,status,signal);completed++;reused+=saved.reused||0;}
 			catch(error){if(signal?.aborted)throw error;errors.push(asset.label+'：'+error.message);}
-			await imageState(id,{completed,reused,error:errors.join('；')||null});
+			if((i+1)%4===0||i===figures.length-1||errors.length)await imageState(id,{completed,reused,error:errors.join('；')||null});
 		}
-		await imageState(id,{status:errors.length?'partial':'complete',analysisVersion:ANALYSIS,error:errors.join('；')||null});
+		await imageState(id,{status:errors.length?'partial':'complete',fileSignature:await A.fileSignature(id),analysisVersion:ANALYSIS,error:errors.join('；')||null});
 		status(errors.length?`已保留 ${figures.length} 张图片，${completed} 张说明完成，其余可重试`:`${figures.length} 张图片证据已入库`);
 		return A.imageState(id);
 	};

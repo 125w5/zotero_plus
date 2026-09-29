@@ -79,7 +79,7 @@
  };
  R.renderPaperOverview=async(host,item,{abstract=false}={})=>{
   if(host._overviewItem===item?.id&&host.querySelector('.paper-cover'))return;
-  host._overviewOff?.();host._overviewItem=item?.id;const token=host._overviewToken={};host.replaceChildren();
+   host._overviewOff?.();host._overviewHoverCleanup?.();host._overviewItem=item?.id;const token=host._overviewToken={};host.replaceChildren();
   const doc=host.ownerDocument,el=(tag,text,cls)=>{const n=doc.createElementNS('http://www.w3.org/1999/xhtml',tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
   const box=el('section',undefined,'paper-overview'),info=el('small','正在读取首页…','overview-status');box.append(info);host.append(box);
   try{
@@ -88,7 +88,17 @@
    else{
     const open=()=>R.library.openSource({attachmentID:attachment.id,pageIndex:0});
     const image=el('img');image.alt='论文 PDF 首页';image.className='paper-cover';image.src=await R.firstPage(attachment);if(host._overviewToken!==token||!host.isConnected)return;
-    image.tabIndex=0;image.title='双击打开 PDF 首页';image.ondblclick=open;image.onkeydown=e=>{if(e.key==='Enter')open();};box.insertBefore(image,info);info.textContent='PDF 首页';
+     image.tabIndex=0;image.title='悬停放大首页；双击打开 PDF';image.ondblclick=open;image.onkeydown=e=>{if(e.key==='Enter')open();};
+     let hoverTimer,popup;const closePreview=()=>{doc.defaultView.clearTimeout(hoverTimer);hoverTimer=null;popup?.remove();popup=null;};
+     const showPreview=()=>{if(popup||!image.isConnected)return;const preview=el('div',undefined,'paper-cover-hover'),large=el('img');large.src=image.src;large.alt='论文 PDF 首页放大预览';preview.append(large);doc.documentElement.append(preview);popup=preview;
+      const bounds=image.getBoundingClientRect(),width=Math.min(490,Math.max(290,doc.defaultView.innerWidth*.38)),spaceRight=doc.defaultView.innerWidth-bounds.right;
+      preview.style.width=width+'px';preview.style.left=(spaceRight>width+18?bounds.right+10:Math.max(8,bounds.left-width-10))+'px';preview.style.top=Math.max(8,Math.min(bounds.top,doc.defaultView.innerHeight-12-Math.min(640,doc.defaultView.innerHeight*.78)))+'px';
+     };
+     const schedulePreview=()=>{doc.defaultView.clearTimeout(hoverTimer);hoverTimer=doc.defaultView.setTimeout(showPreview,260);};
+     image.addEventListener('mouseenter',schedulePreview);image.addEventListener('mouseleave',closePreview);image.addEventListener('focus',schedulePreview);image.addEventListener('blur',closePreview);
+     image.addEventListener('keydown',e=>{if(e.key==='Escape'){closePreview();e.stopPropagation();}});
+     const onScroll=()=>closePreview();doc.defaultView.addEventListener('scroll',onScroll,true);host._overviewHoverCleanup=()=>{closePreview();doc.defaultView.removeEventListener('scroll',onScroll,true);};
+     box.insertBefore(image,info);info.textContent='PDF 首页';
    }
   }catch(e){if(host._overviewToken===token){info.textContent='首页预览暂不可用：'+e.message;const retry=el('button','重试预览');retry.onclick=()=>{host._overviewItem=null;R.renderPaperOverview(host,item,{abstract});};box.append(retry);}}
   if(abstract&&host._overviewToken===token){const parent=item?.parentItem||item,summary=el('details',undefined,'overview-abstract');summary.append(el('summary','摘要'),el('p',parent?.getField('abstractNote')||'尚无摘要'));box.append(summary);}

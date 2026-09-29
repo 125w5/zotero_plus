@@ -164,6 +164,9 @@ if __name__=='__main__':
         if req['operation']=='manuscript-index':
             from pdf_materials import index_pdf
             value=index_pdf(req)
+        elif req['operation']=='manuscript-translation-layout':
+            from pdf_materials import translation_layout
+            value=translation_layout(req)
         else:
             value=dataset(req['file']) if req['operation']=='manuscript-data' else export(req)
         print(json.dumps(dict(type='result',value=value),ensure_ascii=False))

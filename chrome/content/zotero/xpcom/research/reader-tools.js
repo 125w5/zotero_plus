@@ -76,10 +76,23 @@
   const link=await E.rememberNoteLink(annotation,note);await E.openReaderNote(note.id,reader);return link;
  };
  E.saveAssetNote=async asset=>{
-  const attachment=await Zotero.Items.getAsync(asset.attachmentID),annotation=new Zotero.Item('annotation');annotation.libraryID=attachment.libraryID;annotation.parentID=attachment.id;annotation.annotationType='image';annotation.annotationColor='#a28ae5';annotation.annotationPosition=JSON.stringify(E.assets.position(asset));annotation.annotationPageLabel=String(asset.pageIndex+1);annotation.annotationSortIndex=String(asset.pageIndex).padStart(5,'0')+'|000000|00000';annotation.annotationComment=asset.label+' · 原图笔记';await annotation.saveTx();
-  const note=await Zotero.EditorInstance.createNoteFromAnnotations([annotation],{parentID:attachment.parentID||undefined,collectionID:attachment.getCollections()[0]});
-  const m=E.assets.materialFor(asset);if(m?.summary){const parser=new (Zotero.getMainWindow().DOMParser)(),doc=parser.parseFromString(note.getNote(),'text/html'),extra=parser.parseFromString(E.noteContentHTML(m.summary+'\n\n'+(m.imageExplanation?.result.sections||[]).map(s=>'### '+s.heading+'\n'+s.body).join('\n\n')),'text/html'),root=doc.body.firstElementChild;for(const n of [...extra.body.childNodes])root.append(doc.importNode(n,true));note.setNote(doc.body.innerHTML);await note.saveTx();}
-  await E.rememberNoteLink(annotation,note);const reader=await E.openReaderReady(attachment.id);await E.openReaderNote(note.id,reader);return {noteID:note.id,annotationID:annotation.id};
+  if(!asset?.attachmentID||!asset?.id)throw Error('图片没有可定位的 PDF 来源，无法保存为关联笔记');
+  const attachment=await Zotero.Items.getAsync(asset.attachmentID);if(!attachment||attachment.deleted)throw Error('来源 PDF 不存在或已移入回收站');
+  const open=async(noteID,annotationID,reused,warning)=>{let reader;try{reader=await E.openReaderReady(attachment.id);await E.openReaderNote(noteID,reader);}catch(error){throw Error('图片笔记已保存，但未能在右侧打开：'+error.message+'。再次点击可重试打开');}return {noteID,annotationID,reused,warning};};
+  const position=E.assets.position(asset),links=Object.values(E.store.get('readerNoteLinks')||{}).filter(link=>link.attachmentID===attachment.id);
+  for(const link of links){const linkedNote=await Zotero.Items.getAsync(link.noteID);if(!linkedNote||linkedNote.deleted)continue;
+   if(link.assetID===asset.id)return open(link.noteID,link.annotationID,true);
+   // Notes saved by older versions have no assetID. Match their exact PDF image annotation,
+   // not an unrelated note on the same page, then add the stable link for later opens.
+   if(link.assetID)continue;const old=await Zotero.Items.getAsync(link.annotationID);if(!old||old.deleted||old.annotationType!=='image'||old.annotationComment!==asset.label+' · 原图笔记')continue;
+   let prior;try{prior=JSON.parse(old.annotationPosition);}catch{continue;}if(prior.pageIndex!==position.pageIndex||JSON.stringify(prior.rects)!==JSON.stringify(position.rects))continue;
+   await E.store.update(state=>{for(const entry of Object.values(state.readerNoteLinks||{}))if(entry.noteID===link.noteID&&entry.annotationID===link.annotationID)entry.assetID=asset.id;});return open(link.noteID,link.annotationID,true);
+  }
+  const annotation=new Zotero.Item('annotation');annotation.libraryID=attachment.libraryID;annotation.parentID=attachment.id;annotation.annotationType='image';annotation.annotationColor='#a28ae5';annotation.annotationPosition=JSON.stringify(position);annotation.annotationPageLabel=String(asset.pageIndex+1);annotation.annotationSortIndex=String(asset.pageIndex).padStart(5,'0')+'|000000|00000';annotation.annotationComment=asset.label+' · 原图笔记';await annotation.saveTx();
+  let note;try{note=await Zotero.EditorInstance.createNoteFromAnnotations([annotation],{parentID:attachment.parentID||undefined,collectionID:!attachment.parentID?attachment.getCollections()[0]:undefined});}catch(error){try{await Zotero.Items.trashTx(annotation.id);}catch(cleanupError){Zotero.logError(cleanupError);}throw Error('图片笔记创建失败：'+error.message);}
+  await E.rememberNoteLink(annotation,note,{assetID:asset.id});let warning;
+  const m=E.assets.materialFor(asset);if(m?.summary)try{const parser=new (Zotero.getMainWindow().DOMParser)(),doc=parser.parseFromString(note.getNote(),'text/html'),extra=parser.parseFromString(E.noteContentHTML(m.summary+'\n\n'+(m.imageExplanation?.result.sections||[]).map(s=>'### '+s.heading+'\n'+s.body).join('\n\n')),'text/html'),root=doc.body.firstElementChild;if(!root)throw Error('笔记正文尚未准备好');for(const n of [...extra.body.childNodes])root.append(doc.importNode(n,true));note.setNote(doc.body.innerHTML);await note.saveTx();}catch(error){warning='原图与来源已保存；中文解读未写入：'+error.message;Zotero.logError(error);}
+  return open(note.id,annotation.id,false,warning);
  };
  E.selectionImageNote=async(reader,selection)=>{
   if(!selection)throw Error('先框选图片，或选择图内文字');

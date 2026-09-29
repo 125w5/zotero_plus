@@ -15,79 +15,128 @@ describe('Reader interaction repairs 2026-09-19',function(){
   const rects=G.lineRects([[10,100,50,112],[50,108,57,116],[58,100,80,112],[300,100,360,112],[10,80,80,92]]);assert.lengthOf(rects,3);
   const strikes=G.strikePositions({pageIndex:0,rects,nextPageRects:[[10,40,80,52]]});assert.lengthOf(strikes,2);assert.lengthOf(strikes[0].paths,3);assert.deepEqual(strikes[1].paths[0],[10,46,80,46]);report.native.push('公式上下标合并，多行/多栏删除线几何与跨页定位');
  });
- it('shows a source-linked Chinese translation beside the actual PDF page',async()=>{
-  const originalTranslate=E.quickTranslate,split=reader._iframeWindow.document.getElementById('split-view'),previousInset=split.style.insetInlineEnd;
-  E.quickTranslate=async text=>{const markers=[...text.matchAll(/ZXQBLOCK\d+ZXQ/g)].map(m=>m[0]);return {text:markers.length?markers.map((m,i)=>`${m}\n中文译文 ${i+1}`).join('\n\n'):'中文译文'};};
+ it('shows a same-layout translated page beside the original PDF',async()=>{
+  const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation};
+  const split=reader._iframeWindow.document.getElementById('split-view'),previousInset=split.style.insetInlineEnd;
+  const current=(view._iframeWindow.PDFViewerApplication.pdfViewer.currentPageNumber||1)-1;
+  E.manuscripts.translationPage=(id,i)=>i===current?{status:'complete',blocks:[{id:'controlled-translation',sourceText:'Controlled source, x = 1.',translatedText:'受控中文译文，x = 1。',position:{pageIndex:i,rects:[[60,600,220,620]]},kind:'text',fontSize:7.2,fontFamily:'Times New Roman',fontWeight:700,fontStyle:'italic',serif:true}]}:{status:'pending',blocks:[]};
+  E.manuscripts.queueTranslation=()=>Promise.resolve();E.manuscripts.observeTranslation=()=>()=>{};
   try{
-   const doc=reader._iframeWindow.document,toolbarButton=doc.querySelector('.easysch-translation-open');assert.exists(toolbarButton,'Reader 工具栏显示译文入口');
-   toolbarButton.click();const panel=doc.querySelector('.easysch-page-translation');assert.exists(panel,'点击工具栏后显示译文栏');
-   await wait(()=>panel.querySelector('article p')?.textContent?.includes('中文译文'));
-   assert.exists(panel.querySelector('.translation-source button'),'每段译文可定位 PDF 原文');
-   assert.exists(panel.querySelector('details'),'机器译文可展开对应原文');
-   assert.isAbove(panel.querySelectorAll('article').length,0);
-   panel.querySelector('[aria-label="关闭译文"]').click();assert.isFalse(panel.isConnected);
-   assert.equal(split.style.insetInlineEnd,previousInset,'关闭后恢复阅读宽度');
-   report.native.push('真实 PDF 当前页的译文栏、中文段落、原文展开与定位入口；机翻回复为受控内容');
-  }finally{E.quickTranslate=originalTranslate;}
+   const doc=reader._iframeWindow.document,pdfDoc=view._iframeWindow.document,toolbarButton=doc.querySelector('.easysch-translation-open');assert.exists(toolbarButton,'Reader 工具栏显示译文入口');
+   toolbarButton.click();const panel=doc.querySelector('.easysch-page-translation');assert.exists(panel,'同一 PDF 标签右侧显示译文页');
+   await wait(()=>panel.querySelector(`[data-page-index="${current}"] .translation-box p`)?.textContent?.includes('中文译文'));
+   const sheet=panel.querySelector(`[data-page-index="${current}"]`),box=sheet.querySelector('.translation-box:not(.translation-formula)');
+   assert.isTrue(panel.querySelector('.translation-retry').hidden,'普通译文状态不显示重试操作');
+   assert.lengthOf(panel.querySelectorAll('.translation-sheet'),view._iframeWindow.PDFViewerApplication.pdfDocument.numPages,'全篇页占位支持连续滚动');
+   assert.isAbove(parseFloat(sheet.style.width),0);assert.isAbove(parseFloat(sheet.style.height),0);
+   const app=view._iframeWindow.PDFViewerApplication,pageNo=app.pdfViewer.currentPageNumber;
+   assert.include(panel.querySelector('header span').textContent,pageNo+' /','右页码跟随左侧 PDF');
+   const rightScroll=panel.querySelector('.translation-scroller'),sourceViewport=Cu.waiveXrays(app.pdfViewer.getPageView(pageNo-1)).viewport;
+   const baseWidth=Cu.waiveXrays(app.pdfViewer.getPageView(0)).viewport.width;
+   const savedZoom=Math.max(.45,Math.min(3,Number(E.store.get('settings','readerTranslationZoom'))||1));
+   const fitted=Math.min(1,Math.max(100,rightScroll.clientWidth-44)/baseWidth)*savedZoom;
+   assert.closeTo(parseFloat(sheet.style.width),sourceViewport.width*fitted,2,'右页按自身栏宽适配，不沿用左页宽度导致裁切');
+   assert.closeTo(sheet.getBoundingClientRect().top,Cu.waiveXrays(app.pdfViewer.getPageView(pageNo-1)).div.getBoundingClientRect().top,2,'原文与译文纸张顶端对齐');
+   assert.notExists(pdfDoc.querySelector('.easysch-translation-box'),'左侧原 PDF 不被译文层覆盖');
+   assert.isAbove(parseFloat(box.style.width),0);assert.isAbove(parseFloat(box.style.height),0);
+   assert.equal(doc.defaultView.getComputedStyle(box).overflowY,'auto','较长译文在原文等尺寸框内滚动');
+   assert.include(box.textContent,'x = 1','正文中带公式符号时不能隐藏整段译文');
+   assert.closeTo(parseFloat(box.style.fontSize),7.2*sourceViewport.scale*parseFloat(sheet.style.width)/sourceViewport.width,.5,'译文字号按右页独立缩放');
+   assert.include(box.style.fontFamily,'Noto Serif CJK SC','原文字体为衬线时使用相应中文衬线字体');
+   assert.equal(box.style.fontWeight,'700');assert.equal(box.style.fontStyle,'italic');
+   assert.notInclude(E.openReaderTranslation.toString(),'getTextContent','译文使用预提取版式，阅读时不再次扫描本页 PDF 字形');
+   assert.notEqual(split.style.insetInlineEnd,previousInset,'左 PDF 为右译文页留出阅读空间');
+   const originalScale=app.pdfViewer.currentScaleValue,initialWidth=parseFloat(sheet.style.width),leftScroll=pdfDoc.getElementById('viewerContainer');
+   const oldLeft=leftScroll.scrollTop,oldLeftX=leftScroll.scrollLeft;
+   const point=rightScroll.getBoundingClientRect(),wheel=new doc.defaultView.WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:savedZoom<=.451?-120:120,clientX:point.left+40,clientY:point.top+80});
+   rightScroll.dispatchEvent(wheel);
+   await wait(()=>Math.abs(parseFloat(sheet.style.width)-initialWidth)>2);
+   assert.isTrue(wheel.defaultPrevented,'Ctrl+滚轮被右译文视图接管');
+   assert.equal(app.pdfViewer.currentScaleValue,originalScale,'右侧缩放不改变左侧 PDF 缩放');
+   assert.closeTo(leftScroll.scrollTop,oldLeft,2,'右侧缩放不纵向移动左侧 PDF');
+   assert.closeTo(leftScroll.scrollLeft,oldLeftX,2,'右侧缩放不横向移动左侧 PDF');
+   if(leftScroll.scrollHeight>leftScroll.clientHeight+40&&rightScroll.scrollHeight>rightScroll.clientHeight+40){
+    const oldRight=rightScroll.scrollTop;leftScroll.scrollTop=Math.min(oldLeft+40,leftScroll.scrollHeight-leftScroll.clientHeight);
+    await wait(()=>Math.abs(rightScroll.scrollTop-oldRight)>3);leftScroll.scrollTop=oldLeft;
+   }
+   assert.notInclude(E.openReaderTranslation.toString(),'reader.navigate(','译文页不路由到当前焦点的 secondary 阅读视图');
+   assert.include(E.openReaderTranslation.toString(),'view.navigate(','译文位置与翻页固定导航左侧 primary PDF');
+   toolbarButton.click();assert.isFalse(panel.isConnected);assert.equal(split.style.insetInlineEnd,previousInset);
+   report.native.push('同一标签左原 PDF、右连续译文页；右侧 Ctrl+滚轮独立缩放、左 PDF 不移动；缓存回复为受控内容');
+  }finally{reader._iframeWindow.document.querySelector('.easysch-page-translation')&&reader._iframeWindow.document.querySelector('.easysch-translation-open')?.click();E.manuscripts.translationPage=prior.page;E.manuscripts.queueTranslation=prior.queue;E.manuscripts.observeTranslation=prior.observe;}
  });
  it('keeps displayed equations separate from translated two-column prose',async()=>{
   const doc=reader._iframeWindow.document,app=view._iframeWindow.PDFViewerApplication,pageIndex=(app.pdfViewer.currentPageNumber||1)-1;
   const page=Cu.waiveXrays(await app.pdfDocument.getPage(pageIndex+1)),width=page.view[2]-page.view[0],height=page.view[3]-page.view[1];
-  const prior={get:E.store.get,translate:E.quickTranslate,preview:E.previewImage,assets:E.assets.active.get(reader.itemID)};
+  const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation,preview:E.previewImage,assets:E.assets.active.get(reader.itemID)};
   const rect=(x,y,w=width*.3)=>({pageIndex,rects:[[x,y,x+w,y+18]]});
-  const source={paragraphs:[
-   {pageIndex,sourceText:'Left column first passage.',position:rect(45,height-120)},
-   {pageIndex,sourceText:'Right column first passage.',position:rect(width*.56,height-125)},
-   {pageIndex,sourceText:'Left column second passage.',position:rect(45,height-180)},
-   {pageIndex,sourceText:'Right column second passage.',position:rect(width*.56,height-185)},
-   {pageIndex,sourceText:'E = mc² (1)',position:rect(45,height-300,width*.8)}
-  ]};
+  const source=[
+   {sourceText:'Left column first passage.',translatedText:'左栏第一段',position:rect(45,height-120)},
+   {sourceText:'Left column second passage.',translatedText:'左栏第二段',position:rect(45,height-180)},
+   {sourceText:'Right column first passage.',translatedText:'右栏第一段',position:rect(width*.56,height-125)},
+   {sourceText:'Right column second passage.',translatedText:'右栏第二段',position:rect(width*.56,height-185)},
+   {sourceText:'E = mc² (1)',position:rect(45,height-300,width*.8),kind:'formula'}
+  ].map((b,i)=>({id:'controlled-'+i,kind:'text',status:'complete',...b}));
   const formula={pageIndex,kind:'formula',thumbnail:'controlled-formula',bbox:[45,270,width*.85,310],pageHeight:height,label:'式 (1)',caption:'E = mc² (1)'};
-  const sent=[];E.store.get=function(...path){if(path[0]==='manuscriptIndex'&&path[1]===reader.itemID)return {documentKey:'controlled-translation-equation'};
-   if(path[0]==='manuscriptDocuments'&&path[1]==='controlled-translation-equation')return source;
-   return prior.get.apply(this,path);};
+  E.manuscripts.translationPage=(id,i)=>i===pageIndex?{status:'complete',blocks:source}:{status:'pending',blocks:[]};
+  E.manuscripts.queueTranslation=()=>Promise.resolve();E.manuscripts.observeTranslation=()=>()=>{};
   E.assets.active.set(reader.itemID,{assets:[formula]});E.previewImage=async()=> 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-  E.quickTranslate=async text=>{sent.push(text);const markers=[...text.matchAll(/ZXQBLOCK\d+ZXQ/g)].map(m=>m[0]);return {text:markers.length?markers.map((m,i)=>`${m}\n中文段落 ${i+1}`).join('\n\n'):'中文段落'};};
   try{
-   const button=doc.querySelector('.easysch-translation-open');button.click();const panel=doc.querySelector('.easysch-page-translation');assert.exists(panel);
-   await wait(()=>panel.querySelector('.translation-formula img')?.src?.startsWith('data:')&&panel.querySelectorAll('article p').length>=4);
-   await wait(()=>panel.querySelectorAll('article p').length>=4&&[...panel.querySelectorAll('article p')].every(p=>p.textContent.includes('中文')));
-   const originals=[...panel.querySelectorAll('article:not(.translation-formula) details div')].map(n=>n.textContent);
-   assert.deepEqual(originals.slice(0,4),['Left column first passage.','Left column second passage.','Right column first passage.','Right column second passage.']);
-   assert.lengthOf(panel.querySelectorAll('.translation-formula'),1,'同一原式不重复成文字与图片');
-   assert.exists(panel.querySelector('.translation-formula .translation-source button'),'原式保留来源定位');
-   assert.isFalse(sent.some(s=>s.includes('E = mc²')),'公式、符号和编号没有送入翻译模型');
-   panel.querySelector('[aria-label="关闭译文"]').click();
-   report.native.push('受控双栏段落按左栏再右栏阅读；行间公式以原图独立显示并定位，未送翻译模型');
+    const button=doc.querySelector('.easysch-translation-open');button.click();const panel=doc.querySelector('.easysch-page-translation');
+    await wait(()=>panel.querySelectorAll('.translation-box:not(.translation-formula) p').length===4);
+    await wait(()=>panel.querySelector('.translation-formula img')?.src?.startsWith('data:'));
+    const boxes=[...panel.querySelectorAll('.translation-box:not(.translation-formula)')];assert.lengthOf(boxes,4,'正文保持两栏四段');
+    assert.closeTo(parseFloat(boxes[0].style.left),parseFloat(boxes[1].style.left),2,'左栏两段共用水平起点');
+    assert.closeTo(parseFloat(boxes[2].style.left),parseFloat(boxes[3].style.left),2,'右栏两段共用水平起点');
+    assert.isBelow(parseFloat(boxes[0].style.left),parseFloat(boxes[2].style.left),'右栏在左栏右侧');
+    assert.isBelow(parseFloat(boxes[0].style.top),parseFloat(boxes[1].style.top),'左栏自上而下');
+    assert.isBelow(parseFloat(boxes[2].style.top),parseFloat(boxes[3].style.top),'右栏自上而下');
+    assert.lengthOf(panel.querySelectorAll('.translation-formula'),1,'右页原式图不重复');
+    assert.notExists(view._iframeWindow.document.querySelector('.easysch-translation-box'),'左页不覆盖公式与批注');
+   assert.isUndefined(source.at(-1).translatedText,'公式、符号和编号没有进入译文正文');
+    button.click();report.native.push('右译文页保持左右栏坐标、原式原图单份，左 PDF 未改动；公式未送翻译模型');
   }finally{
-   doc.querySelector('.easysch-page-translation [aria-label="关闭译文"]')?.click();
-   E.store.get=prior.get;E.quickTranslate=prior.translate;E.previewImage=prior.preview;
+    doc.querySelector('.easysch-page-translation')&&doc.querySelector('.easysch-translation-open')?.click();
+   E.manuscripts.translationPage=prior.page;E.manuscripts.queueTranslation=prior.queue;E.manuscripts.observeTranslation=prior.observe;E.previewImage=prior.preview;
    if(prior.assets)E.assets.active.set(reader.itemID,prior.assets);else E.assets.active.delete(reader.itemID);
   }
  });
- it('shows translated prose before a slow formula image index finishes',async()=>{
+ it('fills a pending translated page from the background cache without reader-side translation',async()=>{
   const doc=reader._iframeWindow.document,app=view._iframeWindow.PDFViewerApplication,pageIndex=(app.pdfViewer.currentPageNumber||1)-1;
-  const page=Cu.waiveXrays(await app.pdfDocument.getPage(pageIndex+1)),height=page.view[3]-page.view[1];
-  const prior={translate:E.quickTranslate,index:E.assets.index,preview:E.previewImage,assets:E.assets.active.get(reader.itemID)};
-  let releaseIndex,indexCalled=false;const pendingIndex=new Promise(resolve=>{releaseIndex=resolve;});
-  E.assets.active.delete(reader.itemID);E.assets.index=async()=>{indexCalled=true;return pendingIndex;};
-  E.previewImage=async()=> 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-  E.quickTranslate=async text=>{const markers=[...text.matchAll(/ZXQBLOCK\d+ZXQ/g)].map(m=>m[0]);return {text:markers.length?markers.map((m,i)=>`${m}\n先显示的中文译文 ${i+1}`).join('\n\n'):'先显示的中文译文'};};
+  const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation,translate:E.quickTranslate,index:E.assets.index};
+  let notify,ready=false,queued=0,readerCalls=0;
+  E.manuscripts.translationPage=(id,i)=>i!==pageIndex?{status:'pending',blocks:[]}:{status:ready?'complete':'pending',blocks:ready?[{id:'background-result',sourceText:'Background source.',translatedText:'后台完成的中文译文',kind:'text',position:{pageIndex,rects:[[60,600,250,620]]}}]:[]};
+  E.manuscripts.queueTranslation=()=>{queued++;return Promise.resolve();};E.manuscripts.observeTranslation=(id,fn)=>{notify=fn;return()=>{};};
+  E.quickTranslate=async()=>{readerCalls++;throw Error('阅读页不应发起翻译请求');};E.assets.index=async()=>{readerCalls++;throw Error('阅读页不应重新提取整篇图片');};
   try{
    doc.querySelector('.easysch-translation-open').click();const panel=doc.querySelector('.easysch-page-translation');assert.exists(panel);
-   await wait(()=>indexCalled&&panel.querySelector('article p')?.textContent.includes('先显示的中文译文'));
-   assert.notExists(panel.querySelector('.translation-formula img'),'图片索引尚未返回时正文已可读');
-   assert.include(panel.querySelector('.translation-status').textContent,'公式原图');
-   const formula={pageIndex,kind:'formula',thumbnail:'slow-formula',bbox:[50,150,300,190],pageHeight:height,label:'原式',caption:'原文公式'};
-   releaseIndex({assets:[formula]});
-   await wait(()=>panel.querySelector('.translation-formula img')?.src?.startsWith('data:'));
-   assert.include(panel.querySelector('article p').textContent,'先显示的中文译文','补入公式后保留已生成正文');
-   panel.querySelector('[aria-label="关闭译文"]').click();
-   report.native.push('受控慢图片索引：中文正文先显示并完成翻译，随后异步插入原式且保留正文');
+   await wait(()=>queued>0&&panel.textContent.includes('后台整理'));
+   assert.equal(readerCalls,0,'未在阅读器中重新翻译或提取整篇图像');
+   ready=true;notify();await wait(()=>panel.querySelector(`[data-page-index="${pageIndex}"] .translation-box p`)?.textContent.includes('后台完成'));
+   assert.equal(readerCalls,0);assert.isAbove(queued,0);doc.querySelector('.easysch-translation-open').click();
+   report.native.push('受控后台增量：先显示全篇占位；缓存写入后只更新本页，阅读器没有调用翻译或整篇图片索引');
   }finally{
-   releaseIndex?.({assets:[]});doc.querySelector('.easysch-page-translation [aria-label="关闭译文"]')?.click();
-   E.quickTranslate=prior.translate;E.assets.index=prior.index;E.previewImage=prior.preview;
-   if(prior.assets)E.assets.active.set(reader.itemID,prior.assets);else E.assets.active.delete(reader.itemID);
+   doc.querySelector('.easysch-page-translation')&&doc.querySelector('.easysch-translation-open')?.click();
+   E.manuscripts.translationPage=prior.page;E.manuscripts.queueTranslation=prior.queue;E.manuscripts.observeTranslation=prior.observe;E.quickTranslate=prior.translate;E.assets.index=prior.index;
+  }
+ });
+ it('offers a retry only for a failed translation page and refreshes only the changed page',async()=>{
+  const doc=reader._iframeWindow.document,app=view._iframeWindow.PDFViewerApplication,index=(app.pdfViewer.currentPageNumber||1)-1;
+  const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation,images:E.assets.onImagesChanged};
+  let notify,reads=0,retryOptions;
+  E.manuscripts.translationPage=(id,page)=>{if(page===index)reads++;return {status:page===index?'failed':'pending',blocks:[]};};
+  E.manuscripts.queueTranslation=(id,options)=>{if(options.retry)retryOptions=options;return Promise.resolve();};
+  E.manuscripts.observeTranslation=(id,fn)=>{notify=fn;return()=>{};};E.assets.onImagesChanged=()=>()=>{};
+  try{
+   doc.querySelector('.easysch-translation-open').click();const panel=doc.querySelector('.easysch-page-translation'),retry=panel.querySelector('.translation-retry');
+   await wait(()=>retry.hidden===false);assert.include(panel.querySelector('.translation-status').textContent,'失败');
+   if(app.pdfDocument.numPages>1){const before=reads,other=index===0?1:0;notify({pageIndex:other});
+    await Zotero.Promise.delay(100);assert.equal(reads,before,'另一页完成不重绘当前页');}
+   retry.click();await wait(()=>retryOptions?.retry===true);assert.deepEqual(retryOptions.priorityPages,[index]);assert.isTrue(retry.hidden);
+   doc.querySelector('.easysch-translation-open').click();report.native.push('失败页才显示页内重试；按页刷新不重绘当前阅读页；retry:true 仅重试当前页');
+  }finally{
+   doc.querySelector('.easysch-page-translation')&&doc.querySelector('.easysch-translation-open')?.click();
+   E.manuscripts.translationPage=prior.page;E.manuscripts.queueTranslation=prior.queue;E.manuscripts.observeTranslation=prior.observe;E.assets.onImagesChanged=prior.images;
   }
  });
  it('falls back to GPT-6 Luna for academic translation without a machine-translation key',async()=>{
@@ -97,7 +146,7 @@ describe('Reader interaction repairs 2026-09-19',function(){
   E.credentials.get=async endpoint=>endpoint==='https://openai.goldgom.top/v1'?'controlled-test-credential':null;
   E.resolveModel=async config=>config;
   E.requestProvider=async(url,options,timeout,reader)=>{called=true;assert.include(url,'/chat/completions');const body=JSON.parse(options.body);assert.equal(body.model,'gpt-6-luna');assert.isTrue(body.stream);assert.include(body.messages[0].content,'只输出译文');assert.equal(body.messages[1].content,phrase);return {text:'受控中文学术译文'};};
-  try{const result=await E.quickTranslate(phrase);assert.isTrue(called);assert.equal(result.text,'受控中文学术译文');assert.include(result.provider,'GPT-6 Luna');report.native.push('无有道配置时切换 GPT-6 Luna，校验流式请求与“只翻译”提示；回复为受控内容');}
+  try{const before=Object.keys(E.store.get('translationCache')||{}).length,result=await E.quickTranslate(phrase,undefined,{persist:false});assert.isTrue(called);assert.equal(result.text,'受控中文学术译文');assert.include(result.provider,'GPT-6 Luna');assert.equal(Object.keys(E.store.get('translationCache')||{}).length,before,'后台按页保存时不逐段重写工作区缓存');report.native.push('无有道配置时切换 GPT-6 Luna，校验流式请求与“只翻译”提示；persist:false 不逐段写工作区；回复为受控内容');}
   finally{E.settings=previous.settings;E.credentials.get=previous.credential;E.resolveModel=previous.resolve;E.requestProvider=previous.request;}
  });
  it('applies toolbar underline to a selection and converts an existing annotation',async()=>{
