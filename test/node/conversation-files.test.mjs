@@ -43,6 +43,22 @@ test('history updates retain file controls and file selection retains history wi
  current.onclick();await flush();assert.equal(selections,0,'clicking the active conversation must not persist an identical selection');rail.destroy();
 });
 
+test('a folder scope change updates a compact source location without rebuilding file or conversation controls',()=>{
+ const f=fixture();f.view.destroy();const scope={project:'研究计划',folder:'研究计划'},refs=[{id:'attachment:8',kind:'pdf',title:'研究论文',selected:true}];
+ const rail=mountConversationFiles({host:f.host,E:f.E,getSessionID:()=> 's1',getFiles:()=>refs,getSessions:()=>[{id:'s1',title:'当前讨论'}],getContext:()=>scope});
+ const context=rail.root.querySelector('.conversation-files-context'),file=rail.root.querySelector('.conversation-file'),session=rail.root.querySelector('.conversation-files-session');
+ assert.equal(context.textContent,'研究计划','the same project/folder name is not repeated');assert.equal(context.title,'研究计划');assert.doesNotMatch(context.textContent,/项目 ·|文件夹 ·/);
+ scope.folder='方法精选';rail.render();assert.equal(context.textContent,'研究计划 / 方法精选');assert.strictEqual(rail.root.querySelector('.conversation-file'),file);assert.strictEqual(rail.root.querySelector('.conversation-files-session'),session);
+ scope.project='';scope.folder='';rail.render();assert.equal(context.hidden,true);assert.equal(context.textContent,'');rail.destroy();
+});
+
+test('source scope shortcuts show selected files while keeping selection and the conversation unchanged',()=>{
+ const f=fixture();f.view.destroy();const refs=[{id:'attachment:8',kind:'pdf',title:'用于本次问答的论文',selected:true},{id:'attachment:9',kind:'image',title:'暂留的实验图',selected:false}],rail=mountConversationFiles({host:f.host,E:f.E,getSessionID:()=> 's1',getFiles:()=>refs,getSessions:()=>[{id:'s1',title:'当前讨论'}]});
+ const session=rail.root.querySelector('.conversation-files-session');assert.equal(rail.root.querySelectorAll('.conversation-file').length,2);
+ assert.equal(rail.setFilter('selected'),true);assert.equal(rail.root.querySelectorAll('.conversation-file').length,1);assert.match(rail.root.querySelector('.conversation-file').textContent,/用于本次问答/);assert.equal(refs[1].selected,false);assert.strictEqual(rail.root.querySelector('.conversation-files-session'),session);
+ assert.equal(rail.setFilter('unknown'),false);assert.equal(rail.root.querySelectorAll('.conversation-file').length,1);rail.setFilter('all');assert.equal(rail.root.querySelectorAll('.conversation-file').length,2);rail.destroy();
+});
+
 test('dragging a retained answer copies its question and evidence to the intended conversation without running a task',async()=>{
  const sessions=new Map([['from',{id:'from',messages:[{id:'q',role:'user',text:'实验怎样划分？'},{id:'a',role:'assistant',text:'按设备划分。',sources:[{stableID:'paper:7',attachmentID:8}]}]}],['to',{id:'to',messages:[]}]]),appended=[];
  const E={workbenchConversations:{get:id=>sessions.get(id),append:async(id,row)=>{appended.push([id,row]);sessions.get(id).messages.push(row);}}},dataTransfer={types:[RESEARCH_MESSAGE_MIME],getData:type=>type===RESEARCH_MESSAGE_MIME?JSON.stringify({sessionID:'from',messageID:'a'}):''};
@@ -53,6 +69,14 @@ test('dragging a retained answer copies its question and evidence to the intende
 test('dragging a file uses its stable original identity and captures the target conversation',async()=>{
  const calls=[],E={workbenchConversations:{get:id=>id==='target'?{id}:null},chatAttachments:{attach:async(...args)=>calls.push(args)}},dataTransfer={types:[CHAT_ATTACHMENT_MIME],files:[],getData:()=>JSON.stringify({sessionID:'source',attachmentID:'attachment:9'})};
  await receiveConversationDrop({E,dataTransfer,sessionID:'target'});assert.deepEqual(calls,[['target',{files:[],items:[{sessionID:'source',attachmentID:'attachment:9'}],materialIDs:[]},{source:'drop'}]]);await assert.rejects(()=>receiveConversationDrop({E,dataTransfer,sessionID:'deleted'}),/选择目标对话/);assert.equal(calls.length,1);
+});
+
+test('an imported file at the selection limit remains saved and the rail explains how to select it',async()=>{
+ const f=fixture();f.view.destroy();const notice='已保存，选用已达 12 份；取消勾选后可选用新文件。';let imports=0;
+ f.E.chatAttachments.attach=async()=>{imports++;};f.E.workbenchConversations.getAttachmentNotice=()=>notice;
+ const rail=mountConversationFiles({host:f.host,E:f.E,getSessionID:()=> 's1'});await rail.root.querySelector('.conversation-files-import').onclick();assert.equal(imports,1);assert.equal(rail.root.querySelector('.conversation-files-status').textContent,notice);
+ const dataTransfer={types:[CHAT_ATTACHMENT_MIME],files:[],getData:()=>JSON.stringify({sessionID:'source',attachmentID:'attachment:9'})};f.E.workbenchConversations.get=id=>({id});
+ assert.equal(await receiveConversationDrop({E:f.E,dataTransfer,sessionID:'s1'}),notice);assert.equal(imports,2);rail.destroy();
 });
 
 test('PDF detail tabs cancel older work and an old image error cannot replace the newer reference pane',async()=>{

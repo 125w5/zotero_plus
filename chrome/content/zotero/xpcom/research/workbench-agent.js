@@ -45,7 +45,7 @@
 		const fileScope=ChatFiles.conversationChatFileContext(sourceSession||{attachments},history);
 		const assertFileScope=()=>{if(sessionID){const latest=E.workbenchConversations.get(sessionID);if(!latest||ChatFiles.chatFileScopeSignature(latest)!==fileScope.signature)throw Error('当前对话的资料选择已变化，本次任务已停止；请按新的资料范围重新发送。');}};
 		history=fileScope.history;if(selectedSource&&!fileScope.allowsSource(selectedSource))selectedSource=null;
-		if(sourceSession)attachments=sourceSession.attachments||[];
+		if(sourceSession)attachments=ChatFiles.selectedChatAttachments(ChatFiles.conversationFileReferences(sourceSession));
 		let resolvedMode = imageRequested ? 'image' : Workbench.resolveWorkbenchMode(mode, prompt);
 		const prior = Workbench.researchConversationContext(history, prompt);
 		const project = () => {

@@ -3,7 +3,7 @@ import {CHAT_ATTACHMENT_MIME} from '../shared/chat-attachments.mjs';
 import {sectionInsertionAnchor,sectionInsertionIndex} from './section-insertion.mjs';
 
 export function assemblyFileDropReference(dataTransfer,conversations){
- try{const value=JSON.parse(dataTransfer.getData(CHAT_ATTACHMENT_MIME));if(!value?.sessionID||!value?.attachmentID)return null;const reference=conversations.get(value.sessionID)?.attachments?.find(row=>row.id===value.attachmentID);return reference?{sessionID:value.sessionID,reference}:null;}catch(_){return null;}
+ try{const value=JSON.parse(dataTransfer.getData(CHAT_ATTACHMENT_MIME));if(!value?.sessionID||!value?.attachmentID)return null;const reference=(conversations.getAttachments?.(value.sessionID)||conversations.get(value.sessionID)?.attachments||[]).find(row=>row.id===value.attachmentID);return reference?{sessionID:value.sessionID,reference}:null;}catch(_){return null;}
 }
 export function assemblyFileDropMaterial(reference,rows,model){
  const usable=(rows||[]).filter(row=>String(row.text||row.sourceText||'').trim());if(!usable.length)throw Error('文件中没有可插入的已读取内容，请先打开文件详情选择资料。');
@@ -23,7 +23,7 @@ export function installAssemblyFileDrop({U,canvas,paperPosition,snapshot,attachM
  const over=event=>{if(disposed||!advertised(event))return;clear();const page=pageFor(event);if(!page||busy){event.dataTransfer.dropEffect='none';feedback.show(event,busy?'正在关联资料，请稍候。':'请放到论文页面中的具体位置。',{rejected:true});return;}event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='copy';canvas.dataset.fileDrop='true';const block=event.target.closest('.block');if(block)block.dataset.fileDropPosition=event.clientY>block.getBoundingClientRect().top+block.getBoundingClientRect().height/2?'after':'before';feedback.show(event,'在“'+U.p.sections.find(row=>row.id===page.dataset.section).title+'”此处关联文件，保留原始来源。');};
  const drop=async event=>{if(!advertised(event))return;clear();const page=pageFor(event);if(disposed||!page||busy)return;event.preventDefault();event.stopImmediatePropagation();const payload=assemblyFileDropReference(event.dataTransfer,U.conversations);if(!payload){status('拖动的文件已从对话移除，请重新选择。',true);return;}
   const projectID=U.p.id,sectionID=page.dataset.section,pos=paperPosition(page,event.clientY),anchor=sectionInsertionAnchor(U.p.blocks,U.p.sections,sectionID,pos.index);busy=true;canvas.dataset.fileDropBusy='true';
-  const currentReference=()=>U.conversations.get(payload.sessionID)?.attachments?.find(row=>row.id===payload.reference.id);
+  const currentReference=()=>(U.conversations.getAttachments?.(payload.sessionID)||U.conversations.get(payload.sessionID)?.attachments||[]).find(row=>row.id===payload.reference.id);
   const validateReference=()=>{const latest=currentReference();if(!latest||JSON.stringify(latest)!==JSON.stringify(payload.reference))throw Error('读取时该文件的工作表或范围已变化，请重新拖动。');};
   try{await persist({flush:true});if(disposed||U.p.id!==projectID)return;if(U.saveError)throw U.saveError;validateReference();let material=U.p.materials.find(row=>row.id===payload.reference.materialID)||U.A.assetLibrary()[payload.reference.materialID];
    if(!material){const result=await U.E.chatAttachments.read([{...payload.reference,selected:true}],{images:false});if(disposed||U.p.id!==projectID)return;validateReference();material=assemblyFileDropMaterial(payload.reference,result.rows,U.M);}

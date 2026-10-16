@@ -602,7 +602,7 @@ test('current session exclusions filter saved answers, selected paper previews a
   workbenchConversations:{get:id=>id===session.id?plain(session):null,subscribe:()=>()=>{}},chatAttachments:{async read(refs,options){reads.push({refs:plain(refs),sessionID:options.sessionID});return {rows:[],images:[],warnings:[]};}}
  });
  const result=await h.E.runWorkbenchTask({prompt:'讨论当前资料',mode:'discuss',sessionID:session.id,history,selectedSource:{id:3,paperItemID:3,kind:'paper',title:'已取消选择的论文'}});
- assert.equal(reads[0].sessionID,session.id);assert.equal(h.calls.some(value=>value?.kind==='readPaper'),false);assert.equal(result.sources.length,0);assert.equal(JSON.stringify(history),before);
+ assert.equal(reads.length,0,'没有选用资料时不调用文件读取器');assert.equal(h.calls.some(value=>value?.kind==='readPaper'),false);assert.equal(result.sources.length,0);assert.equal(JSON.stringify(history),before);
 });
 test('a separately selected material can be read even when the parent PDF is unselected',async()=>{
  const session={id:'local-material-scope',attachments:[{id:'attachment:9',attachmentID:9,paperItemID:3,kind:'pdf',selected:false},{id:'material:m1',materialID:'m1',attachmentID:9,paperItemID:3,selected:true}]};

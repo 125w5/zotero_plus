@@ -23,14 +23,13 @@
 #sidebarContainer .annotation .preview[data-easysch-generated=translation] .comment{color:var(--es-read-muted)}
 #sidebarContainer .annotation .preview .comment .content{padding:7px 10px}
 #sidebarContainer .annotation .preview .text .content{padding:7px 12px 7px 17px}
-.easysch-comment-lane{right:auto;width:178px;overflow:visible}
-.easysch-margin-card{width:178px;right:auto}
-.easysch-margin-card{border-left-color:var(--comment-color,#87aaca)}
+.easysch-margin-card{right:auto}
 .easysch-margin-card[data-generated=translation]{color:var(--es-read-muted)}
 .easysch-comment-connector{position:absolute;pointer-events:none;height:1px;background:var(--comment-color,#87aaca);opacity:.75}
-.easysch-comment-map{position:absolute;top:36px;bottom:8px;right:3px;width:5px;z-index:34;pointer-events:none}
-.easysch-comment-marker{position:absolute;width:5px;height:5px;min-height:5px;padding:0;border:0;border-radius:2px;background:var(--comment-color,#87aaca);pointer-events:auto;cursor:pointer;transition:width 120ms}
-.easysch-comment-marker:hover{width:9px;transform:translateX(-4px)}
+.easysch-comment-map{position:fixed;top:58px;bottom:12px;right:0;width:16px;z-index:34;pointer-events:none}
+.easysch-comment-marker{position:absolute;display:grid;place-items:center;width:16px;height:18px;min-height:18px;padding:0;border:0;border-radius:5px;background:transparent;pointer-events:auto;cursor:pointer}
+.easysch-comment-marker:before{content:'';width:4px;height:8px;border-radius:3px;background:var(--comment-color,#87aaca);box-shadow:0 1px 3px #172b4318;transition:width 120ms}
+.easysch-comment-marker:hover:before,.easysch-comment-marker:focus-visible:before{width:7px}
 .primary-editor.ProseMirror{font:14px/1.75 system-ui,'Microsoft YaHei',sans-serif;color:var(--es-read-ink);padding:18px 18px 32px}
 .primary-editor.ProseMirror :is(h1,h2,h3){font-family:system-ui,'Microsoft YaHei',sans-serif;line-height:1.45;margin:18px 0 10px}
 .primary-editor.ProseMirror h1{font-size:20px}.primary-editor.ProseMirror h2{font-size:17px}.primary-editor.ProseMirror h3{font-size:15px}

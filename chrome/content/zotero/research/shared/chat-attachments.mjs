@@ -3,6 +3,9 @@
 // never a second file database or a copy of a material card.
 export const CHAT_ATTACHMENT_MIME = 'application/x-easysch-chat-attachment';
 export const CHAT_ATTACHMENT_LIMIT = 12;
+export function conversationFileReferences(session={}) {
+ return normalizeChatAttachments([...(session.attachments||[]),...(session.libraryFiles||[])]);
+}
 export function chatAttachmentState(item = {}) {
  return {selected:item.selected !== false,featured:item.featured === true,
   ...(typeof item.sheet==='string'&&item.sheet?{sheet:item.sheet}:{}),
@@ -12,7 +15,7 @@ export function selectedChatAttachments(value=[],{featuredOnly=false}={}) {
  return normalizeChatAttachments(value).filter(item=>item.selected&&(!featuredOnly||item.featured));
 }
 export function chatFileScopeSignature(session={}){
- return JSON.stringify([normalizeChatAttachments(session.attachments).map(row=>[row.id,row.selected,row.sheet||'',row.ranges||[]]).sort((a,b)=>a[0].localeCompare(b[0])),[...(session.detachedAttachments||[])].sort()]);
+ return JSON.stringify([conversationFileReferences(session).map(row=>[row.id,row.selected,row.sheet||'',row.ranges||[]]).sort((a,b)=>a[0].localeCompare(b[0])),[...(session.detachedAttachments||[])].sort()]);
 }
 function sourceReferenceMatch(reference,source={}){
  const stable=String(source.stableID||source.sourceID||''),materialID=source.materialID||source.id;
@@ -33,13 +36,16 @@ function sourceReferenceMatch(reference,source={}){
 // selects from that paper. Exact material/cell identity takes precedence over
 // the broader paper relationship. Titles are never used to guess identity.
 export function conversationChatFileContext(session={},history=[]){
- const current=normalizeChatAttachments(session.attachments),selected=current.filter(row=>row.selected),present=new Set(current.map(row=>row.id)),known=new Map(current.map(row=>[row.id,row]));
+ const current=conversationFileReferences(session),selected=current.filter(row=>row.selected),present=new Set(current.map(row=>row.id)),known=new Map(current.map(row=>[row.id,row]));
  for(const message of history||[])for(const ref of normalizeChatAttachments(message.attachments))if(!known.has(ref.id))known.set(ref.id,ref);
+ if(session.libraryScopeKey)for(const message of history||[])for(const source of message.sources||[]){const attachmentID=source.attachmentID||source.anchor?.attachmentID;if(attachmentID){const id='attachment:'+attachmentID;if(!known.has(id))known.set(id,{id,attachmentID,paperItemID:source.paperItemID||source.anchor?.paperItemID});}}
  for(const id of session.detachedAttachments||[])if(!known.has(id)){
   const [kind,...parts]=String(id).split(':'),key=parts.join(':');known.set(id,{id,...(kind==='material'?{materialID:key}:kind==='attachment'?{attachmentID:Number(key)}:{})});
  }
  const blocked=[...known.values()].filter(row=>!present.has(row.id)||!current.find(ref=>ref.id===row.id)?.selected);
  const allowsSource=source=>{
+  const local=source.materialID||source.attachmentID||source.paperItemID||source.paperID||source.anchor?.attachmentID||source.anchor?.paperItemID||source.kind==='material'||source.kind==='paper'||/^(?:material|attachment):/u.test(String(source.stableID||source.sourceID||''));
+  if(session.libraryScopeKey&&local&&!selected.some(ref=>sourceReferenceMatch(ref,source)>0))return false;
   const denied=blocked.reduce((score,ref)=>Math.max(score,sourceReferenceMatch(ref,source)),0);if(!denied)return true;
   return selected.reduce((score,ref)=>Math.max(score,sourceReferenceMatch(ref,source)),0)>denied;
  };
@@ -84,7 +90,9 @@ export function mergeChatAttachments(current, incoming) {
   }
   else {indexes.set(row.id,rows.length);rows.push(row);}
  }
- if (rows.length > CHAT_ATTACHMENT_LIMIT) throw Error('一次对话最多关联 12 份资料，请先移除不需要的资料。');
+ // Keep unselected candidates in the conversation just like folder references.
+ // The model context is limited by selection, not by the saved catalogue size.
+ if (rows.filter(row=>row.selected).length > CHAT_ATTACHMENT_LIMIT) throw Error('本次最多选用 12 份资料，请先取消部分资料，再选择这一份。');
  return rows;
 }
 export function chatAttachmentDropPayload(dataTransfer) {

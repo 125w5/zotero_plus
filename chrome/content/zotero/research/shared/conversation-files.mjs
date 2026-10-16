@@ -11,6 +11,9 @@ export function conversationFileMatches(file,query='',filter='all') {
  return query.normalize('NFKC').trim().toLocaleLowerCase().split(/\s+/u).every(word=>haystack.includes(word));
 }
 const node=(doc,tag,cls,text)=>{const value=doc.createElementNS(HTML,tag);if(cls)value.className=cls;if(text!==undefined)value.textContent=text;return value;};
+const ICONS={plus:['M12 5v14','M5 12h14'],search:['M21 21l-4.35-4.35','M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0'],chat:['M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5'],folder:['M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'],file:['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z','M14 2v6h6','M8 13h8','M8 17h5'],image:['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z','M3 16l5-5 4 4 3-3 6 6','M8 7h.01'],table:['M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z','M3 9h18','M3 15h18','M9 3v18','M15 3v18'],star:['m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z'],close:['m6 6 12 12','M18 6 6 18'],back:['m15 18-6-6 6-6'],import:['M12 3v12','m7 10 5 5 5-5','M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4']};
+function icon(doc,name,cls=''){const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.6');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');svg.setAttribute('aria-hidden','true');if(cls)svg.setAttribute('class',cls);for(const d of ICONS[name]||ICONS.file){const path=doc.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',d);svg.append(path);}return svg;}
+const fileIcon=file=>file.kind==='spreadsheet'?'table':file.kind==='image'?'image':'file';
 function styles(doc){if(doc.querySelector('[data-conversation-files-style]'))return;const link=node(doc,'link');link.rel='stylesheet';link.href=new URL('./conversation-files.css',import.meta.url).href;link.dataset.conversationFilesStyle='true';(doc.head||doc.documentElement).append(link);}
 export const conversationFileLabel=file=>({pdf:'论文',paper:'论文',spreadsheet:'表格',docx:'文档',text:'文本',image:'图片',material:'素材'}[file.kind]||'文件');
 
@@ -22,47 +25,48 @@ export async function receiveConversationDrop({dataTransfer,E,sessionID,onProgre
   await E.workbenchConversations.append(sessionID,{role:'user',text:'引用的历史讨论（作为资料）：\n\n'+(answer.message.question?'原问题：'+answer.message.question+'\n\n':'')+answer.message.text,sources:answer.message.sources||[],importedFrom:{sessionID:answer.sessionID,messageID:answer.message.id}},{origin:'message-drop'});
   return '已复制问题、回答和来源到目标对话；尚未提交新任务。';
  }
- await E.chatAttachments.attach(sessionID,payload,{source:'drop'});return '已关联资料，原文件保留；本次回答可以使用。';
+ await E.chatAttachments.attach(sessionID,payload,{source:'drop'});return E.workbenchConversations.getAttachmentNotice?.(sessionID)||'已保存到本次资料。';
 }
 
 /** Files belong to a conversation. Previewing, selecting and starring are three
  * independent operations; opening a preview never changes the model's scope. */
 export function mountConversationFiles({host,E,getSessionID,getSessions=()=>[],getFiles=id=>E.chatAttachments?.get(id)||[],getContext=()=>null,getRevision=()=>0,onSession=()=>{},onNew=()=>{},onRemoveSession,onPreview=()=>{},onFileState=(file,patch,id)=>E.chatAttachments.setState(id,file.id,patch),onFileDrag=(event,file,id)=>E.chatAttachments.setDragData(event,file,id),onChange=()=>{},onError=()=>{},title='研究空间',sessions=true,fileFilters=[['all','全部'],['selected','已选'],['featured','精选'],['papers','论文'],['tables','表格']],matchesFile=conversationFileMatches}) {
  const doc=host.ownerDocument;styles(doc);const root=node(doc,'aside','conversation-files');root.setAttribute('aria-label','对话与文件');host.append(root);
- const head=node(doc,'header','conversation-files-heading'),label=node(doc,'strong','',title),add=node(doc,'button','conversation-files-new','＋ 新对话');add.type='button';add.title='在当前研究空间新建对话';add.setAttribute('aria-label',add.title);head.append(label,add);root.append(head);
- const context=node(doc,'div','conversation-files-context');root.append(context);
- const query=node(doc,'input','conversation-files-search');query.type='search';query.placeholder='搜索对话或文件';query.setAttribute('aria-label',query.placeholder);root.append(query);
+ const head=node(doc,'header','conversation-files-heading'),label=node(doc,'strong','',title),add=node(doc,'button','conversation-files-new');add.append(icon(doc,'plus'),node(doc,'span','','新对话'));add.type='button';add.title='在当前研究空间新建对话';add.setAttribute('aria-label',add.title);head.append(label,add);root.append(head);
+ const search=node(doc,'div','conversation-files-search-wrap'),query=node(doc,'input','conversation-files-search');query.type='search';query.placeholder='搜索对话、论文或文件';query.setAttribute('aria-label',query.placeholder);search.append(icon(doc,'search'),query);root.append(search);
+ const historyHead=node(doc,'div','conversation-files-history-heading','对话');historyHead.hidden=!sessions;root.append(historyHead);
  const history=node(doc,'nav','conversation-files-history');history.setAttribute('aria-label','对话');history.hidden=!sessions;root.append(history);
- const fileHead=node(doc,'div','conversation-files-subheading'),count=node(doc,'span','','本次资料'),importer=node(doc,'button','conversation-files-import','＋ 导入');importer.type='button';importer.title='导入论文、Excel、文档或图片';fileHead.append(count,importer);root.append(fileHead);
+ const fileHead=node(doc,'div','conversation-files-subheading'),count=node(doc,'span','conversation-files-count','本次资料'),importer=node(doc,'button','conversation-files-import');importer.append(icon(doc,'plus'),node(doc,'span','','导入'));importer.type='button';importer.title='导入论文、Excel、文档或图片';fileHead.append(count,importer);root.append(fileHead);
+ const context=node(doc,'div','conversation-files-context');root.append(context);
  const filters=node(doc,'div','conversation-files-filters'),list=node(doc,'div','conversation-files-list'),status=node(doc,'p','conversation-files-status');status.setAttribute('role','status');
  let filter='all',busy=false,creating=false,disposed=false,historySignature='',listSignature='',contextSignature='',selectionRevision=0;const filterButtons=[];
  const fail=error=>{if(!disposed){status.textContent=error.message||String(error);onError(error);}};
  const action=fn=>()=>Promise.resolve().then(fn).catch(fail);
  for(const [value,text]of fileFilters){const button=node(doc,'button','',text);button.type='button';button.dataset.fileFilter=value;button.onclick=()=>{filter=value;render();};filters.append(button);filterButtons.push(button);}
- const hint=node(doc,'small','conversation-files-drag-hint','拖入论文下载并加入资料；拖出 ⠿ 可用于对话、装配或 PPT。');
+ const hint=node(doc,'small','conversation-files-drag-hint','拖入文件 · 拖出用于装配或 PPT');hint.title='拖入论文会下载并加入本次资料。使用文件左侧的拖动手柄，可添加到其他对话、装配或 PPT。';
  root.append(filters,list,hint,status);add.onclick=action(async()=>{if(creating)return;creating=true;add.disabled=true;add.setAttribute('aria-busy','true');try{await onNew();}finally{creating=false;if(!disposed){add.disabled=false;add.removeAttribute?.('aria-busy');render();}}});
  const droppedOn=async(event,id)=>{
   const answer=resolveDroppedAnswer(event.dataTransfer,E.workbenchConversations),payload=chatAttachmentDropPayload(event.dataTransfer),paper=discoveryPaperDrop(event.dataTransfer);if(!answer&&!payload&&!paper)return;
   event.preventDefault();event.stopPropagation();delete root.dataset.drop;for(const row of history.children)delete row.dataset.drop;
   status.textContent=paper?'正在获取论文…':'正在关联资料…';
-  const message=await receiveConversationDrop({dataTransfer:event.dataTransfer,E,sessionID:id,onProgress:text=>{if(!disposed&&id===getSessionID())status.textContent=text;}});if(!disposed&&id===getSessionID())status.textContent=message||'';
+  const message=await receiveConversationDrop({dataTransfer:event.dataTransfer,E,sessionID:id,onProgress:text=>{if(!disposed&&id===getSessionID())status.textContent=text;}});if(!disposed&&id===getSessionID())status.textContent=(!answer&&E.workbenchConversations?.getAttachmentNotice?.(id))||message||'';
   if(!disposed){render();onChange(id);}
  };
  const over=(event,target,id)=>{if(!id||!chatAttachmentDropPayload(event.dataTransfer)&&!Array.from(event.dataTransfer?.types||[]).some(type=>[RESEARCH_MESSAGE_MIME,DISCOVERY_PAPER_MIME].includes(type)))return;event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='copy';target.dataset.drop='true';};
  root.ondragover=event=>over(event,root,getSessionID());root.ondragleave=event=>{if(!root.contains(event.relatedTarget))delete root.dataset.drop;};root.ondrop=event=>{droppedOn(event,getSessionID()).catch(fail);};
- importer.onclick=action(async()=>{if(busy)return;const id=getSessionID();if(!id)return;busy=true;importer.disabled=true;try{await E.chatAttachments.attach(id);if(!disposed&&id===getSessionID()){render();onChange(id);}}catch(error){if(!disposed&&id===getSessionID())throw error;}finally{busy=false;if(!disposed)importer.disabled=false;}});
+ importer.onclick=action(async()=>{if(busy)return;const id=getSessionID();if(!id)return;busy=true;importer.disabled=true;status.textContent='';try{await E.chatAttachments.attach(id);if(!disposed&&id===getSessionID()){status.textContent=E.workbenchConversations?.getAttachmentNotice?.(id)||'';render();onChange(id);}}catch(error){if(!disposed&&id===getSessionID())throw error;}finally{busy=false;if(!disposed)importer.disabled=false;}});
 	query.oninput=event=>{if(!event.isComposing)render();};query.oncompositionend=render;
  function render(){
   if(disposed)return;const id=getSessionID(),files=getFiles(id),words=query.value.trim(),scope=getContext()||{},sessionRows=getSessions();
   // Draft/message notifications must not rebuild unrelated file controls or
   // conversation buttons. Keep their focus, scroll position and drag targets.
-  count.textContent='本次资料 · '+files.filter(file=>file.selected!==false).length+'/'+files.length;
-  const nextContext=JSON.stringify([scope.project,scope.folder]);if(nextContext!==contextSignature){contextSignature=nextContext;context.replaceChildren();for(const [key,value]of [['项目',scope.project],['文件夹',scope.folder]])if(value)context.append(node(doc,'span','',key+' · '+value));context.hidden=!context.children.length;}
+  count.replaceChildren(node(doc,'span','','本次资料'),node(doc,'span','conversation-files-count-value',files.filter(file=>file.selected!==false).length+'/'+files.length));
+  const nextContext=JSON.stringify([scope.project,scope.folder]);if(nextContext!==contextSignature){contextSignature=nextContext;const parts=[scope.project,scope.folder].filter((value,index,all)=>value&&all.indexOf(value)===index),text=parts.join(' / ');context.replaceChildren();if(text)context.append(icon(doc,'folder'),node(doc,'span','',text));context.title=text;context.hidden=!text;}
   importer.disabled=busy||!id||!E.chatAttachments;
   const nextHistory=JSON.stringify([id,words,sessionRows.map(row=>[row.id,row.title])]);if(nextHistory!==historySignature){historySignature=nextHistory;const historyScroll=history.scrollTop;history.replaceChildren();
   for(const session of sessionRows.filter(value=>!words||value.title?.toLocaleLowerCase().includes(words.toLocaleLowerCase())).slice().reverse()){
-   const button=node(doc,'button','conversation-files-session',session.title||'新对话');button.type='button';button.dataset.sessionID=session.id;button.setAttribute('aria-current',String(session.id===id));button.title=session.title||'新对话';button.onclick=action(async()=>{if(session.id===getSessionID())return;const token=++selectionRevision;button.setAttribute('aria-busy','true');try{await onSession(session.id);}finally{if(!disposed){button.removeAttribute?.('aria-busy');if(token===selectionRevision)render();}}});history.append(button);
-   if(onRemoveSession){const row=node(doc,'div','conversation-files-session-row'),remove=node(doc,'button','conversation-files-session-remove','×');remove.type='button';remove.title='删除对话';remove.setAttribute('aria-label','删除对话 '+(session.title||'新对话'));remove.onclick=action(async()=>{remove.disabled=true;try{await onRemoveSession(session);render();}finally{if(!disposed)remove.disabled=false;}});row.append(button,remove);history.append(row);}
+   const button=node(doc,'button','conversation-files-session');button.append(icon(doc,'chat'),node(doc,'span','',session.title||'新对话'));button.type='button';button.dataset.sessionID=session.id;button.setAttribute('aria-current',String(session.id===id));button.title=session.title||'新对话';button.onclick=action(async()=>{if(session.id===getSessionID())return;const token=++selectionRevision;button.setAttribute('aria-busy','true');try{await onSession(session.id);}finally{if(!disposed){button.removeAttribute?.('aria-busy');if(token===selectionRevision)render();}}});history.append(button);
+   if(onRemoveSession){const row=node(doc,'div','conversation-files-session-row'),remove=node(doc,'button','conversation-files-session-remove');remove.append(icon(doc,'close'));remove.type='button';remove.title='删除对话';remove.setAttribute('aria-label','删除对话 '+(session.title||'新对话'));remove.onclick=action(async()=>{remove.disabled=true;try{await onRemoveSession(session);render();}finally{if(!disposed)remove.disabled=false;}});row.append(button,remove);history.append(row);}
    button.ondragover=event=>over(event,button,session.id);button.ondragleave=()=>delete button.dataset.drop;button.ondrop=event=>{droppedOn(event,session.id).catch(fail);};
   }
   history.scrollTop=historyScroll;}
@@ -76,15 +80,15 @@ export function mountConversationFiles({host,E,getSessionID,getSessions=()=>[],g
    const select=node(doc,'input','conversation-file-check');select.type='checkbox';select.checked=file.selected!==false;select.setAttribute('aria-label','本次回答使用 '+file.title);
    const update=async patch=>{if(disposed||id!==getSessionID())return;select.disabled=true;try{await onFileState(file,patch,id);if(!disposed&&id===getSessionID()){render();onChange(id);}}catch(error){if(!disposed&&id===getSessionID())throw error;}finally{if(!disposed)select.disabled=false;}};
    select.onchange=action(()=>update({selected:select.checked}));
-   const preview=node(doc,'button','conversation-file-preview'),icon=node(doc,'span','conversation-file-icon',file.kind==='spreadsheet'?'▦':file.kind==='image'?'▧':'▤');preview.type='button';preview.append(icon,node(doc,'span','conversation-file-name',file.title));preview.title=file.title;preview.onclick=action(()=>{if(!disposed&&id===getSessionID())return onPreview(file,id);});
-   const star=node(doc,'button','conversation-file-star',file.featured?'★':'☆');star.type='button';star.title=file.featured?'取消精选':'设为精选';star.setAttribute('aria-label',star.title+' '+file.title);star.setAttribute('aria-pressed',String(!!file.featured));star.onclick=action(()=>update({featured:!file.featured}));
+   const preview=node(doc,'button','conversation-file-preview');preview.type='button';preview.append(icon(doc,fileIcon(file),'conversation-file-icon'),node(doc,'span','conversation-file-name',file.title));preview.title=file.title;preview.onclick=action(()=>{if(!disposed&&id===getSessionID())return onPreview(file,id);});
+   const star=node(doc,'button','conversation-file-star');star.append(icon(doc,'star'));star.type='button';star.title=file.featured?'取消精选':'设为精选';star.setAttribute('aria-label',star.title+' '+file.title);star.setAttribute('aria-pressed',String(!!file.featured));star.onclick=action(()=>update({featured:!file.featured}));
    const meta=node(doc,'small','conversation-file-meta',conversationFileLabel(file)+(file.sheet?' · '+file.sheet:''));
    row.append(grip,select,preview,star,meta);list.append(row);
   }
-  if(!list.children.length)list.append(node(doc,'p','conversation-files-empty',files.length?'没有符合条件的文件':'导入论文、表格或文档，作为这次对话的资料。'));
+  if(!list.children.length){const empty=node(doc,'div','conversation-files-empty');empty.append(icon(doc,files.length?'search':'import'),node(doc,'span','',files.length?'没有匹配的资料':'拖入论文、图片或表格'));list.append(empty);}
   list.scrollTop=scroll;
  }
- render();return {root,render,destroy(){disposed=true;root.remove();}};
+ render();return {root,render,setFilter(value){if(!fileFilters.some(([key])=>key===value))return false;filter=value;render();return true;},destroy(){disposed=true;root.remove();}};
 }
 
 /** A lightweight detail surface, never a second PDF reader. Generation guards
@@ -98,7 +102,7 @@ export function mountConversationFileDetail({host,E,getSessionID,onBack=()=>{},o
  function back(){clear();host.hidden=true;onBack();}
  async function open(file,sessionID=getSessionID()){
   if(disposed||!file||sessionID!==getSessionID())return;clear();openedFile=file.id;openedSession=sessionID;host.hidden=false;const token=generation;controller=abortController();const signal=controller.signal,current=()=>!disposed&&!signal.aborted&&generation===token&&getSessionID()===sessionID&&host.isConnected;
-  host.classList.add('conversation-file-detail');const header=node(doc,'header','conversation-file-detail-header'),backButton=node(doc,'button','conversation-file-back','‹');backButton.type='button';backButton.title='返回资料';backButton.setAttribute('aria-label',backButton.title);backButton.onclick=back;header.append(backButton,node(doc,'h3','',file.title));host.append(header);
+  host.classList.add('conversation-file-detail');const header=node(doc,'header','conversation-file-detail-header'),backButton=node(doc,'button','conversation-file-back');backButton.append(icon(doc,'back'));backButton.type='button';backButton.title='返回资料';backButton.setAttribute('aria-label',backButton.title);backButton.onclick=back;const heading=node(doc,'div','conversation-file-detail-title');heading.append(node(doc,'small','',conversationFileLabel(file)),node(doc,'h3','',file.title));header.append(backButton,heading);host.append(header);
   const body=node(doc,'div','conversation-file-detail-body'),state=node(doc,'p','conversation-files-status','正在读取资料…');body.append(state);host.append(body);
   if(E.chatAttachments?.location){const location=node(doc,'details','conversation-file-location'),summary=node(doc,'summary','','保存位置');location.append(summary);header.after(location);Promise.resolve().then(()=>E.chatAttachments.location(sessionID,file.id)).then(value=>{if(!current())return;summary.textContent=(value.folders?.length?'文件夹 · '+value.folders.join(' / '):value.library||'本地资料');if(value.path){location.append(node(doc,'code','',value.path));const reveal=node(doc,'button','','在系统文件夹中显示');reveal.type='button';reveal.onclick=()=>{if(current())E.chatAttachments.reveal(sessionID,file.id).catch(onError);};location.append(reveal);}}).catch(error=>{if(current()){summary.textContent='保存位置暂不可用';location.append(node(doc,'span','',error.message));}});}
   try{

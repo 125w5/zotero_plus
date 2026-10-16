@@ -18,6 +18,7 @@ export function normalizeConversations(value={}) {
 }
 export function conversationScope(value={}) {
  if(typeof value==='string')return value;
+ if(value.libraryScopeKey)return (value.pptDraftID?'ppt:'+value.pptDraftID+':':'')+'library:'+value.libraryScopeKey;
  const paperID=value.paperID||value.paperItemID||value.selectedSource?.paperItemID||value.selectedSource?.paperID;
  if(paperID)return 'paper:'+paperID;
  if(value.pptDraftID)return 'ppt:'+value.pptDraftID;

@@ -40,15 +40,17 @@ test('assembly legacy import is idempotent and session CRUD never alters source 
  assert.equal(fixture.data.researchMaterials.source.summary,'用户修改');assert.equal(fixture.data.papers.paper.title,'原论文');assert.equal(legacy[0].id,undefined);
  await S.updateHome({query:'卷积神经网络'});assert.equal(S.snapshot().home.query,'卷积神经网络');
 });
-test('opening, typing, configuring or attaching to an empty conversation never creates a saved history row',async()=>{
+test('browsing stays transient while nonempty drafts and deliberately imported files survive restart',async()=>{
  const fixture=setup(),{S}=fixture;S.getActive();assert.equal(fixture.writes,0);
- const draft=await S.open({paperID:12,origin:'reader',title:'原论文'});await S.update(draft.id,{draft:'尚未发送',modelID:'chosen-model',thinkingLevel:'high'});
- await S.attach(draft.id,[{id:'material:m1',materialID:'m1',kind:'material',title:'已有素材'}]);
+ const draft=await S.open({paperID:12,origin:'reader',title:'原论文'});await S.update(draft.id,{draft:'  ',modelID:'chosen-model',thinkingLevel:'high'});
  assert.equal(S.get(draft.id).isDraft,true);assert.equal(S.list().length,0);assert.equal(fixture.writes,0);assert.equal(fixture.data.researchWorkbench,undefined);
+ await S.update(draft.id,{draft:'尚未发送'});assert.equal(S.get(draft.id).isDraft,undefined);assert.equal(S.list().length,1);
+ const reloaded=setup(fixture.data).S;assert.equal(reloaded.get(draft.id).draft,'尚未发送');assert.equal(reloaded.get(draft.id).modelID,'chosen-model');assert.equal(reloaded.get(draft.id).thinkingLevel,'high');
+ const imported=await S.open({paperID:13,origin:'reader',title:'导入资料'});await S.attach(imported.id,[{id:'material:m1',materialID:'m1',kind:'material',title:'已有素材'}]);
+ assert.equal(S.get(imported.id).isDraft,undefined);assert.equal(S.list().length,2);assert.equal(setup(fixture.data).S.get(imported.id).attachments[0].materialID,'m1');
  const again=await S.open({paperID:12,origin:'academic'});assert.equal(again.id,draft.id);assert.equal(again.draft,'尚未发送');
  await S.append(draft.id,{id:'first-question',role:'user',text:'请解释式(3)中的下标'});
- assert.equal(S.list().length,1);assert.equal(S.get(draft.id).isDraft,undefined);assert.equal(fixture.data.researchWorkbench.sessions.length,1);
- assert.equal(S.get(draft.id).attachments[0].materialID,'m1');assert.equal(S.get(draft.id).modelID,'chosen-model');
+ assert.equal(S.list().length,2);assert.equal(S.get(draft.id).isDraft,undefined);assert.equal(fixture.data.researchWorkbench.sessions.length,2);assert.equal(S.get(draft.id).modelID,'chosen-model');
 });
 test('paper scopes share across academic and logo surfaces, stay separate by default, and retain explicit inheritance',async()=>{
  const fixture=setup(),{S}=fixture,a=await S.open({paperID:1,origin:'reader'});await S.append(a.id,{role:'user',text:'论文一的研究问题'});await S.append(a.id,{role:'assistant',text:'$E_{\\mathrm{F}}$ 是给定的量',sources:[{paperItemID:1,attachmentID:3,position:{pageIndex:4}}]});
@@ -56,7 +58,7 @@ test('paper scopes share across academic and logo surfaces, stay separate by def
  await S.select(a.id,{scope:{paperID:2}});assert.equal(S.getForScope({paperID:2}).id,a.id,'用户明确继承时两个入口引用同一实际历史');
  const reloaded=setup(fixture.data);assert.equal(reloaded.S.getForScope({paperID:2}).id,a.id);assert.equal(reloaded.S.getForScope({paperID:1}).messages[1].sources[0].attachmentID,3);
  const copy=await S.inherit(a.id,{paperID:3,origin:'reader'});assert.equal(copy.isDraft,true);assert.equal(S.list().length,1,'复制上下文不算用户开始新对话');
- await S.update(copy.id,{messages:copy.messages,draft:'继续问'});assert.equal(S.list().length,1);
+ await S.update(copy.id,{messages:copy.messages,draft:'继续问'});assert.equal(S.list().length,2,'用户编写的未发送问题也会保留');
  await S.append(copy.id,{role:'user',text:'将这项证据与论文三比较'});assert.equal(S.list().length,2);assert.equal(S.get(a.id).messages.length,2);assert.equal(S.get(copy.id).inheritedFrom,a.id);
 });
 test('simultaneous paper opens converge before first-send appends and background legacy cannot replace inherited scope',async()=>{
@@ -122,7 +124,7 @@ test('conversation cache ignores unrelated branch revisions and observes a chang
 test('projected snapshots and subscriptions preserve active and requested scopes without exposing other transcripts',async()=>{
  const {S}=setup({},true),a=await S.open({id:'paper-a',paperID:1}),b=await S.open({id:'paper-b',paperID:2}),draft=await S.open({id:'draft-c',paperID:3});await S.append(a.id,{role:'user',text:'论文一完整问题'});await S.attach(a.id,[{id:'attachment:31',attachmentID:31,title:'论文一.pdf',kind:'pdf'}]);await S.append(b.id,{role:'user',text:'论文二完整问题'});await S.update(draft.id,{draft:'未发送的问题'});await S.select(b.id);
  let retained=a.id,projected,full;const off=S.subscribe(state=>{projected=state;},{summary:true,sessionID:()=>retained}),offFull=S.subscribe(state=>{full=state;});await S.updateHome({query:'研究方向'});
- assert.equal(projected.sessions.find(row=>row.id===a.id).messages[0].text,'论文一完整问题');assert.equal(projected.sessions.find(row=>row.id===b.id).messages[0].text,'论文二完整问题');const omitted=projected.sessions.find(row=>row.id===draft.id);assert.equal(omitted.isDraft,true);assert.equal(omitted.messageCount,0);assert.equal(Object.hasOwn(omitted,'messages'),false);assert.equal(Object.hasOwn(omitted,'draft'),false);assert.equal(full.sessions.find(row=>row.id===draft.id).draft,'未发送的问题','default subscription still returns complete sessions');
+ assert.equal(projected.sessions.find(row=>row.id===a.id).messages[0].text,'论文一完整问题');assert.equal(projected.sessions.find(row=>row.id===b.id).messages[0].text,'论文二完整问题');const omitted=projected.sessions.find(row=>row.id===draft.id);assert.equal(omitted.isDraft,undefined);assert.equal(omitted.messageCount,0);assert.equal(Object.hasOwn(omitted,'messages'),false);assert.equal(Object.hasOwn(omitted,'draft'),false);assert.equal(full.sessions.find(row=>row.id===draft.id).draft,'未发送的问题','default subscription still returns complete sessions');
  projected.sessions.find(row=>row.id===a.id).attachments[0].title='本地更改';projected.sessions.find(row=>row.id===draft.id).title='外部标题';assert.equal(S.getAttachments(a.id)[0].title,'论文一.pdf');assert.notEqual(S.get(draft.id).title,'外部标题');
  retained=draft.id;await S.updateHome({query:'不同方向'});assert.equal(projected.sessions.find(row=>row.id===draft.id).draft,'未发送的问题');assert.equal(Object.hasOwn(projected.sessions.find(row=>row.id===a.id),'messages'),false);
  const selected=await S.select(draft.id,{scope:{paperID:3},summary:true});assert.equal(selected.activeSessionID,draft.id);assert.equal(selected.sessions.find(row=>row.id===draft.id).draft,'未发送的问题');assert.equal(Object.hasOwn(selected.sessions.find(row=>row.id===b.id),'messages'),false);assert.equal(S.getForScope({paperID:3}).id,draft.id);assert.equal(S.getForScope({paperID:1}).id,a.id);

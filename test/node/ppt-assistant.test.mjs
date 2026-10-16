@@ -8,6 +8,13 @@ test('PPT discussions retain their own draft history rather than adopting anothe
  assert.deepEqual(pptConversationSessions(rows,'A').map(row=>row.id),['second','first']);assert.equal(rows[0].id,'other-draft');
 });
 
+test('PPT history follows the current discussion source scope, including an explicit paper set without a native folder',()=>{
+ const rows=[{id:'explicit',pptDraftID:'A',updatedAt:'2026-10-15T10:00:00Z'},{id:'folder-a',pptDraftID:'A',libraryScopeKey:'collection:A',updatedAt:'2026-10-15T12:00:00Z'},{id:'folder-b',pptDraftID:'A',libraryScopeKey:'collection:B',updatedAt:'2026-10-15T13:00:00Z'},{id:'other',pptDraftID:'B',libraryScopeKey:'collection:A',updatedAt:'2026-10-15T14:00:00Z'}];
+ assert.deepEqual(pptConversationSessions(rows,'A',{libraryScopeKey:''}).map(row=>row.id),['explicit']);
+ assert.deepEqual(pptConversationSessions(rows,'A',{libraryScopeKey:'collection:A'}).map(row=>row.id),['folder-a']);
+ assert.deepEqual(pptConversationSessions(rows,'A',{libraryScopeKey:'collection:B'}).map(row=>row.id),['folder-b']);
+});
+
 test('PPT refreshes only its current transcript or affected history without reading unrelated messages',()=>{
  const row=(id,pptDraftID)=>({id,pptDraftID,get messages(){throw Error('Refresh routing must not inspect transcripts');}}),current=row('current','A'),peer=row('peer','A'),paper=row('paper',undefined),other=row('other','B'),state={sessions:[current,peer,paper,other]},scope={draftID:'A',sessionID:'current',knownSessionIDs:new Set(['current','peer'])};
  for(const action of ['update','attach','detach','attachment-state','select'])assert.equal(pptConversationRefresh(state,{action,sessionID:'paper'},scope),'none',action);
@@ -21,6 +28,16 @@ test('PPT refreshes only its current transcript or affected history without read
  assert.equal(pptConversationRefresh({...state,sessions:[...state.sessions,row('new','A')]},{action:'create-draft'},scope),'rail');
  assert.equal(pptConversationRefresh(state,{action:'home'},scope),'none');
  assert.equal(pptConversationRefresh(state,undefined,scope),'current','legacy notifications retain their conservative refresh');
+});
+
+test('PPT notifications from another source folder do not refresh the current discussion files',()=>{
+ const current={id:'current',pptDraftID:'A'},peer={id:'peer',pptDraftID:'A'},foreign={id:'foreign',pptDraftID:'A',libraryScopeKey:'collection:B'},state={sessions:[current,peer,foreign]},scope={draftID:'A',sessionID:'current',libraryScopeKey:'',knownSessionIDs:new Set(['current','peer'])};
+ assert.equal(pptConversationRefresh(state,{action:'update',sessionID:'foreign',fields:['title']},scope),'none');
+ assert.equal(pptConversationRefresh(state,{action:'create-draft'},scope),'none');
+ assert.equal(pptConversationRefresh(state,{action:'update',sessionID:'peer',fields:['title']},scope),'rail');
+ const moved={sessions:[current,{...peer,libraryScopeKey:'collection:B'},foreign]};
+ assert.equal(pptConversationRefresh(moved,{action:'update',sessionID:'peer',fields:['libraryScopeKey']},scope),'rail','a peer moved out of this source set must disappear');
+ assert.equal(pptConversationRefresh({...state,sessions:[...state.sessions,{id:'new',pptDraftID:'A'}]},{action:'create-draft'},scope),'rail');
 });
 test('explicit PPT commands reach real operations, while questions and negative instructions remain discussion',()=>{
  for(const [prompt,intent]of [['请读取当前论文材料','collect'],['帮我优化汇报大纲','outline'],['补齐所有未完成页面','generate'],['预览整套PPT','preview'],['导出可编辑 PPTX','export']])assert.equal(pptAssistantIntent(prompt),intent,prompt);
@@ -47,6 +64,11 @@ test('page-linked spreadsheet evidence follows the current file selection even w
  assert.deepEqual(pptDiscussionContext(linked,{attachments:[{id:'file-9',selected:false}]}).sources.map(row=>row.id),['A','B']);
  assert.deepEqual(pptDiscussionContext(linked,{attachments:[{id:'file-9'}]}).sources.map(row=>row.id),['A','B','cells']);
  assert.equal(linked.sources.at(-1).text,'B2 = 0.73');
+});
+
+test('an active folder never inherits unowned evidence from the presentation previous material set',()=>{
+ const prior={...draft,papers:[],sources:[{id:'old-file',label:'旧实验表',text:'以前的资料不能进入当前文件夹'}]},context=pptDiscussionContext(prior,{paperIDs:[],attachments:[{id:'attachment:now',selected:true}],attachmentRows:[{id:'now',text:'当前文件夹选用的数据'}],strictScope:true});
+ assert.deepEqual(context.sources.map(row=>row.id),['now']);assert.equal(JSON.stringify(context).includes('以前的资料'),false);
 });
 
 test('dropping an already imported file still resolves that exact reference for a page association',()=>{

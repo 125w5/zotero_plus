@@ -8,8 +8,8 @@
  const libraryID=()=>Zotero.getActiveZoteroPane()?.getSelectedLibraryIDs?.()[0]||Zotero.Libraries.userLibraryID;
  const material=id=>E.store.get('researchMaterials',id)||Object.values(E.manuscripts.all?.()||{}).flatMap(project=>project.materials||[]).find(row=>row.id===id);
  const A=E.chatAttachments={
-  get(sessionID){const S=E.workbenchConversations;return H.normalizeChatAttachments(S.getAttachments?S.getAttachments(sessionID):S.get(sessionID)?.attachments||[]);},
-  selected(sessionID,options={}){return H.selectedChatAttachments(A.get(sessionID),options);},
+  get(sessionID){const S=E.workbenchConversations;return H.normalizeChatAttachments(S.getAttachments?S.getAttachments(sessionID):H.conversationFileReferences(S.get(sessionID)||{}));},
+  selected(sessionID,options={}){const S=E.workbenchConversations;return H.selectedChatAttachments(S.getAttachments?S.getAttachments(sessionID,{selectedOnly:true}):A.get(sessionID),options);},
   async location(sessionID,id){
    const reference=A.get(sessionID).find(row=>row.id===id);if(!reference)throw Error('资料已从这次对话移除。');
    const resolved=await A.resolve(reference),item=resolved.attachmentID&&await Zotero.Items.getAsync(resolved.attachmentID),parent=item?.parentID&&await Zotero.Items.getAsync(item.parentID),path=nativePath(item?await item.getFilePathAsync():resolved.imagePath||material(resolved.materialID)?.imagePath);
@@ -36,7 +36,7 @@
     for(const file of files){stopped(options.signal);added.push(await A.importFile(file,options));}
    }catch(failure){error=failure;}
    stopped(options.signal);if(added.length){
-    const draft=session.pptDraftID&&E.studio?.get?.(session.pptDraftID),project=E.manuscripts.get?.(session.projectID||draft?.projectID),collectionID=project?.paperCollectionID||draft?.paperCollectionID||E.store.get().settings?.discoveryDestination?.collectionID,collection=collectionID&&Zotero.Collections.get(collectionID);
+    const draft=session.pptDraftID&&E.studio?.get?.(session.pptDraftID),project=E.manuscripts.get?.(session.projectID||draft?.projectID),collectionID=session.libraryScopeKey?session.libraryCollectionID:project?.paperCollectionID||draft?.paperCollectionID||E.store.get().settings?.discoveryDestination?.collectionID,collection=collectionID&&Zotero.Collections.get(collectionID);
     if(collection&&!collection.deleted&&Zotero.Libraries.get(collection.libraryID)?.editable)for(const ref of added){const item=ref.attachmentID&&await Zotero.Items.getAsync(ref.attachmentID);if(!item||item.deleted||item.libraryID!==collection.libraryID)continue;const parent=item.parentID?await Zotero.Items.getAsync(item.parentID):item;if(parent&&!parent.inCollection(collection.id)){parent.addToCollection(collection.id);await parent.saveTx({skipSelect:true});}}
     await E.workbenchConversations.attach(sessionID,added.map(row=>({...row,selected:true})),{origin:'attachment'});
    }
@@ -127,8 +127,8 @@
   async readSession(sessionID,options={}){return A.read(A.get(sessionID),{...options,sessionID});},
   async read(references,{signal,query='',images=true,sessionID}={}){
    const session=sessionID&&E.workbenchConversations.get(sessionID);if(sessionID&&!session)throw Error('研究对话已不存在。');
-   const expected=session&&JSON.stringify(H.selectedChatAttachments(session.attachments).map(row=>[row.id,row.stateVersion||0]));
-   if(sessionID){const allowed=new Map(H.selectedChatAttachments(session.attachments).map(row=>[row.id,row]));references=H.normalizeChatAttachments(references).filter(row=>allowed.has(row.id)).map(row=>allowed.get(row.id));}
+   const expected=session&&JSON.stringify(H.selectedChatAttachments(H.conversationFileReferences(session)).map(row=>[row.id,row.stateVersion||0]));
+   if(sessionID){const allowed=new Map(H.selectedChatAttachments(H.conversationFileReferences(session)).map(row=>[row.id,row]));references=H.normalizeChatAttachments(references).filter(row=>allowed.has(row.id)).map(row=>allowed.get(row.id));}
    const rows=[],visuals=[],warnings=[];let textBudget=45000;
    const push=(reference,value,index=0)=>{const text=String(value.text||value.sourceText||'').slice(0,Math.min(6500,textBudget));if(!text.trim())return;textBudget-=text.length;rows.push({...value,id:'evidence:chat:'+reference.id+':'+index,stableID:'evidence:chat:'+reference.id+':'+index,title:value.label||reference.title,sourceText:text,text,kind:'material',coverage:value.coverage||'用户附加资料中的实际内容'});};
    for(const reference of H.selectedChatAttachments(references)){
@@ -154,7 +154,7 @@
      else if(images)warnings.push('本轮最多读取 4 张图片，其余图片仅保留关联。');
     }
    }
-   stopped(signal);if(sessionID){const latest=E.workbenchConversations.get(sessionID);if(!latest||JSON.stringify(H.selectedChatAttachments(latest.attachments).map(row=>[row.id,row.stateVersion||0]))!==expected)throw Error('读取时当前对话的资料选择已变化，请重新发送问题。');}
+   stopped(signal);if(sessionID){const latest=E.workbenchConversations.get(sessionID);if(!latest||JSON.stringify(H.selectedChatAttachments(H.conversationFileReferences(latest)).map(row=>[row.id,row.stateVersion||0]))!==expected)throw Error('读取时当前对话的资料选择已变化，请重新发送问题。');}
    return {rows,images:visuals,warnings};
   }
  };

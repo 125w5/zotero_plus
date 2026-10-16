@@ -54,7 +54,8 @@ Object.assign(EasySchUI, {
 		const top = this.el('div', undefined, 'agent-topbar');
 		top.append(this.agentButton('‹ 返回', () => this.closeAgentWorkbench(), 'agent-back'));
 		this.agentSessionTitle = this.el('strong', '', 'agent-session-title'); top.append(this.agentSessionTitle);
-		this.agentNewSession = this.agentButton('＋ 新对话', () => this.createAgentSession(), 'agent-new-session'); top.append(this.agentNewSession);
+		// New conversations live with their history and files in the source rail.
+		this.agentNewSession = this.agentButton('＋ 新对话', () => this.createAgentSession(), 'agent-new-session');
 		this.agentProjectSelect = this.el('select'); this.agentProjectSelect.setAttribute('aria-label', '关联研究项目');
 		this.refreshAgentProjects();
 		this.agentProjectSelect.onchange = async () => { this.agentData.projectID = this.agentProjectSelect.value; await this.saveAgentState(); this.renderAgentSources(); };
@@ -81,6 +82,8 @@ Object.assign(EasySchUI, {
 		this.agentSourceList.onscroll = () => { const list = this.agentSourceList; if (this.agentTab === 'sources' && !this.agentQuery && this.agentWebSearch?.hasMore && list.scrollTop > 0 && list.scrollHeight - list.clientHeight - list.scrollTop < 80) this.loadMoreAgentSources().catch(error => { this.agentRunStatus.textContent = error.message; }); };
 		sources.append(tabs, this.agentSearch, this.agentSourceList);
 		const conversation = this.el('div', undefined, 'agent-conversation');
+		const conversationHead=this.el('header',undefined,'agent-conversation-heading'),heading=this.el('div',undefined,'agent-conversation-heading-title');heading.append(this.el('span',undefined,'easysch-symbol'),this.el('strong','研究对话'));
+		this.agentScopeButton=this.agentButton('本次资料',()=>{const rail=this.agentFileRails?.[0];rail?.setFilter?.('selected');rail?.root.querySelector('.conversation-files-search')?.focus();},'agent-conversation-scope');this.agentScopeButton.title='查看本次回答使用的资料';conversationHead.append(heading,this.agentScopeButton);conversation.append(conversationHead);
 		this.agentMessages = this.el('div', undefined, 'agent-messages'); this.agentMessages.setAttribute('role', 'log'); this.agentMessages.setAttribute('aria-label', '研究对话');
 		const composer = this.el('form', undefined, 'agent-composer');
 		this.agentAttachments = this.el('div', undefined, 'agent-attachments'); this.agentAttachments.hidden = true; this.agentAttachments.setAttribute('aria-label','本次对话资料'); composer.append(this.agentAttachments);
@@ -114,7 +117,7 @@ Object.assign(EasySchUI, {
 		footer.append(logo, this.agentAttach, this.agentMode, this.agentExecution, this.agentModel, this.agentThinking, this.agentRunStatus, this.agentSend); composer.append(this.agentInput, footer);
 		this.agentDirection=this.agentButton('研究选择',()=>this.chooseAgentDirection(),'agent-direction');this.agentDirection.title='选择方向、资料取舍或下一步';this.agentAttach.after(this.agentDirection);
 		const settings=this.el('details',undefined,'agent-composer-options'),summary=this.el('summary','设置'),settingsBody=this.el('div',undefined,'agent-composer-options-body');summary.title='模型、思考与操作权限';settings.dataset.cluiIgnoreExpand='';settings.append(summary,settingsBody);for(const [label,control]of [['操作权限',this.agentExecution],['模型',this.agentModel],['思考',this.agentThinking]]){const field=this.el('label',label);field.append(control);settingsBody.append(field);}this.agentMode.after(settings);
-		const actionStack=this.el('div',undefined,'agent-action-stack clui-native-btn-stack');this.agentAttach.classList.add('clui-native-stack-btn','clui-native-stack-btn-1','clui-native-glass');this.agentDirection.textContent='◇';this.agentDirection.setAttribute('aria-label',this.agentDirection.title);this.agentDirection.classList.add('clui-native-stack-btn','clui-native-stack-btn-2','clui-native-glass');settings.classList.add('clui-native-stack-btn','clui-native-stack-btn-3','clui-native-glass');summary.textContent='⋯';summary.setAttribute('aria-label',summary.title);actionStack.append(this.agentAttach,this.agentDirection,settings);logo.after(actionStack);
+		const actionStack=this.el('div',undefined,'agent-action-stack');this.agentAttach.textContent='＋ 文件';this.agentDirection.textContent='研究选择';summary.textContent='⋯';summary.setAttribute('aria-label',summary.title);actionStack.append(this.agentAttach,this.agentDirection,settings);logo.after(actionStack);
 		const dropOver=event=>{if(this.acceptsAgentConversationDrop(event.dataTransfer)){event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='copy';conversation.dataset.attachmentDrop='true';this.agentRunStatus.textContent='松开：作为本次对话资料';}},dropLeave=event=>{if(!conversation.contains(event.relatedTarget)){delete conversation.dataset.attachmentDrop;if(this.agentRunStatus.textContent==='松开：作为本次对话资料')this.agentRunStatus.textContent='';}},drop=event=>{delete conversation.dataset.attachmentDrop;if(!this.acceptsAgentConversationDrop(event.dataTransfer))return;event.preventDefault();event.stopPropagation();this.receiveAgentConversationDrop(event.dataTransfer);};
 		conversation.addEventListener('dragover',dropOver);conversation.addEventListener('dragleave',dropLeave);conversation.addEventListener('drop',drop);
 		composer.onsubmit = event => { event.preventDefault(); if (this.agentRunning) this.stopAgentTask(); else this.runAgentTask().catch(error => { this.agentRunStatus.textContent = error.message; this.agentRunStatus.title = error.message; }); };
@@ -131,10 +134,11 @@ Object.assign(EasySchUI, {
 		const pin=this.agentButton('⌖',()=>{this.agentCLUI.setPinned(!this.agentCLUI.pinned);pin.setAttribute('aria-pressed',String(this.agentCLUI.pinned));pin.title=this.agentCLUI.pinned?'取消固定，双击外部收起':'固定对话';},'agent-clui-pin');pin.dataset.cluiIgnoreExpand='';pin.title='固定对话';pin.setAttribute('aria-label','固定对话');pin.setAttribute('aria-pressed','false');
 		strip.append(this.agentChatLabel,pin,collapse);this.agentMessages.classList.add('clui-native-conversation');body.append(this.agentMessages);shell.append(strip,body);composer.classList.add('clui-native-input-pill','clui-native-glass');inputRow.append(composer);clui.append(shell,inputRow);conversation.append(clui);
 		for(const control of footer.querySelectorAll('button,select'))control.dataset.cluiIgnoreExpand='';
-		this.agentCLUI=this.agentCLUITools.installCLUIChatBehavior({root:clui,body,onChange:({mode})=>{collapse.setAttribute('aria-expanded',String(mode!=='compact'));this.queueAgentInputSize();}});
-		const welcome=this.agentWelcome=this.el('div',undefined,'agent-welcome agent-workspace-welcome');welcome.append(this.el('span',undefined,'easysch-symbol'),this.el('h2','从一个研究问题开始'),this.el('p','选择资料，比较证据，再决定下一步。'));conversation.prepend(welcome);
+		this.agentCLUI=this.agentCLUITools.installCLUIChatBehavior({root:clui,body,onChange:({mode})=>{collapse.setAttribute('aria-expanded',String(mode!=='compact'));if(this.agentWelcome&&this.agentChatContent){if(mode==='compact')conversation.append(this.agentWelcome);else this.agentChatContent.prepend(this.agentWelcome);}this.queueAgentInputSize();}});
+		const welcome=this.agentWelcome=this.el('div',undefined,'agent-welcome agent-workspace-welcome');welcome.append(this.el('span',undefined,'easysch-symbol'),this.el('h2','从资料开始，推进你的研究'),this.el('p','选择本次资料，或直接提出一个研究问题。'));
+		const starters=this.el('div',undefined,'agent-workspace-starters');for(const [label,prompt]of [['比较论文','请比较本次资料中的论文，说明研究问题、方法、实验条件和局限，并保留来源。'],['评估可行性','请结合本次资料评估研究方向的可行性，列出可选方案、关键缺口和最小验证实验。'],['整理写作框架','请按引言、方法、结果和讨论整理本次资料，生成面向写作的速读框架，区分已确认内容与待补证据。']])starters.append(this.agentButton(label,()=>{this.agentInput.value=prompt;this.updateAgentDraft();this.agentInput.focus();},'agent-workspace-starter'));welcome.append(starters);conversation.append(welcome);
 		this.agentInteractions=this.agentInteractionTools.installConversationInteractions({doc:document,host:conversation,renderContent:(host,text)=>this.E.renderContent(host,text),onSource:source=>this.E.library.openSource({...source,...source.anchor}),onOpen:()=>{this.openAgentWorkbench();this.agentCLUI?.setConversation();},onError:error=>{this.agentRunStatus.textContent=error.message;}});composer.before(this.agentInteractions.root);this.agentInteractions.setSession(this.agentData.activeSessionID);
-		const chatContent=this.el('div',undefined,'agent-clui-body-content');chatContent.append(this.agentMessages,this.agentInteractions.root);body.append(chatContent);
+		const chatContent=this.agentChatContent=this.el('div',undefined,'agent-clui-body-content');chatContent.append(this.agentMessages,this.agentInteractions.root);body.append(chatContent);
 		window.addEventListener('unload',()=>this.agentCLUI?.destroy(),{once:true});
 		this.agentPreview = this.el('aside', undefined, 'agent-preview'); this.agentPreview.setAttribute('aria-label', '来源与研究结果预览');
 		grid.append(sources, conversation, this.agentPreview); agent.append(top, grid);
@@ -181,7 +185,7 @@ Object.assign(EasySchUI, {
 		const files=this.agentFilesTools,E=this.E,getSessionID=()=>this.agentData.activeSessionID;
 		const onError=error=>{this.agentRunStatus.textContent=error.message;};
 		this.agentFileRails=[];this.agentFileDetails=[];
-		const options={E,getSessionID,getSessions:()=>this.agentData.sessions.filter(session=>!session.pptDraftID&&!session.isDraft),getContext:()=>this.agentWorkspaceContext(),onSession:id=>this.switchAgentSession(id),onNew:()=>this.createAgentSession(),onChange:()=>this.renderAgentAttachments(),onError};
+		const options={E,getSessionID,getSessions:()=>this.agentData.sessions.filter(session=>!session.pptDraftID&&!session.isDraft&&(!this.libraryScope?.key||session.libraryScopeKey===this.libraryScope.key)),getContext:()=>this.agentWorkspaceContext(),onSession:id=>this.switchAgentSession(id),onNew:()=>this.createAgentSession(),onChange:()=>this.renderAgentAttachments(),onError};
 		// The conversation owns its files. The wider library remains an explicit
 		// expandable area, rather than appearing to be implicit model context.
 		const library=this.el('details',undefined,'agent-library-browser');library.append(this.el('summary','文库与素材'));for(const child of [...sources.children])library.append(child);sources.append(library);this.agentSessionList.hidden=true;
@@ -196,9 +200,21 @@ Object.assign(EasySchUI, {
 		window.addEventListener('unload',()=>{for(const rail of this.agentFileRails)rail.destroy();for(const detail of this.agentFileDetails)detail.destroy();this.agentAttachmentDetail?.destroy();},{once:true});
 	},
 	agentWorkspaceContext() {
+		const session=this.agentData.sessions?.find(row=>row.id===this.agentData.activeSessionID);
+		if(session?.libraryScopeKey)return {folder:session.libraryFolder};
 		const target=this.E.store.get('settings')?.discoveryDestination||{},id=this.agentData.projectID||target.projectID,revision=this.E.store.branchRevision?.('manuscripts'),key=JSON.stringify([id,revision]);
 		if(revision===undefined||key!==this.agentWorkspaceProjectKey){const project=id&&this.E.manuscripts.get(id);this.agentWorkspaceProject={title:project?.title,collectionID:project?.paperCollectionID};this.agentWorkspaceProjectKey=key;}
 		const project=this.agentWorkspaceProject;return {project:project?.title,folder:this.discoveryCollectionRows?.find(row=>String(row.id)===String(project?.collectionID||target.collectionID))?.path};
+	},
+	async setLibraryScope(scope,{signal,preserveActive=false}={}) {
+		if(!scope||signal?.aborted)return;this.libraryScope=scope;
+		if(this.activeView==='ppt'&&this.pptAssistant?.setLibraryScope)return this.pptAssistant.setLibraryScope(scope,{signal,preserveActive});
+		await this.flushAgentDraft();if(signal?.aborted)return;
+		const {syncLibraryScopeSession}=await import('../shared/library-scope.mjs');
+		const session=await syncLibraryScopeSession(this.E,scope,{signal,sessionID:preserveActive?this.agentData.activeSessionID:undefined});
+		if(signal?.aborted||!session)return;
+		this.receiveSharedAgentState(this.E.workbenchConversations.snapshot({summary:true,sessionID:session.id}));
+		for(const rail of this.agentFileRails||[])rail.render();
 	},
 	receiveAgentStoreChange(change) {
 		if(this.agentDisposed||change?.changedBranches?.every(key=>key==='researchWorkbench'))return;
@@ -285,6 +301,7 @@ Object.assign(EasySchUI, {
 	},
 	renderAgentAttachments() {
 		if(!this.agentAttachments)return;const items=this.E.chatAttachments?.get(this.agentData.activeSessionID)||this.agentData.attachments||[];this.agentData.attachments=items;
+		if(this.agentScopeButton)this.agentScopeButton.textContent='本次资料 · '+items.filter(item=>item.selected!==false).length;
 		for(const rail of this.agentFileRails||[])rail.render();
 		const signature=JSON.stringify([this.agentData.activeSessionID,items]);if(signature===this.agentAttachmentRenderSignature)return;this.agentAttachmentRenderSignature=signature;this.agentAttachments.replaceChildren();this.agentAttachments.hidden=!items.length;
 		for(const item of items.filter(value=>value.selected!==false)){const chip=this.el('span',undefined,'agent-attachment');chip.draggable=true;chip.title=item.title;const name=this.agentButton(item.title,()=>this.previewAgentAttachment(item),'agent-attachment-name');chip.append(name);const remove=this.agentButton('×',()=>this.E.chatAttachments.remove(this.agentData.activeSessionID,item.id),'agent-attachment-remove');remove.title='从本次对话移除，源文件保留';remove.setAttribute('aria-label',remove.title);chip.append(remove);chip.ondragstart=event=>{if(event.target.closest('button')){event.preventDefault();return;}this.E.chatAttachments.setDragData(event,item,this.agentData.activeSessionID);};this.agentAttachments.append(chip);}
@@ -332,7 +349,7 @@ Object.assign(EasySchUI, {
 		const controls=[this.agentInput,this.agentSend].filter(Boolean);this.agentSwitchDisabled||=controls.map(control=>control.disabled===true);for(const control of controls)control.disabled=true;
 		try{
 			await this.flushAgentDraft();if(!current())return;await this.saveAgentState();if(!current())return;this.agentPageController?.abort();
-			if(this.E.workbenchConversations){const row=this.agentSelected,paperID=row?.paperItemID||row?.anchor?.paperItemID||(row?.kind==='paper'?row.id:0),selected=await this.E.workbenchConversations.select(id,{...(paperID?{scope:{paperID}}:{}),signal:controller.signal,summary:true});if(!current())return;if(this.agentData.activeSessionID!==id)this.receiveSharedAgentState(selected);}
+			if(this.E.workbenchConversations){const row=this.agentSelected,target=this.agentData.sessions.find(value=>value.id===id),paperID=row?.paperItemID||row?.anchor?.paperItemID||(row?.kind==='paper'?row.id:0),scope=target?.libraryScopeKey?{libraryScopeKey:target.libraryScopeKey}:paperID?{paperID}:undefined,selected=await this.E.workbenchConversations.select(id,{scope,signal:controller.signal,summary:true});if(!current())return;if(this.agentData.activeSessionID!==id)this.receiveSharedAgentState(selected);}
 			else{this.restoreAgentSession(id);const previousSearch=[...this.agentData.messages].reverse().find(message=>message.searchState);this.agentWebSources=previousSearch?.sources||[];this.agentWebSearch=previousSearch?.searchState;this.agentInput.value=this.agentData.draft;this.agentMode.value=this.agentData.mode;this.agentModel.value=this.agentData.modelID||this.agentModel.options[0]?.value||'';this.agentThinking.value=this.agentData.thinkingLevel||'off';this.agentQuery='';this.agentSearch.value='';this.agentSelected=null;this.resetAgentPreview();this.refreshAgentProjects();await this.saveAgentState();if(!current())return;this.renderAgentSessions();this.renderAgentMessages();this.renderAgentSources();Promise.resolve(this.restoreAgentPreview()).catch(error=>{if(current())this.agentRunStatus.textContent=error.message;});}
 			this.queueAgentInputSize();
 		}finally{if(this.agentSwitchController===controller){this.agentSwitchController=null;for(const [index,control]of controls.entries())control.disabled=this.agentSwitchDisabled[index];this.agentSwitchDisabled=null;if(current())this.agentInput.focus();}}
@@ -345,7 +362,7 @@ Object.assign(EasySchUI, {
 		for(const control of controls){control.disabled=true;control.setAttribute('aria-busy','true');}
 		try{
 			await this.flushAgentDraft(); await this.saveAgentState();
-			if (this.E.workbenchConversations) { const session=await this.E.workbenchConversations.create({title:'新研究对话',origin:'workbench',projectID,...preferences}); this.receiveSharedAgentState(this.E.workbenchConversations.snapshot({summary:true,sessionID:this.agentData?.activeSessionID}));return session; }
+			if (this.E.workbenchConversations) { const prior=this.agentData.sessions.find(row=>row.id===this.agentData.activeSessionID),scope=prior?.libraryScopeKey?Object.fromEntries(['libraryScopeKey','libraryFolder','libraryCollectionID','libraryLibraryID','libraryFiles'].map(key=>[key,prior[key]])):{};const session=await this.E.workbenchConversations.create({title:'新研究对话',origin:'workbench',projectID,...scope,...preferences}); this.receiveSharedAgentState(this.E.workbenchConversations.snapshot({summary:true,sessionID:this.agentData?.activeSessionID}));return session; }
 			const session = { id: 'conversation-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), title: '新研究对话', ...preferences, projectID, selectedID: '', draft: '', messages: [], createdAt: new Date().toISOString() };
 			this.agentData.sessions.push(session); await this.switchAgentSession(session.id);return session;
 		}finally{this.agentCreatingSession=false;for(const [index,control]of controls.entries()){control.disabled=disabled[index]===true;control.removeAttribute('aria-busy');}this.renderAgentSessions();this.agentInput.focus();}
@@ -606,7 +623,7 @@ Object.assign(EasySchUI, {
 	},
 	previewAgentSource(row) {
 		this.agentData.selectedID = row.stableID; this.agentSelected = row; this.saveAgentState().catch(error => this.status(error.message, true)); this.renderAgentSources();
-		const generation = this.resetAgentPreview(), header = this.el('div', undefined, 'agent-preview-header'); header.append(this.el('h3', row.title));
+		const generation = this.resetAgentPreview(), header = this.el('div', undefined, 'agent-preview-header');const back=this.agentButton('‹',()=>{this.agentSelected=null;this.agentData.selectedID='';this.renderEmptyAgentPreview();this.saveAgentState().catch(error=>this.status(error.message,true));},'agent-preview-back');back.title='返回对话';back.setAttribute('aria-label',back.title);header.append(back,this.el('h3', row.title));
 		if (row.kind !== 'task') { const open = row.kind === 'web' ? this.agentSourceDownloadButton(row, 'agent-preview-open') : this.agentButton('↗', () => this.openAgentSource(row), 'agent-preview-open'); if (row.kind !== 'web') { open.title = '查看原文'; open.setAttribute('aria-label', open.title); } header.append(open); }
 		this.agentPreview.append(header);
 		if (row.kind !== 'task') { const tabs = this.el('div', undefined, 'agent-preview-tabs'); tabs.setAttribute('role', 'tablist'); for (const [id, label] of [['info', '信息'], ['images', '图片'], ['annotations', '批注'], ['references', '引用']]) { const button = this.agentButton(label, () => this.renderAgentPreviewPane(row, id), 'agent-preview-tab'); button.dataset.previewTab = id; button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', String(id === 'info')); tabs.append(button); } header.append(tabs); }
@@ -650,7 +667,7 @@ Object.assign(EasySchUI, {
 		this.renderAgentAttachments();
 		if(this.agentWelcome)this.agentWelcome.hidden=!!this.agentData.messages.length;
 		if(this.agentChatLabel)this.agentChatLabel.textContent=this.agentData.sessions?.find(session=>session.id===sessionID)?.title||'研究对话';
-		if(switched&&!this.agentCLUI?.pinned)this.agentCLUI?.setExpanded(false);
+		if(switched&&!this.agentCLUI?.pinned){if(this.agentData.messages.length)this.agentCLUI?.setConversation();else this.agentCLUI?.setExpanded(false);}
 		if(switched)this.agentRenderOffset=0;
 		const visible=this.agentCLUITools?.cluiVisibleMessages(this.agentData.messages,this.agentRenderOffset||0)||{messages:this.agentData.messages};
 		const signature=JSON.stringify([sessionID,this.agentRenderOffset||0,visible.messages]);if(!switched&&signature===this.agentMessageRenderSignature)return;this.agentMessageRenderSignature=signature;

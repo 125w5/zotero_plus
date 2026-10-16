@@ -151,14 +151,18 @@ html[data-appearance] .agent-workbench .agent-send:active {transform:translateY(
 @media (max-width:1100px) { .agent-grid { grid-template-columns:170px minmax(240px,1fr) minmax(210px,32%); } .agent-conversation { --agent-transcript-gutter:18px; } .agent-messages { padding-block:18px; } .agent-topbar { padding:6px 10px; } }
 /* The native CLUI shell owns the transcript and input, while the project rails
    remain independent. Compact, conversation and detail are actual states. */
-html[data-appearance] .agent-workbench .agent-conversation{background:var(--bg);overflow:hidden;position:relative;}
+html[data-appearance] .agent-workbench .agent-grid>.agent-conversation{background:linear-gradient(155deg,color-mix(in srgb,var(--surface) 82%,transparent),color-mix(in srgb,var(--soft) 48%,var(--surface)));overflow:hidden;position:relative;margin:12px;border:1px solid var(--line);border-radius:18px;box-shadow:0 3px 18px #20324606,inset 0 1px #ffffff50;}
 html[data-appearance] .agent-workbench .agent-conversation::before{display:none;}
-html[data-appearance] .agent-workbench .agent-clui{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);width:min(680px,calc(100% - 40px));max-height:calc(100% - 28px);display:flex;flex-direction:column;z-index:3;}
-html[data-appearance] .agent-workbench .agent-clui[data-clui-size=conversation]{width:min(760px,calc(100% - 40px));}
-html[data-appearance] .agent-workbench .agent-clui[data-clui-size=detail]{width:calc(100% - 28px);}
+html[data-appearance] .agent-workbench .agent-clui{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);width:calc(100% - 48px);max-height:calc(100% - 66px);display:flex;flex-direction:column;z-index:3;}
+html[data-appearance] .agent-workbench .agent-clui[data-clui-size=conversation]{width:calc(100% - 48px);}
+html[data-appearance] .agent-workbench .agent-clui[data-clui-size=detail]{width:calc(100% - 24px);}
+.agent-clui .clui-native-shell{flex-shrink:1;min-height:0;}
+.agent-clui[data-clui-size=conversation] .clui-native-body{height:min(46vh,calc(100vh - 300px));grid-template-rows:minmax(0,1fr);}
+.agent-clui .clui-native-input-row{flex:none;}
+.agent-clui .clui-native-tab-strip{min-height:42px;}
 .agent-clui .agent-clui-body-content{min-height:0;overflow:hidden;display:flex;flex-direction:column;}
-html[data-appearance] .agent-clui .agent-messages{margin:0;padding:12px 20px 20px;min-height:0;flex:1;}
-html[data-appearance] .agent-workbench .agent-clui .agent-composer{width:100%;margin:0;align-self:stretch;border-radius:25px;padding:5px 8px 7px 16px;box-shadow:var(--clui-card-shadow);}
+html[data-appearance] .agent-workbench .agent-clui .agent-messages{margin:0;padding:18px 23px 24px;min-height:0;max-height:100%;flex:1;}
+html[data-appearance] .agent-workbench .agent-conversation .agent-clui .agent-composer{width:100%;margin:0;align-self:stretch;border-radius:18px;padding:8px 12px 9px 16px;background:var(--ui-glass,var(--surface));backdrop-filter:blur(24px) saturate(1.12);box-shadow:0 3px 14px #1830440c,inset 0 1px #ffffff60;}
 html[data-appearance] .agent-workbench .agent-clui .agent-composer::before{display:none;}
 html[data-appearance] .agent-workbench .agent-clui .agent-composer>textarea{height:42px;min-height:42px;padding:7px 7px 3px 0;font-size:13px;border-radius:0;}
 html[data-appearance] .agent-workbench .agent-clui .agent-composer-footer{padding:3px 0 0;gap:5px;flex-wrap:wrap;}
@@ -167,12 +171,12 @@ html[data-appearance] .agent-clui .agent-message{font:13px/1.85 var(--ui-font);m
 html[data-appearance] .agent-clui :is(.agent-clui-pin,.agent-clui-collapse){flex:none;width:30px;min-height:30px;border:0;border-radius:50%;padding:0;background:transparent;color:var(--muted);font-size:16px;}
 html[data-appearance] .agent-clui :is(.agent-clui-pin,.agent-clui-collapse):hover,html[data-appearance] .agent-clui .agent-clui-pin[aria-pressed=true]{background:var(--soft);color:var(--text);}
 .agent-clui .conversation-interaction-host{flex:none;max-height:min(36vh,280px);overflow:auto;}
-.agent-workspace-welcome{position:absolute;inset:8% 15% 30%;min-height:0;pointer-events:none;gap:10px;}
+.agent-workspace-welcome{position:absolute;inset:70px 24px 180px;min-height:0;gap:10px;}
 .agent-workspace-welcome[hidden]{display:none;}.agent-workspace-welcome h2{font-size:20px;font-weight:500;letter-spacing:.03em;}.agent-workspace-welcome p{font-size:12px;line-height:1.8;text-align:center;margin:0;}
-.agent-grid:has(>.agent-preview[hidden]){grid-template-columns:210px minmax(0,1fr);}
+.agent-grid{grid-template-columns:248px minmax(300px,1fr) minmax(270px,30%);}
+.agent-grid:has(>.agent-preview[hidden]){grid-template-columns:248px minmax(0,1fr);}
 html[data-appearance] .agent-preview[hidden]{display:none;}
-.agent-clui[data-clui-size=conversation] .agent-messages{min-height:min(170px,24vh);}
-.agent-clui[data-clui-size=detail] .agent-messages{min-height:min(310px,45vh);}
+.agent-clui[data-clui-size=conversation] .agent-messages,.agent-clui[data-clui-size=detail] .agent-messages{min-height:0;}
 .agent-composer-options{position:relative;flex:none;color:var(--muted);font-size:11px;}
 .agent-composer-options>summary{list-style:none;cursor:pointer;padding:6px 7px;border-radius:8px;}
 .agent-composer-options>summary:hover{background:var(--soft);}
@@ -182,8 +186,21 @@ html[data-appearance] .agent-workbench .agent-composer-options-body select{max-w
 html[data-appearance] .agent-workbench .agent-clui .agent-attach{border-radius:50%;width:30px;min-height:30px;background:var(--soft);}
 html[data-appearance] .agent-workbench .agent-clui .agent-direction{background:transparent;border:0;font-size:11px;color:var(--muted);padding:4px 6px;min-height:30px;border-radius:8px;}
 html[data-appearance] .agent-workbench .agent-clui .agent-send{border-radius:50%;width:32px;height:32px;}
-html[data-appearance] .agent-clui .agent-action-stack .clui-native-stack-btn{width:46px;height:46px;min-height:46px;padding:0;border:1px solid var(--line);border-radius:50%;font-size:20px;background:var(--clui-container-bg);box-shadow:var(--clui-card-shadow);}
-.agent-clui .agent-action-stack .agent-composer-options>summary{display:grid;place-items:center;width:44px;height:44px;padding:0;border-radius:50%;font-size:22px;}
-.agent-clui .agent-action-stack:has(details[open]) .clui-native-stack-btn-2{right:56px;}.agent-clui .agent-action-stack:has(details[open]) .clui-native-stack-btn-3{right:112px;}
-.agent-clui .agent-action-stack .agent-composer-options-body{transform:scale(1.428572);transform-origin:bottom left;bottom:calc(100% + 20px);}
+.agent-conversation-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:10px 18px;border-bottom:1px solid color-mix(in srgb,var(--line) 65%,transparent);background:var(--ui-glass,var(--surface));backdrop-filter:blur(20px) saturate(1.12);}
+.agent-conversation-heading-title{display:flex;align-items:center;gap:9px;font-size:13px;}.agent-conversation-heading-title .easysch-symbol{width:21px;height:21px;}
+html[data-appearance] .agent-conversation-scope{border:1px solid var(--line);background:color-mix(in srgb,var(--surface) 60%,transparent);color:var(--muted);border-radius:20px;min-height:30px;font-size:11px;padding:4px 10px;box-shadow:inset 0 1px #ffffff60;}
+html[data-appearance] .agent-workbench .agent-grid>.agent-sources{padding:14px 10px;background:linear-gradient(160deg,color-mix(in srgb,var(--surface) 65%,transparent),color-mix(in srgb,var(--soft) 58%,transparent));backdrop-filter:blur(24px) saturate(1.12);}
+html[data-appearance] .agent-workbench .agent-grid>.agent-preview{margin:12px 12px 12px 0;border:1px solid var(--line);border-radius:16px;background:var(--ui-glass,var(--surface));backdrop-filter:blur(24px) saturate(1.12);box-shadow:0 3px 16px #20324605;}
+html[data-appearance] .agent-workbench .agent-preview-header{padding:15px 14px 0;align-items:center;}.agent-preview-header .agent-preview-back{width:32px;height:32px;min-height:32px;flex:none;border:1px solid var(--line);border-radius:9px;font-size:22px;padding:0;display:grid;place-items:center;}
+html[data-appearance] .agent-workbench .agent-topbar{min-height:45px;padding-block:5px;}.agent-topbar .agent-session-title{flex:1;max-width:65%;}.agent-topbar select{margin-left:auto;}
+.agent-clui .agent-action-stack{display:flex;align-items:center;gap:4px;flex:none;}
+html[data-appearance] .agent-workbench .agent-clui :is(.agent-attach,.agent-direction){display:inline-flex;align-items:center;justify-content:center;width:auto;min-height:30px;padding:4px 8px;border:1px solid transparent;border-radius:9px;font-size:11px;background:transparent;color:var(--muted);}
+html[data-appearance] .agent-workbench .agent-clui :is(.agent-attach,.agent-direction):hover{background:var(--soft);border-color:var(--line);color:var(--text);}
+.agent-clui .agent-action-stack .agent-composer-options>summary{display:grid;place-items:center;min-width:30px;min-height:30px;padding:0;border-radius:9px;font-size:20px;}
+.agent-clui .agent-action-stack .agent-composer-options-body{transform:none;bottom:calc(100% + 14px);}
+.agent-workspace-starters{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:12px;}
+.agent-clui-body-content>.agent-workspace-welcome{position:static;flex:1;min-height:0;padding:20px;}.agent-clui-body-content:has(>.agent-workspace-welcome:not([hidden]))>.agent-messages{flex:none;padding:0;}
+html[data-appearance] .agent-workspace-starter{padding:8px 13px;min-height:36px;border:1px solid var(--line);border-radius:12px;background:var(--ui-glass,var(--surface));box-shadow:0 2px 6px #18304406,inset 0 1px #ffffff80;font-size:12px;color:var(--text);}
+html[data-appearance] .agent-workspace-starter:hover{background:var(--ui-selection,var(--soft));border-color:color-mix(in srgb,var(--accent) 25%,var(--line));}
+@media(max-width:1100px){.agent-grid{grid-template-columns:210px minmax(280px,1fr) minmax(230px,28%);}.agent-grid:has(>.agent-preview[hidden]){grid-template-columns:210px minmax(0,1fr);}html[data-appearance] .agent-workbench .agent-conversation{margin:9px;}.agent-clui .agent-messages{padding-inline:16px!important;}}
 @media (max-width:870px) { .agent-active .rail { width:150px; } .agent-grid { grid-template-columns:minmax(90px,20%) minmax(120px,1fr) minmax(160px,32%); } .agent-preview { grid-column:auto; max-height:none; } .agent-preview-header { padding-inline:9px; } .agent-session-title { max-width:26%; } .agent-topbar select { max-width:155px; } .agent-topbar button { padding-inline:4px; } .agent-composer { margin-inline:9px; } .agent-composer-footer { gap:3px; padding-inline:6px; flex-wrap:wrap; } .agent-composer-footer .easysch-symbol { width:16px; height:16px; } html[data-appearance] .agent-composer-footer select { max-width:95px; font-size:10px; padding-right:12px; } .agent-run-status { flex-basis:100%; order:-1; } .agent-run-status:empty { display:none; } .agent-sources { padding-inline:4px!important; } .agent-source-tabs button { font-size:11px; } .workbench-home-filters[open] { flex-wrap:wrap; max-width:140px; } }

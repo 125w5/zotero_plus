@@ -54,6 +54,7 @@ Object.assign(EasySchUI, {
   await this.E.store.update(state=>state.settings.discoveryDestination=next);this.renderDiscoveryDestinations();return next;
  },
  async resolveDiscoveryDestination() {
+  if(this.libraryScope?.key){const {collectionID,libraryID}=this.libraryScope;return {...(collectionID?{collectionID}:{}),...(libraryID?{libraryID}:{})};}
   if(this.discoveryDestinationTask)return this.discoveryDestinationTask;
   this.discoveryDestinationTask=(async()=>{let target={...(this.E.store.get().settings.discoveryDestination||{})};
    if(!target.collectionID){if(target.projectID&&this.E.notebook?.ensureProjectCollection){const project=await this.E.notebook.ensureProjectCollection(target.projectID,{});target.collectionID=project.collectionID;target.libraryID=project.libraryID;}

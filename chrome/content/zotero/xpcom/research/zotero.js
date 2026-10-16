@@ -17,6 +17,22 @@
 		const items=await Zotero.Items.getAll(Zotero.Libraries.userLibraryID,true,false);
 		return items.filter(item=>item.isRegularItem()||item.isPDFAttachment()).map(Z.describe).sort((a,b)=>a.title.localeCompare(b.title));
 	};
+	Z.workspaceScope=async(rows,{signal}={})=>{
+		const H=ChromeUtils.importESModule('chrome://zotero/content/research/shared/chat-attachments.mjs');
+		const candidates=new Map();
+		for(const row of rows){
+			if(signal?.aborted)return [];
+			for(const item of await row.getItems?.({unfiltered:true})||[]){
+				if(signal?.aborted)return [];
+				if(item.deleted)continue;
+				const attachments=item.isAttachment?.()?[item]:item.isRegularItem?.()?await Zotero.Items.getAsync(item.getAttachments()):[];
+				for(const attachment of attachments){if(attachment.deleted)continue;try{H.chatAttachmentFileKind(attachment.attachmentFilename||attachment.getField('title'));candidates.set(attachment.id,attachment);}catch{}}
+			}
+		}
+		const items=[...candidates.values()],result=new Array(items.length);let cursor=0;
+		await Promise.all(Array.from({length:Math.min(6,items.length)},async()=>{while(cursor<items.length&&!signal?.aborted){const index=cursor++;try{const ref=await E.chatAttachments.fromItem(items[index].id),parent=items[index].parentID&&Zotero.Items.get(items[index].parentID);result[index]={...ref,...(parent?{title:parent.getField('title')||ref.title}:{}),selected:false};}catch{}}}));
+		return signal?.aborted?[]:result.filter(Boolean);
+	};
 	Z.localPDF = async itemOrID => {
 		const item = typeof itemOrID === 'number' ? await Zotero.Items.getAsync(itemOrID) : itemOrID;
 		if (!item || item.deleted) return null;
