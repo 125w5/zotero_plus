@@ -1866,10 +1866,13 @@ var ItemTree = class ItemTree extends LibraryTree {
 	getSortField() {
 		var column = this._sortedColumn;
 		if (!column) {
-			column = this._getColumns().find(col => !col.hidden);
+			const columns = this._getColumns();
+			column = columns.find(col => !col.hidden) || columns[0];
 		}
 		// zotero-items-column-_________
-		return column.dataKey;
+		// The library surface can attach while its columns are being registered.
+		// Keep initial sorting usable until a visible column exists.
+		return column?.dataKey || 'title';
 	}
 
 

@@ -1,0 +1,476 @@
+[
+  {
+    "pageIndex": 4,
+    "blocks": [
+      {
+        "text": "Fig. 1  Search framework\n",
+        "bbox": [
+          123.88780212402344,
+          385.2605285644531,
+          204.2949981689453,
+          395.1725158691406
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 5,
+    "blocks": [
+      {
+        "text": "Table 1  Some of the journals have been cited in this review paper\n",
+        "bbox": [
+          117.63780212402344,
+          86.431640625,
+          356.62921142578125,
+          97.5826416015625
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 6,
+    "blocks": [
+      {
+        "text": "Fig. 2  Deep learning family\n",
+        "bbox": [
+          123.88780212402344,
+          438.1805419921875,
+          213.1110076904297,
+          448.092529296875
+        ]
+      },
+      {
+        "text": "Fig. 3  The difference between deep learning and traditional machine learning\n",
+        "bbox": [
+          123.88780212402344,
+          647.8207397460938,
+          374.61181640625,
+          657.7327270507812
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 7,
+    "blocks": [
+      {
+        "text": "Fig. 4  Deep learning performance compared to human\n",
+        "bbox": [
+          123.88780212402344,
+          299.7005310058594,
+          303.2933654785156,
+          309.6125183105469
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 11,
+    "blocks": [
+      {
+        "text": "Fig. 5  An example of RvNN tree\n",
+        "bbox": [
+          123.88780212402344,
+          306.9005432128906,
+          227.158203125,
+          316.8125305175781
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 12,
+    "blocks": [
+      {
+        "text": "Fig. 6  Typical unfolded RNN diagram\n",
+        "bbox": [
+          123.63780212402344,
+          272.3355407714844,
+          243.2281951904297,
+          282.2475280761719
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 13,
+    "blocks": [
+      {
+        "text": "Fig. 7  An example of CNN architecture for image classification\n",
+        "bbox": [
+          123.63780212402344,
+          250.2555389404297,
+          323.6441650390625,
+          260.16754150390625
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 15,
+    "blocks": [
+      {
+        "text": "Fig. 8  The primary calculations executed at each step of convolutional layer\n",
+        "bbox": [
+          123.88780212402344,
+          567.1805419921875,
+          366.5166320800781,
+          577.092529296875
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 16,
+    "blocks": [
+      {
+        "text": "Fig. 9  Three types of pooling operations\n",
+        "bbox": [
+          123.88780212402344,
+          702.6744384765625,
+          254.35977172851562,
+          712.58642578125
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 18,
+    "blocks": [
+      {
+        "text": "Fig. 10  Fully connected layer\n",
+        "bbox": [
+          123.88780212402344,
+          710.2010498046875,
+          218.87899780273438,
+          720.113037109375
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 20,
+    "blocks": [
+      {
+        "text": "Fig. 11  Over-fitting and under-fitting issues\n",
+        "bbox": [
+          123.63780212402344,
+          208.2555389404297,
+          264.6138000488281,
+          218.16754150390625
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 23,
+    "blocks": [
+      {
+        "text": "Fig. 12  MLP structure\n",
+        "bbox": [
+          123.88780212402344,
+          709.60107421875,
+          195.42300415039062,
+          719.5130615234375
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 24,
+    "blocks": [
+      {
+        "text": "Fig. 13  Neuron activation functions\n",
+        "bbox": [
+          123.88780212402344,
+          710.4010620117188,
+          240.13494873046875,
+          720.3130493164062
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 26,
+    "blocks": [
+      {
+        "text": "Table 2  Brief overview of CNN architectures\n",
+        "bbox": [
+          117.63780212402344,
+          86.431640625,
+          277.448974609375,
+          97.5826416015625
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 27,
+    "blocks": [
+      {
+        "text": "Table 2  (continued)\n",
+        "bbox": [
+          117.63780212402344,
+          86.431640625,
+          192.53582763671875,
+          97.5826416015625
+        ]
+      },
+      {
+        "text": "Fig. 14  The architecture of LeNet\n",
+        "bbox": [
+          123.88780212402344,
+          379.2075500488281,
+          231.43099975585938,
+          389.1195373535156
+        ]
+      },
+      {
+        "text": "Fig. 15  The architecture of AlexNet\n",
+        "bbox": [
+          123.88780212402344,
+          580.3545532226562,
+          237.791015625,
+          590.2665405273438
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 28,
+    "blocks": [
+      {
+        "text": "Fig. 16  The architecture of network-in-network\n",
+        "bbox": [
+          123.63780212402344,
+          710.48095703125,
+          276.0449523925781,
+          720.3929443359375
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 29,
+    "blocks": [
+      {
+        "text": "Fig. 17  The architecture of ZefNet\n",
+        "bbox": [
+          123.63780212402344,
+          709.9209594726562,
+          234.02899169921875,
+          719.8329467773438
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 30,
+    "blocks": [
+      {
+        "text": "Fig. 18  The architecture of VGG\n",
+        "bbox": [
+          123.63780212402344,
+          198.65550231933594,
+          226.21299743652344,
+          208.5675048828125
+        ]
+      },
+      {
+        "text": "Fig. 19  The basic structure of Google Block\n",
+        "bbox": [
+          123.88780212402344,
+          384.3776550292969,
+          263.1661682128906,
+          394.2896423339844
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 32,
+    "blocks": [
+      {
+        "text": "Fig. 20  The block diagram for ResNet\n",
+        "bbox": [
+          123.76280212402344,
+          429.0555419921875,
+          244.4571990966797,
+          438.967529296875
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 33,
+    "blocks": [
+      {
+        "text": "Fig. 21  The basic block diagram for Inception Residual unit\n",
+        "bbox": [
+          123.76280212402344,
+          710.091064453125,
+          313.45721435546875,
+          720.0030517578125
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 34,
+    "blocks": [
+      {
+        "text": "Fig. 22  The architecture of DenseNet Network (adopted from [112])\n",
+        "bbox": [
+          123.88780212402344,
+          710.4010620117188,
+          341.37255859375,
+          720.3130493164062
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 35,
+    "blocks": [
+      {
+        "text": "Fig. 23  The basic block diagram for the ResNext building blocks\n",
+        "bbox": [
+          123.76280212402344,
+          205.2555389404297,
+          328.9125061035156,
+          215.16754150390625
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 37,
+    "blocks": [
+      {
+        "text": "Fig. 24  The basic block diagram for the Xception block architecture\n",
+        "bbox": [
+          123.76280212402344,
+          242.2154998779297,
+          340.4323425292969,
+          252.12750244140625
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 39,
+    "blocks": [
+      {
+        "text": "Fig. 25  The complete CapsNet encoding and decoding processes\n",
+        "bbox": [
+          123.76280212402344,
+          710.1210327148438,
+          335.7204284667969,
+          720.0330200195312
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 40,
+    "blocks": [
+      {
+        "text": "Fig. 26  The general architecture of HRNet\n",
+        "bbox": [
+          123.88780212402344,
+          709.9209594726562,
+          259.02294921875,
+          719.8329467773438
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 41,
+    "blocks": [
+      {
+        "text": "Fig. 27  The performance of DL regarding the amount of data\n",
+        "bbox": [
+          123.76280212402344,
+          710.4810180664062,
+          320.8572082519531,
+          720.3930053710938
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 42,
+    "blocks": [
+      {
+        "text": "Fig. 28  The conceptual diagram of the TL technique\n",
+        "bbox": [
+          123.51280212402344,
+          709.9610595703125,
+          291.9671936035156,
+          719.873046875
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 50,
+    "blocks": [
+      {
+        "text": "Fig. 29  Examples of DL applications\n",
+        "bbox": [
+          123.63780212402344,
+          318.7755432128906,
+          240.39776611328125,
+          328.6875305175781
+        ]
+      },
+      {
+        "text": "Fig. 30  Workflow of deep learning tasks\n",
+        "bbox": [
+          123.76280212402344,
+          544.9324340820312,
+          252.697998046875,
+          554.8444213867188
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 57,
+    "blocks": [
+      {
+        "text": "Table 3  A comparison between different aspects related to the devices\n",
+        "bbox": [
+          117.63780212402344,
+          497.4315185546875,
+          375.48333740234375,
+          508.58251953125
+        ]
+      }
+    ]
+  },
+  {
+    "pageIndex": 61,
+    "blocks": [
+      {
+        "text": "Table 5  Benchmark datasets\n",
+        "bbox": [
+          117.63780212402344,
+          293.8685302734375,
+          222.89193725585938,
+          305.01953125
+        ]
+      },
+      {
+        "text": "Table 4  List of the most common frameworks and libraries\n",
+        "bbox": [
+          117.63780212402344,
+          86.431640625,
+          330.6740417480469,
+          97.5826416015625
+        ]
+      }
+    ]
+  }
+]

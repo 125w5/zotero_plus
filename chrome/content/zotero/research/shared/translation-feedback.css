@@ -1,0 +1,14 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.translation-feedback{box-sizing:border-box;min-width:0;max-width:100%;padding:12px 14px;border:1px solid var(--ui-border,var(--line,#dfe3e9));border-radius:10px;background:var(--ui-tray,var(--soft,#f5f6f8));color:var(--ui-text,var(--text,#35465a));font:13px/1.65 var(--ui-font,system-ui,'Microsoft YaHei',sans-serif);white-space:normal;overflow-wrap:anywhere;user-select:text}
+.translation-feedback>.translation-feedback-title{display:block;margin:0;font-size:13px;font-weight:600;line-height:1.6}
+.translation-feedback>.translation-feedback-message{margin:4px 0 8px!important;padding:0;color:var(--ui-secondary,var(--muted,#606976));font-size:12px}
+.translation-feedback>.translation-feedback-details{display:block;margin:0!important;padding:0!important;border:0!important;background:transparent!important;border-radius:0;box-shadow:none!important;font-size:11px;color:var(--ui-secondary,var(--muted,#606976))}
+.translation-feedback>.translation-feedback-details>summary{display:list-item;list-style:disclosure-closed inside;padding:3px 0;margin:0;cursor:pointer;font:inherit;color:inherit}
+.translation-feedback>.translation-feedback-details[open]>summary{list-style-type:disclosure-open}
+.translation-feedback>.translation-feedback-details>summary:before{display:none}
+.translation-feedback>.translation-feedback-details>p{margin:6px 0 0!important;padding:0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;color:inherit}
+.translation-feedback-actions{display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px}
+.translation-feedback .translation-feedback-actions>button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-height:30px;padding:4px 10px!important;border:1px solid var(--ui-border,var(--line,#dfe3e9))!important;border-radius:7px!important;background:var(--ui-card,var(--surface,#fff))!important;color:inherit!important;font:12px/1.5 var(--ui-font,system-ui,'Microsoft YaHei',sans-serif)!important;cursor:pointer}
+.translation-feedback .translation-feedback-actions>button:hover{background:var(--ui-selection,var(--selected-bg,#e9f2ff))!important}
+.translation-feedback .translation-feedback-actions>button:disabled{opacity:.55;cursor:wait}
+.translation-feedback :is(button,summary):focus-visible{outline:2px solid var(--accent,#547ca4);outline-offset:2px}

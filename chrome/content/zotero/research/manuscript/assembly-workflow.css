@@ -1,0 +1,21 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+#steps{display:flex;gap:4px;max-width:calc(100% - 320px)}
+html[data-appearance] #steps .assembly-step{font:12px/1.4 var(--ui-font,system-ui);padding:5px 9px;min-height:32px;border-radius:9px;transition:background var(--ui-motion,.18s),box-shadow var(--ui-motion,.18s)}
+#workflow-panel{padding:16px;overflow:auto;color:var(--ui-text);font:13px/1.75 var(--ui-font,system-ui)}
+#workflow-panel .workflow-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
+#workflow-panel h3{font-size:15px;margin:0}#workflow-panel h4{font-size:13px;margin:0 0 8px}
+#workflow-panel p{margin:8px 0;overflow-wrap:anywhere}
+#workflow-panel .workflow-insert-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-block:16px}
+#workflow-panel :is(.workflow-assess,.workflow-export-bundle,.workflow-next){width:100%;min-height:36px;margin:12px 0;border-radius:9px}
+#workflow-panel .workflow-assessment-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-block:16px}
+.workflow-assessment-metrics>div{padding:12px;background:var(--ui-card,#fff);border:1px solid var(--ui-border,#dfe3e9);border-radius:10px;box-shadow:var(--ui-shadow)}
+.workflow-assessment-metrics small{display:block;font-size:11px;color:var(--ui-secondary)}.workflow-assessment-metrics strong{font-size:18px;font-weight:550}
+#workflow-panel :is(.workflow-assessment-basis,.workflow-format,.workflow-benchmarks){padding:10px 0;border-block-start:1px solid var(--ui-border);margin-top:12px}
+#workflow-panel summary{color:var(--ui-secondary);font-size:12px}
+#workflow-panel .workflow-journal{padding:13px;border-radius:10px;background:var(--ui-glass,#ffffffdd);border:1px solid var(--ui-border);backdrop-filter:blur(14px);margin-block:14px}
+#workflow-panel .workflow-plan-step{padding:13px;margin:10px 0;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-card);box-shadow:var(--ui-shadow)}
+.workflow-plan-step>strong{display:block;font-size:13px}.workflow-plan-step>small{color:var(--ui-secondary);font-size:11px}
+#workflow-panel .workflow-issue{width:100%;text-align:left;white-space:normal;line-height:1.65;margin:4px 0}
+#workflow-panel :is(.workflow-error,.workflow-stale){padding:10px 12px;border-radius:8px;background:var(--ui-hover);color:#8b5f43;font-size:12px}
+@media(max-width:1050px){html[data-appearance] body>header{height:auto;min-height:48px;flex-wrap:wrap}#steps{position:static;transform:none;max-width:none;flex:1 0 100%;order:3;justify-content:center;padding-block:2px}}
+@media(max-width:620px){html[data-appearance] #steps .assembly-step{padding:5px;font-size:11px;gap:3px}.assembly-step-number{width:17px;height:17px}}

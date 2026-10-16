@@ -29,6 +29,7 @@
 		E.clearTimeout = timers.clearTimeout;
 		await E.preparePassageSearch();
 		E.manuscripts.startArticleIndex();
+		E.manuscripts.startMaterialAnnotationSync?.();
 		E.ai = E.createAI({ fetch: (...args) => Zotero.getMainWindow().fetch(...args), controller: () => new (Zotero.getMainWindow().AbortController)(),
 			settings: E.settings, credential: endpoint => E.credentials.get(endpoint), store: E.store,
 			collect: E.library.sources });
@@ -41,10 +42,20 @@
 		Zotero.Reader.registerEventListener('renderTextSelectionPopup', E.readerHandler, E.id);
 		E.installReaderContext();
 		E.installReaderTools();
+		E.rapidReadingImportObserver = Zotero.Notifier.registerObserver({
+			notify(event, type, ids) {
+				if (type !== 'item' || !['add', 'modify'].includes(event)) return;
+				for (const id of ids) {
+					const item = Zotero.Items.get(id);
+					if (item?.isPDFAttachment?.() && !item.deleted) E.queueReaderRapidReading?.(id, {origin:'import'});
+				}
+			}
+		}, ['item'], 'easysch-rapid-import');
 		E.installReaderTranslation();
 		// Research tools live in the home workbench; the native Reader keeps notes and selection translation.
 		E.registerSidebar();
 		E.registerReaderPanes();
+		E.readerAIOrbInstall();
 		Zotero.addShutdownListener(() => E.stop());
 	};
 	E.addWindow = function (win) {
@@ -53,7 +64,7 @@
 		let entry = win.document.createXULElement('menuitem');
 		entry.id = 'easysch-open';
 		entry.setAttribute('label', 'EasySch 科研工作台');
-		entry.addEventListener('command', () => E.open());
+		entry.addEventListener('command', () => E.openResearchAgent().catch(Zotero.logError));
 		win.document.getElementById('menu_ToolsPopup')?.append(entry);
 		let docxEntry = win.document.createXULElement('menuitem');
 		docxEntry.id = 'easysch-open-docx';
@@ -84,8 +95,14 @@
 		}
 		win.addEventListener('unload', () => E.removeWindow(win), { once: true });
 		E.windows.add(win);
+		E.addReaderAIOrbWindow?.(win);
 	};
 	E.removeWindow = function (win) {
+		win._researchWorkspaceOverlay?.dispose();
+		win._researchLibraryWorkspace?.dispose();
+		win.document.getElementById('easysch-home-navigation')?._dispose?.();
+		win.document.getElementById('easysch-home-navigation')?.remove();
+		E.removeReaderAIOrbWindow?.(win);
 		win._researchCalendar?.dispose();
 		const pane=win.document.getElementById('zotero-items-pane');
 		if(pane?._researchContext){pane.removeEventListener('contextmenu',pane._researchContext,true);delete pane._researchContext;}
@@ -105,11 +122,11 @@
 	};
 	E.open = function (selection) {
 		let main = Zotero.getMainWindow();
-		if (!selection) { const reader=Zotero.Reader.getByTabID(main.Zotero_Tabs.selectedID);const attachment=reader&&Zotero.Items.get(reader.itemID);if(attachment)selection={paperID:attachment.parentID||attachment.id,attachmentID:attachment.id,text:''}; }
 		let existing = main.document.getElementById('easysch-workspace-frame');
 		if (existing) {
 			main.Zotero_Tabs.select(existing.parentElement.id);
-			if (selection) existing.contentWindow.EasySchUI?.setSelection(selection);
+			if (selection) existing.researchSelectionTask = existing.contentWindow.EasySchUI?.setSelection(selection);
+			else if (existing.contentWindow.EasySchUI?.ready) existing.contentWindow.EasySchUI.openAgentWorkbench();
 			return existing.contentWindow;
 		}
 		let frame = main.document.createElementNS('http://www.w3.org/1999/xhtml', 'iframe');
@@ -121,6 +138,9 @@
 		container.append(frame);
 		frame.src = 'chrome://zotero/content/research/workspace.html';
 		return frame.contentWindow;
+	};
+	E.openResearchAgent = async function (selection) {
+		return E.openLibraryWorkspace(Zotero.getMainWindow(),'agent',{selection});
 	};
 	E.openDOCX = async function (attachmentID) {
 		let main = Zotero.getMainWindow();
@@ -147,6 +167,12 @@
 		return frame.contentWindow;
 	};
 	E.stop = async function () {
+		E.stopRapidReadingPreparation?.();
+		if (E.rapidReadingImportObserver) {
+			Zotero.Notifier.unregisterObserver(E.rapidReadingImportObserver);
+			E.rapidReadingImportObserver = null;
+		}
+		E.readerAIOrbUninstall?.();
 		E.ai?.cancel();
 		if (E.sidebarID) Zotero.ItemPaneManager.unregisterSection(E.sidebarID);
 		if (E.overviewID) Zotero.ItemPaneManager.unregisterSection(E.overviewID);

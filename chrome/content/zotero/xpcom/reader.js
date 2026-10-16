@@ -61,6 +61,9 @@ class ReaderInstance {
 			this._resolveInitPromise = resolve;
 			this._rejectInitPromise = reject;
 		});
+		// A tab may close before a caller starts awaiting readiness. Keep the
+		// original rejected promise observable without an unhandled rejection.
+		this._initPromise.catch(() => {});
 		this._isUninitialized = false;
 		this._isTabClosed = false;
 		this._customEventHandler = null;
@@ -162,6 +165,10 @@ class ReaderInstance {
 	}
 
 	async _open({ state, location, secondViewState, preview }) {
+		if (this._isTabClosed || this._isUninitialized) {
+			this._abortInitialization();
+			return false;
+		}
 		// Set `ReaderTab` title as fast as possible
 		this.updateTitle();
 
@@ -184,6 +191,10 @@ class ReaderInstance {
 
 
 		await this._waitForReader();
+		if (this._isTabClosed || this._isUninitialized) {
+			this._abortInitialization();
+			return false;
+		}
 
 		if (this._customEventHandler) {
 			this._iframeWindow.removeEventListener('customEvent', this._customEventHandler);
@@ -229,6 +240,12 @@ class ReaderInstance {
 			catch {
 				// Ignore
 			}
+		}
+		// Synchronous Fluent reads can pump events that close the tab/window.
+		// Never call into its destroyed iframe when those reads finish later.
+		if (this._isTabClosed || this._isUninitialized) {
+			this._abortInitialization();
+			return false;
 		}
 
 		this._internalReader = this._iframeWindow.wrappedJSObject.createReader(Components.utils.cloneInto({
@@ -692,11 +709,18 @@ class ReaderInstance {
 		};
 	}
 
+	_abortInitialization() {
+		let error = new Error('Reader was closed before initialization');
+		error.name = 'AbortError';
+		this._rejectInitPromise(error);
+	}
+
 	uninit() {
 		if (this._isUninitialized) {
 			return;
 		}
 		this._isUninitialized = true;
+		this._abortInitialization();
 		if (this._customEventHandler && this._iframeWindow) {
 			try {
 				this._iframeWindow.removeEventListener('customEvent', this._customEventHandler);
@@ -744,12 +768,14 @@ class ReaderInstance {
 			// embedded annotations are imported right after opening a newly added file
 			await this._initPromise;
 			this._internalReader.setAnnotations(Components.utils.cloneInto(annotations, this._iframeWindow));
+			this._iframeWindow.dispatchEvent(new this._iframeWindow.Event('easysch-reader-annotationschange'));
 		}
 	}
 
 	async unsetAnnotations(keys) {
 		await this._initPromise;
 		this._internalReader.unsetAnnotations(Components.utils.cloneInto(keys, this._iframeWindow));
+		this._iframeWindow.dispatchEvent(new this._iframeWindow.Event('easysch-reader-annotationschange'));
 	}
 
 	async navigate(location) {
@@ -1355,7 +1381,9 @@ class ReaderInstance {
 					else {
 						let menuitem = parentNode.ownerDocument.createXULElement('menuitem');
 						menuitem.setAttribute('label', item.label);
-						menuitem.toggleAttribute('disabled', item.disabled);
+						// An omitted force toggles the attribute on; most Reader actions
+						// intentionally omit disabled because they are available.
+						menuitem.toggleAttribute('disabled', !!item.disabled);
 						if (item.color) {
 							menuitem.className = 'menuitem-iconic';
 							menuitem.setAttribute('image', this._getColorIcon(item.color, item.checked));
@@ -1376,7 +1404,8 @@ class ReaderInstance {
 		};
 		appendItems(popup, itemGroups);
 		let rect = this._iframe.getBoundingClientRect();
-		rect = this._window.windowUtils.toScreenRectInCSSUnits(rect.x + x, rect.y + y, 0, 0);
+		let coordinateWindow = this._interactivePreview ? this._iframe.ownerDocument.defaultView : this._window;
+		rect = coordinateWindow.windowUtils.toScreenRectInCSSUnits(rect.x + x, rect.y + y, 0, 0);
 		setTimeout(() => popup.openPopupAtScreen(rect.x, rect.y, true));
 		return promise;
 	}
@@ -2032,7 +2061,8 @@ class ReaderTab extends ReaderInstance {
 			}
 		};
 
-		this._open({ location: options.location, secondViewState: options.secondViewState }).then(() => {
+		this._open({ location: options.location, secondViewState: options.secondViewState }).then((opened) => {
+			if (!opened || this._isTabClosed || this._isUninitialized) return;
 			this._tabContainer.addEventListener('tab-bottom-placeholder-resize', (event) => {
 				this.setBottomPlaceholderHeight(event.detail.height);
 			});
@@ -2049,6 +2079,9 @@ class ReaderTab extends ReaderInstance {
 			if (select) {
 				this._updateLayout();
 			}
+		}).catch(error => {
+			this._rejectInitPromise(error);
+			if (error.name !== 'AbortError') Zotero.logError(error);
 		});
 	}
 
@@ -2240,7 +2273,10 @@ class ReaderWindow extends ReaderInstance {
 			this._switchReaderSubtype(this._type);
 		});
 
-		this._open({ state: options.state, location: options.location, secondViewState: options.secondViewState });
+		this._open({ state: options.state, location: options.location, secondViewState: options.secondViewState }).catch(error => {
+			this._rejectInitPromise(error);
+			if (error.name !== 'AbortError') Zotero.logError(error);
+		});
 	}
 
 	_switchReaderSubtype(subtype) {
@@ -2477,14 +2513,30 @@ class ReaderPreview extends ReaderInstance {
 		super(options);
 		this._iframe = options.iframe;
 		this._iframeWindow = this._iframe.contentWindow;
-		this._iframeWindow.addEventListener('error', event => Zotero.logError(event.error));
+		this._interactivePreview = options.interactive === true;
+		this._previewErrorListener = event => Zotero.logError(event.error);
+		this._iframeWindow.addEventListener('error', this._previewErrorListener);
+		if (this._interactivePreview) {
+			this._window = options.window || Zotero.getMainWindow();
+			this._sidebarWidth = options.sidebarWidth || 220;
+			this._sidebarOpen = options.sidebarOpen === true;
+			this._bottomPlaceholderHeight = 0;
+			this._popupset = this._window.document.createXULElement('popupset');
+			this._popupset.dataset.embeddedReader = this._instanceID;
+			this._window.document.documentElement.append(this._popupset);
+		}
 		this._wrapConsole();
 	}
 
 	async _open({ state, location, secondViewState }) {
 		let success;
 		try {
-			success = await super._open({ state, location, secondViewState, preview: true });
+			if (this._isUninitialized) return false;
+			success = await super._open({ state, location, secondViewState, preview: !this._interactivePreview });
+			if (this._interactivePreview) {
+				if (this._isUninitialized || !await this._waitForInternalReader()) return false;
+				return success;
+			}
 
 			this._injectCSS(this._iframeWindow.document, ReaderPreview.CSS.global);
 
@@ -2527,9 +2579,21 @@ class ReaderPreview extends ReaderInstance {
 			this._item = null;
 			return false;
 		}
+		finally {
+			// File loading may finish after an embedded pane has been removed.
+			// Release observers registered by that late completion as well.
+			if (this._interactivePreview && this._isUninitialized) {
+				this._isUninitialized = false;
+				this.uninit();
+			}
+		}
 	}
 
 	uninit() {
+		try {
+			this._iframeWindow?.removeEventListener('error', this._previewErrorListener);
+		}
+		catch {}
 		if (this._type === "snapshot") {
 			this._internalReader?._primaryView?._iframeWindow.removeEventListener(
 				"resize", this.updateSnapshotAttr);
@@ -2539,6 +2603,11 @@ class ReaderPreview extends ReaderInstance {
 				"resize", this.updatePDFAttr);
 		}
 		super.uninit();
+		if (this._interactivePreview) {
+			this._popupset?.remove();
+			this._internalReader?._primaryView?.destroy();
+			this._internalReader?._secondaryView?.destroy();
+		}
 	}
 
 	/**
@@ -2574,12 +2643,12 @@ class ReaderPreview extends ReaderInstance {
 	}
 
 	_isReadOnly() {
-		return true;
+		return this._interactivePreview ? super._isReadOnly() : true;
 	}
 
 	async _getState() {
 		if (this._type === "pdf") {
-			return { pageIndex: 0, scale: "page-height", scrollMode: 0, spreadMode: 0 };
+			return { pageIndex: 0, scale: this._interactivePreview ? "page-width" : "page-height", scrollMode: 0, spreadMode: 0 };
 		}
 		else if (this._type === "epub") {
 			return Object.assign(await super._getState(), {
@@ -2642,6 +2711,7 @@ class ReaderPreview extends ReaderInstance {
 		let n = 0;
 		try {
 			while (!this._internalReader?._primaryView?._iframeWindow) {
+				if (this._isUninitialized) return false;
 				if (n >= 500) {
 					return false;
 				}
@@ -3003,7 +3073,7 @@ class Reader {
 		return reader;
 	}
 
-	async openPreview(itemID, iframe) {
+	async openPreview(itemID, iframe, options = {}) {
 		let { libraryID } = Zotero.Items.getLibraryAndKeyFromID(itemID);
 		let library = Zotero.Libraries.get(libraryID);
 		await library.waitForDataLoad('item');
@@ -3014,9 +3084,11 @@ class Reader {
 		}
 
 		let reader = new ReaderPreview({
+			interactive: options.interactive === true,
+			window: options.window,
 			item,
-			sidebarWidth: 0,
-			sidebarOpen: false,
+			sidebarWidth: options.interactive ? options.sidebarWidth || 220 : 0,
+			sidebarOpen: options.interactive && options.sidebarOpen === true,
 			bottomPlaceholderHeight: 0,
 			iframe,
 		});

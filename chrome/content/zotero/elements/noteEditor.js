@@ -173,9 +173,14 @@
 		};
 
 		notify = async (event, type, ids, extraData) => {
-			if (this._editorInstance) {
-				await this._editorInstance.notify(event, type, ids, extraData);
+			const instance = this._editorInstance;
+			const item = this._item;
+			if (instance) {
+				await instance.notify(event, type, ids, extraData);
 			}
+			// A note switch or teardown can finish while the notification awaits.
+			// Never apply the previous note's update to a replacement editor.
+			if (this._destroyed || this._item !== item || this._editorInstance !== instance) return;
 
 			if (!this._item) {
 				return;
@@ -188,19 +193,19 @@
 						this._returnHandler();
 					}
 				}
-				else {
+				else if (instance) {
 					let state = extraData && extraData[id] && extraData[id].state;
 					if (state) {
-						if (extraData[id].noteEditorID !== this._editorInstance.instanceID) {
+						if (extraData[id].noteEditorID !== instance.instanceID) {
 							let noteData = { state, html: this._item.note };
-							this._editorInstance.applyIncrementalUpdate(noteData, true);
+							instance.applyIncrementalUpdate(noteData, true);
 						}
 					}
 					else {
 						let curValue = this._item.note;
 						if (curValue !== this._lastHtmlValue) {
 							let noteData = { html: curValue };
-							this._editorInstance.applyIncrementalUpdate(noteData, true);
+							instance.applyIncrementalUpdate(noteData, true);
 						}
 					}
 					this._lastHtmlValue = this._item.note;

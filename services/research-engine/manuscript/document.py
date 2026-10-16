@@ -3,7 +3,7 @@ import csv, hashlib, io, json, re, subprocess, sys, tempfile, zipfile
 from pathlib import Path
 from copy import deepcopy
 from docx import Document
-from docx.shared import Mm, Pt
+from docx.shared import Mm, Pt, RGBColor
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
@@ -23,6 +23,119 @@ def field(p, instruction, text):
     t = element('w:t'); t.text = str(text); r.append(t)
     r.append(element('w:fldChar', fldCharType='end'))
 
+def paragraph_alignment(paragraph, block):
+    alignment = {'left': WD_ALIGN_PARAGRAPH.LEFT, 'center': WD_ALIGN_PARAGRAPH.CENTER,
+                 'right': WD_ALIGN_PARAGRAPH.RIGHT, 'justify': WD_ALIGN_PARAGRAPH.JUSTIFY}.get(block.get('textAlign'))
+    if alignment is not None:
+        paragraph.alignment = alignment
+    if block.get('lineSpacing') in (1, 1.15, 1.5, 1.8, 2):
+        paragraph.paragraph_format.line_spacing = block['lineSpacing']
+    indent = block.get('indent')
+    if isinstance(indent, (int, float)) and 0 <= indent <= 30:
+        paragraph.paragraph_format.left_indent = Mm(indent)
+
+def color_hex(value):
+    color = str(value or '').lstrip('#')
+    if color.startswith('rgb'):
+        values = re.findall(r'\d+', color)[:3]
+        color = ''.join(format(min(255, int(v)), '02X') for v in values)
+    return color if re.fullmatch(r'[0-9a-fA-F]{6}', color) else None
+
+INLINE_MATH = re.compile(r'\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|(?<!\\)\$(?!\$)([^\n$]+?)(?<!\\)\$(?!\$)')
+
+
+def write_text_runs(paragraph, specs):
+    for spec in specs:
+        run = paragraph.add_run(spec.get('text', ''))
+        for name in ('bold', 'italic', 'underline'):
+            if name in spec: setattr(run, name, bool(spec[name]))
+        if 'strike' in spec: run.font.strike = bool(spec['strike'])
+        if spec.get('sup'): run.font.superscript = True
+        elif spec.get('sub'): run.font.subscript = True
+        size = spec.get('fontSize')
+        if isinstance(size, (int, float)) and 6 <= size <= 72: run.font.size = Pt(size)
+        color = color_hex(spec.get('color'))
+        if color: run.font.color.rgb = __import__('docx.shared', fromlist=['RGBColor']).RGBColor.from_string(color)
+        highlight = color_hex(spec.get('highlight'))
+        if highlight: run._element.get_or_add_rPr().append(element('w:shd', fill=highlight, val='clear'))
+        if spec.get('fontFamily'):
+            font = spec['fontFamily'].strip('"\'')
+            run.font.name = font
+            run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'), font)
+
+
+def text_run_range(specs, start, end):
+    offset = 0
+    for spec in specs:
+        value = spec.get('text', '')
+        left, right = max(start - offset, 0), min(end - offset, len(value))
+        if right > left:
+            yield dict(spec, text=value[left:right])
+        offset += len(value)
+
+
+def current_text_runs(specs, text):
+    """Retain trusted formatting while the actual saved text owns the content."""
+    parts = specs or [dict(text=text)]
+    source = ''.join(spec.get('text', '') for spec in parts)
+    if source == text:
+        return parts
+    # Legacy cell edits sometimes left their previous runs in storage. Keep
+    # exact unchanged prefix/suffix formatting, never any superseded characters.
+    prefix = 0
+    while prefix < min(len(source), len(text)) and source[prefix] == text[prefix]:
+        prefix += 1
+    suffix = 0
+    while suffix < min(len(source)-prefix, len(text)-prefix) and source[-1-suffix] == text[-1-suffix]:
+        suffix += 1
+    result = list(text_run_range(parts, 0, prefix))
+    middle = text[prefix:len(text)-suffix if suffix else len(text)]
+    if middle:
+        result.append(dict(text=middle))
+    if suffix:
+        result.extend(text_run_range(parts, len(source)-suffix, len(source)))
+    return result
+
+
+def write_runs(paragraph, specs, fallback=None, math_context=None):
+    parts = specs or [dict(text=fallback or '')]
+    if fallback is not None and ''.join(spec.get('text', '') for spec in parts) != fallback:
+        parts = current_text_runs(parts, fallback)
+        if math_context is not None:
+            math_context.setdefault('textWarnings', []).append(dict(reason='saved-run-text-mismatch', usedCurrentText=True))
+    source = ''.join(spec.get('text', '') for spec in parts)
+    matches = list(INLINE_MATH.finditer(source)) if math_context else []
+    if not matches:
+        write_text_runs(paragraph, parts)
+        return
+    offset = 0
+    for match in matches:
+        write_text_runs(paragraph, text_run_range(parts, offset, match.start()))
+        latex = next(value for value in match.groups() if value is not None)
+        try:
+            nodes = formula(latex, math_context.get('pandoc'), math_context['folder'])
+            for node in nodes:
+                paragraph._p.append(node)
+        except Exception as error:
+            # A failed conversion remains editable source text, including its
+            # formatting and delimiters. The export reports this explicitly.
+            write_text_runs(paragraph, text_run_range(parts, match.start(), match.end()))
+            math_context['warnings'].append(dict(source=match.group(0)[:400], error=str(error)[:400]))
+        offset = match.end()
+    write_text_runs(paragraph, text_run_range(parts, offset, len(source)))
+
+def list_runs(text, specs):
+    start = 0
+    for line in text.split('\n'):
+        end, offset, parts = start + len(line), 0, []
+        for spec in specs:
+            value = spec.get('text', '')
+            left, right = max(start-offset, 0), min(end-offset, len(value))
+            if right > left: parts.append(dict(spec, text=value[left:right]))
+            offset += len(value)
+        yield line, parts
+        start = end + 1
+
 def default_reference(path):
     doc = Document()
     for name in ['Normal','Title','Heading 1','Heading 2','Heading 3','Caption']:
@@ -34,6 +147,36 @@ def default_reference(path):
     p=sect.footer.paragraphs[0]; p.alignment=WD_ALIGN_PARAGRAPH.CENTER; field(p,' PAGE ','1')
     math = OxmlElement('m:mathPr'); font = OxmlElement('m:mathFont'); font.set(qn('m:val'),'Cambria Math'); math.append(font); doc.settings.element.append(math)
     doc.save(path)
+
+def academic_default_styles(doc, is_plan=False):
+    # Only the bundled default is normalized. A user-selected reference.docx
+    # remains authoritative for fonts, colors, borders, headers and footers.
+    for name in ['Normal', 'Title', 'Caption'] + ['Heading '+str(i) for i in range(1, 10)]:
+        style = doc.styles[name]
+        style.font.name = 'Times New Roman'
+        style.font.color.rgb = RGBColor(0, 0, 0)
+        rpr = style.element.get_or_add_rPr()
+        fonts = rpr.get_or_add_rFonts()
+        fonts.set(qn('w:eastAsia'), '宋体' if name in ('Normal', 'Caption') else '黑体')
+        color = rpr.find(qn('w:color'))
+        for attr in ('themeColor', 'themeTint', 'themeShade'):
+            color.attrib.pop(qn('w:'+attr), None)
+        if name == 'Title' or name.startswith('Heading '):
+            ppr = style.element.find(qn('w:pPr'))
+            if ppr is not None:
+                for border in ppr.findall(qn('w:pBdr')):
+                    ppr.remove(border)
+    for section in doc.sections:
+        for header in (section.header, section.first_page_header, section.even_page_header):
+            if header.is_linked_to_previous:
+                continue
+            for paragraph in header.paragraphs:
+                paragraph.text = '执行方案' if is_plan else '研究稿'
+                for run in paragraph.runs:
+                    run.font.size = Pt(9)
+                    run.font.color.rgb = RGBColor.from_string('777777')
+                    run.font.name = 'Times New Roman'
+                    run._r.get_or_add_rPr().get_or_add_rFonts().set(qn('w:eastAsia'), '宋体')
 
 def dataset(file):
     p=Path(file)
@@ -61,11 +204,11 @@ def formula(latex,pandoc,folder):
     if not nodes: raise ValueError('公式没有生成可编辑 OMML：'+latex)
     return [deepcopy(n) for n in nodes]
 
-def write_table(doc,b,number):
+def write_table(doc,b,number,math_context=None):
     spec=b['table']; rows=spec['rows']; cols=len(rows[0])
     p=doc.add_paragraph(style='Caption')
     bookmark='table_'+re.sub(r'\W','_',b['id']); p._p.append(element('w:bookmarkStart',id=number,name=bookmark))
-    p.add_run('表 ');field(p,' SEQ Table \\* ARABIC ',number);p.add_run(' '+spec.get('caption',''));p._p.append(element('w:bookmarkEnd',id=number))
+    p.add_run('表 ');field(p,' SEQ Table \\* ARABIC ',number);write_runs(p,[], ' '+spec.get('caption',''),math_context);p._p.append(element('w:bookmarkEnd',id=number))
     t=doc.add_table(rows=len(rows),cols=cols);t.autofit=False;t.alignment=WD_TABLE_ALIGNMENT.CENTER
     width=t._tbl.tblPr.find(qn('w:tblW'))
     if width is None:width=element('w:tblW');t._tbl.tblPr.append(width)
@@ -79,10 +222,10 @@ def write_table(doc,b,number):
             cell=t.cell(ri,ci)
             rs,cs=data.get('rowspan',1),data.get('colspan',1)
             if rs>1 or cs>1:cell=cell.merge(t.cell(ri+rs-1,ci+cs-1))
-            cell.width=Mm(sum(spec['widths'][ci:ci+cs])); cell.text=data.get('text','')
+            cell.width=Mm(sum(spec['widths'][ci:ci+cs])); cell.text=''
             cell.vertical_alignment={'top':WD_CELL_VERTICAL_ALIGNMENT.TOP,'bottom':WD_CELL_VERTICAL_ALIGNMENT.BOTTOM}.get(data.get('vertical'),WD_CELL_VERTICAL_ALIGNMENT.CENTER)
-            p=cell.paragraphs[0];align=data.get('align','auto')
-            if align=='auto':align='center' if ri==0 or re.fullmatch(r'[-+]?\d[\d.,% ±Ee-]*',cell.text.strip()) else 'left'
+            p=cell.paragraphs[0];write_runs(p,data.get('runs'),data.get('text',''),math_context);align=data.get('align','auto')
+            if align=='auto':align='center' if ri==0 or re.fullmatch(r'[-+]?\d[\d.,% ±Ee-]*',data.get('text','').strip()) else 'left'
             p.alignment={'center':WD_ALIGN_PARAGRAPH.CENTER,'right':WD_ALIGN_PARAGRAPH.RIGHT}.get(align,WD_ALIGN_PARAGRAPH.LEFT)
             if ri==0:
                 for r in p.runs:r.bold=True
@@ -101,10 +244,13 @@ def export(req):
     reference=Path(req.get('referenceDoc') or Path(__file__).with_name('reference.docx'))
     if not reference.exists(): raise ValueError('找不到 reference.docx')
     doc=Document(reference)
+    if not req.get('referenceDoc'):
+        academic_default_styles(doc, req.get('operation') == 'manuscript-plan-export')
     # Retain styles/headers/footers/section properties; discard template example body.
     for node in list(doc.element.body):
         if node.tag!=qn('w:sectPr'):doc.element.body.remove(node)
     p=req['project'];doc.add_heading(p['title'],0);table_number=0
+    math_context=dict(pandoc=req.get('pandoc'),folder=folder,warnings=[])
     for section in p['sections']:
         blocks=[b for b in p['blocks'] if b['sectionID']==section['id'] and not (b.get('emptyStarter') and not b.get('text','').strip() and not b.get('materials'))]
         if not blocks:continue
@@ -114,18 +260,24 @@ def export(req):
             if b.get('pageBreakBefore'):doc.add_page_break()
             if b.get('emptyStarter') and not text.strip():continue
             if kind=='placeholder':raise ValueError('存在待填卡，请补齐后导出')
-            if kind=='heading':doc.add_heading(text,2)
+            if kind=='heading':
+                par=doc.add_heading('',2);paragraph_alignment(par,b);write_runs(par,b.get('runs'),text,math_context)
             elif kind=='list':
-                for line in text.splitlines():doc.add_paragraph(line,style='List Bullet')
+                for line, parts in list_runs(text,b.get('runs',[])):
+                    par=doc.add_paragraph(style='List Number' if b.get('listStyle')=='number' else 'List Bullet')
+                    paragraph_alignment(par,b);write_runs(par,parts,line,math_context)
             elif kind=='formula':
                 par=doc.add_paragraph()
                 for node in formula(text,req.get('pandoc'),folder):par._p.append(node)
             elif kind=='image':
                 path=Path(b['imagePath'])
                 if not path.is_file():raise ValueError('图片不存在：'+str(path))
-                doc.add_picture(str(path),width=Mm(min(b.get('width',140),158)))
-                if text:doc.add_paragraph(text,style='Caption')
-            elif kind=='table':table_number+=1;write_table(doc,b,table_number)
+                width=b.get('width',140);height=b.get('height')
+                if not isinstance(width,(int,float)) or not 0<width<=158:raise ValueError('图片宽度无效')
+                if height is not None and (not isinstance(height,(int,float)) or not 0<height<=240):raise ValueError('图片高度无效')
+                doc.add_picture(str(path),width=Mm(width),**({'height':Mm(height)} if height is not None else {}))
+                if text:write_runs(doc.add_paragraph(style='Caption'),b.get('runs'),text,math_context)
+            elif kind=='table':table_number+=1;write_table(doc,b,table_number,math_context)
             elif kind=='citation':
                 cited=req.get('citationText',{}).get(str(b.get('citationItemID')))
                 if not cited:raise ValueError('引用尚未由 Zotero 格式化')
@@ -136,24 +288,16 @@ def export(req):
                 par=doc.add_paragraph();field(par,' REF table_'+re.sub(r'\W','_',target['id'])+' \\h ',text or '表')
             else:
                 par=doc.add_paragraph()
+                paragraph_alignment(par,b)
                 if b.get('spaceBefore'):par.paragraph_format.space_before=Pt(b['spaceBefore'])
-                if b.get('runs'):
-                    for spec in b['runs']:
-                        run=par.add_run(spec.get('text',''));run.bold=bool(spec.get('bold'));run.italic=bool(spec.get('italic'));run.underline=bool(spec.get('underline'));run.font.superscript=bool(spec.get('sup'));run.font.subscript=bool(spec.get('sub'))
-                        color=spec.get('color','').lstrip('#')
-                        if color.startswith('rgb'):
-                            values=re.findall(r'\d+',color)[:3];color=''.join(format(min(255,int(v)),'02X') for v in values)
-                        if re.fullmatch(r'[0-9a-fA-F]{6}',color):run.font.color.rgb=__import__('docx.shared',fromlist=['RGBColor']).RGBColor.from_string(color)
-                        if spec.get('fontFamily'):
-                            font=spec['fontFamily'].strip('"\'');run.font.name=font;run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),font)
-                else:par.add_run(text)
+                write_runs(par,b.get('runs'),text,math_context)
     if req.get('bibliography'):
         doc.add_heading('参考文献',1)
         for entry in req['bibliography']:doc.add_paragraph(entry.strip())
     output=folder/'manuscript.docx';doc.save(output)
     with zipfile.ZipFile(output) as z:
         xml=etree.fromstring(z.read('word/document.xml'))
-        report=dict(parts=z.namelist(),tables=len(xml.findall('.//'+qn('w:tbl'))),formulas=len(xml.findall('.//'+qn('m:oMath'))),images=len(xml.findall('.//'+qn('w:drawing'))))
+        report=dict(parts=z.namelist(),tables=len(xml.findall('.//'+qn('w:tbl'))),formulas=len(xml.findall('.//'+qn('m:oMath'))),images=len(xml.findall('.//'+qn('w:drawing'))),mathWarnings=math_context['warnings'],textWarnings=math_context.get('textWarnings',[]))
     (folder/'structure-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     (folder/'project.json').write_text(json.dumps(p,ensure_ascii=False,indent=2),encoding='utf-8')
     return dict(path=str(output),directory=str(folder),structure=report,citations='Zotero 格式化的静态引用')
@@ -167,6 +311,9 @@ if __name__=='__main__':
         elif req['operation']=='manuscript-translation-layout':
             from pdf_materials import translation_layout
             value=translation_layout(req)
+        elif req['operation']=='manuscript-plan-export':
+            from plan_export import export_plan
+            value=export_plan(req)
         else:
             value=dataset(req['file']) if req['operation']=='manuscript-data' else export(req)
         print(json.dumps(dict(type='result',value=value),ensure_ascii=False))

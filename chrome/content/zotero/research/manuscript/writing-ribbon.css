@@ -1,0 +1,48 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+html[data-appearance] #tools.writing-ribbon{position:relative;display:flex;flex-direction:column;align-items:stretch;flex:none;gap:0;min-height:0;padding:0 10px;background:color-mix(in srgb,var(--assembly-bar) 84%,transparent);backdrop-filter:blur(22px) saturate(1.12);border-bottom:1px solid var(--assembly-border);box-shadow:0 2px 8px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);z-index:12}
+.writing-ribbon-drawer{position:relative;flex:none;padding:8px 0 4px;max-height:min(290px,35vh);overflow:auto;overscroll-behavior:contain;border:0;border-top:1px solid var(--assembly-border);border-radius:0 0 12px 12px;background:color-mix(in srgb,var(--assembly-bar) 74%,transparent);backdrop-filter:blur(24px) saturate(1.18);box-shadow:inset 0 1px var(--assembly-highlight);animation:ribbon-open .16s ease-out}
+.writing-ribbon-footer{display:flex;justify-content:flex-end;padding-top:3px}
+html[data-appearance] #tools.writing-ribbon .writing-ribbon-pin{display:grid;place-items:center;width:32px;height:30px;min-height:30px;padding:0;border:0;border-radius:7px;background:transparent;color:var(--muted);box-shadow:none}
+html[data-appearance] #tools.writing-ribbon .writing-ribbon-pin[aria-pressed=true]{background:var(--assembly-control);color:var(--text);box-shadow:0 1px 3px var(--assembly-shadow)}
+@keyframes ribbon-open{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.writing-ribbon-drawer{animation:none}}
+.writing-ribbon-bar{display:grid;grid-template-columns:32px minmax(0,1fr) 32px;align-items:center;gap:8px;min-width:0;min-height:40px}
+.writing-ribbon-bar #toggle-left{grid-column:1;grid-row:1;justify-self:start}
+.writing-ribbon-bar #toggle-right{grid-column:3;grid-row:1;justify-self:end}
+.writing-ribbon-navigation{grid-column:2;grid-row:1;display:flex;align-items:center;justify-content:center;gap:18px;min-width:0}
+.writing-ribbon-tabs{flex:none;min-width:0}
+html[data-appearance] .writing-ribbon .writing-ribbon-tabs{display:flex;align-items:center;gap:3px;padding:0;background:transparent;box-shadow:none;border:0}
+html[data-appearance] #tools.writing-ribbon .writing-ribbon-tabs button{height:30px;min-height:30px;padding:5px 12px;border:0;border-radius:7px;background:transparent;box-shadow:none;color:var(--muted);font-weight:500}
+html[data-appearance] #tools.writing-ribbon .writing-ribbon-tabs button[aria-selected=true]{background:var(--assembly-control);color:var(--text);box-shadow:0 1px 4px var(--assembly-shadow),inset 0 1px var(--assembly-highlight)}
+.writing-ribbon-view{display:flex;flex:none;align-items:center;gap:6px;min-width:0}
+#tools.writing-ribbon{container-type:inline-size;container-name:writing-ribbon}
+@container writing-ribbon (max-width:540px){.writing-ribbon-navigation{gap:12px}.writing-ribbon-bar{gap:5px}.writing-ribbon-tabs button{padding-inline:8px!important}}
+@container writing-ribbon (max-width:400px){.writing-ribbon-navigation{gap:7px}.writing-ribbon-bar{grid-template-columns:28px minmax(0,1fr) 28px;gap:3px}.writing-ribbon-tabs{gap:1px!important}.writing-ribbon-tabs button{padding-inline:5px!important;font-size:11px!important}.writing-ribbon-view #canvas-display-select{width:84px}}
+html[data-appearance] #tools.writing-ribbon #insert-tools{display:flex;justify-content:flex-start;align-items:stretch;gap:8px;flex-wrap:wrap;width:100%;min-width:0}
+.writing-ribbon #manual-writing-tools{width:100%;border:0;margin:0;padding:0}
+html[data-appearance] .writing-ribbon #manual-writing-tools .manual-writing-toolbar{width:100%;display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:stretch;gap:6px}
+html[data-appearance] .writing-ribbon .writing-format-group{position:relative;display:flex;flex-wrap:wrap;align-content:flex-start;flex-shrink:1;gap:2px;padding:5px 7px 20px!important;border-radius:9px;min-height:64px;max-width:100%;box-shadow:0 1px 4px var(--assembly-shadow),inset 0 1px var(--assembly-highlight)}
+.writing-ribbon .writing-format-group::after{content:attr(data-ribbon-label);position:absolute;inset-inline:0;bottom:3px;text-align:center;font:11px/1.4 var(--ui-font,system-ui);color:var(--muted);pointer-events:none}
+html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=history]{width:48px;justify-content:center}
+html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=text]{width:315px}
+html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=scripts]{width:165px}
+html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=paragraph]{width:310px}
+.writing-ribbon #manual-writing-tools [data-writing-command=pageBreak]{margin-right:0}
+html[data-appearance] .writing-ribbon #manual-writing-tools .writing-font{width:120px;max-width:120px}
+html[data-appearance] .writing-ribbon .manuscript-insert-actions{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:7px;padding:8px 0;min-height:64px}
+html[data-appearance] #tools.writing-ribbon #insert-tools .manuscript-insert-actions button{min-height:44px;min-width:72px;padding:8px 14px;border-radius:9px}
+.writing-find-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 0;min-height:64px;width:100%}
+.writing-find-fields{display:flex;gap:7px;flex:1;min-width:min(260px,100%)}
+.writing-find-fields input{min-width:0;flex:1;height:34px;padding:6px 9px;border-radius:8px}
+.writing-find-actions{display:flex;gap:5px;flex-wrap:wrap}
+html[data-appearance] .writing-find-actions button{height:34px;min-height:34px}
+.writing-find-feedback{font:12px/1.5 var(--ui-font,system-ui);color:var(--muted);min-width:65px}
+html[data-appearance] #left{display:flex;flex-direction:column;min-height:0;padding:0;overflow:hidden}
+html[data-appearance] #left #left-tabs{position:relative;top:0;flex:none;margin:0;padding:7px 10px;border-bottom:1px solid var(--assembly-border);background:color-mix(in srgb,var(--assembly-bar) 82%,transparent);backdrop-filter:blur(22px) saturate(1.12)}
+html[data-appearance] #left #library{flex:1;min-height:0;overflow:auto;padding:0 12px 16px;overscroll-behavior:contain}
+html[data-appearance] #library .material-library-controls{top:0;margin:0 -12px 8px;padding:8px 12px;background:color-mix(in srgb,var(--assembly-control) 74%,transparent);backdrop-filter:blur(24px) saturate(1.2);border-bottom:1px solid color-mix(in srgb,var(--assembly-border) 70%,transparent);box-shadow:0 4px 12px var(--assembly-shadow),inset 0 1px var(--assembly-highlight)}
+html[data-appearance] #library .catalog-top{position:relative;background:transparent;box-shadow:none;padding:0 0 4px}
+html[data-appearance] #library #material-view-controls{padding-top:3px!important}
+@media(max-width:980px){html[data-appearance] #tools.writing-ribbon{padding-inline:8px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=text]{width:265px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=paragraph]{width:265px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=scripts]{width:134px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-font{width:98px;max-width:98px}}
+@media(max-width:760px){html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=text]{flex:1;min-width:230px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=paragraph]{flex:1;min-width:230px}.writing-ribbon-view #canvas-display-mode button{padding-inline:8px}.writing-ribbon-tabs button{padding-inline:8px!important}.writing-find-fields{flex-basis:100%}.writing-ribbon-bar{gap:5px}}
+@media(max-width:1180px){html[data-appearance] #workspace>:is(#left,#right){max-width:clamp(210px,24vw,280px)}html[data-appearance] #left-tabs{padding-inline:6px}html[data-appearance] #left-tabs button{padding-inline:4px}}

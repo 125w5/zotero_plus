@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import JSZip from 'jszip';
 import vm from 'node:vm';
+import * as Policy from '../../../chrome/content/zotero/research/shared/research-ai-policy.mjs';
+import * as Chat from '../../../chrome/content/zotero/research/shared/chat-completion.mjs';
+import * as JSONStream from '../../../chrome/content/zotero/research/shared/json-stream.mjs';
 import * as model from '../../../chrome/content/zotero/research/shared/ppt-model.mjs';
 import {renderStudioDeck} from '../src/studio-render.mjs';
 import {layoutDiagram,diagramSVG,diagramDrawio} from '../src/studio-diagram.mjs';
@@ -23,7 +26,7 @@ test('native draft history preserves the old page across in-place edits and redo
 test('AI selects source excerpts; native code binds exact text and page IDs',async()=>{
  const d={id:'d',sources:[source],assets:[],datasets:[],contributions:[],materialsReady:true,outlineApproved:true,outline:[{id:'o',title:'编码顺序',purpose:'说明编码和分类顺序'}],slides:[{id:'p',outlineID:'o',status:'pending'}]};
  const S={model,get:()=>d,patch:async(id,fn)=>{fn(d);return d;}};
- vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/ppt-studio-ai.js',import.meta.url),'utf8'),{Zotero:{Research:{studio:S}},URL});
+ vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/ppt-studio-ai.js',import.meta.url),'utf8'),{Zotero:{Research:{studio:S}},URL,ChromeUtils:{importESModule:uri=>uri.endsWith('/research-ai-policy.mjs')?Policy:Chat}});
  S.request=async(system,input)=>{assert.ok(input.evidenceExcerpts.length);return {value:{title:'编码发生在分类之前',explanation:'原文提供了编码与分类的先后关系；实验结论应结合独立测试材料核对，不能扩展为未报告的性能提升。',blocks:[{kind:'paper_fact',text:'原文说明输入经过编码后再分类，展示方法流程时应保留这一顺序，而不添加未描述的处理模块。',quoteID:input.evidenceExcerpts[0].quoteID,evidenceIDs:['wrong-model-id']},{kind:'unverified',text:'片段没有报告样本量、统计显著性或具体准确率，需要在完整论文中核对后再用于组会解释。',evidenceIDs:[]}],assetIDs:[],notes:'测试引用绑定'},model:'fixture'};};
  const result=await S.generatePage('d','p',()=>{});assert.equal(result.blocks[0].quote,source.text);assert.deepEqual(Array.from(result.blocks[0].evidenceIDs),['p1']);
 });
@@ -40,7 +43,7 @@ test('missing model quotes become explicit unverified content after repair, neve
 });
 test('empty legacy drafts stop before requesting the model and explain how to select papers',async()=>{
  const d={id:'d',sources:[],contributions:[],materialsReady:true,outlineApproved:true,slides:[{id:'p'}]};const S={model,get:()=>d};
- vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/ppt-studio-ai.js',import.meta.url),'utf8'),{Zotero:{Research:{studio:S}},URL});
+ vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/ppt-studio-ai.js',import.meta.url),'utf8'),{Zotero:{Research:{studio:S}},URL,ChromeUtils:{importESModule:uri=>uri.endsWith('/research-ai-policy.mjs')?Policy:Chat}});
  S.request=()=>{throw Error('Model must not receive empty materials');};
  await assert.rejects(S.generatePage('d','p',()=>{}),/选择论文/);await assert.rejects(S.outline('d',()=>{}),/选择论文/);
 });
@@ -70,4 +73,18 @@ test('legacy meeting phrasing is adapted without changing source quotes or the s
  const result=await renderStudioDeck({plan:{version:3,title:'会议讨论',slides:[legacy]},evidence:[source],directory});
  const zip=await JSZip.loadAsync(await fs.readFile(result.path)),xml=await zip.file('ppt/slides/slide1.xml').async('string'),notes=await zip.file('ppt/notesSlides/notesSlide1.xml').async('string');
  assert.doesNotMatch(xml,/导师|预判/);assert.doesNotMatch(notes,/导师可能/);assert.match(xml,/待讨论问题/);assert.match(xml,/稳定性假设/);assert.match(notes,/Inputs are encoded before classification/);assert.deepEqual(legacy,before);
+});
+
+test('layout transport uses prompt JSON on the streaming gateway and keeps native JSON mode for DeepSeek',async()=>{
+ const code=await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/ppt-studio-ai.js',import.meta.url),'utf8');
+ for(const endpoint of ['https://openai.goldgom.top/v1','https://api.deepseek.com/v1']){
+  let body,calls=0;const expected={sectionOrder:['s1'],blockOrder:['b1'],materialOrder:[],reasons:[]};
+  const win={AbortController,fetch:async(url,options)=>{calls++;body=JSON.parse(options.body);const content=JSON.stringify(expected);return body.stream?new Response('data: '+JSON.stringify({choices:[{delta:{content},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n'):new Response(JSON.stringify({choices:[{message:{content},finish_reason:'stop'}]}));}};
+  const E={studio:{model},settings:()=>({endpoint,model:'controlled'}),resolveModel:async config=>config,core:{endpoint:x=>x},credentials:{get:async()=> 'controlled-only'},assets:{key:()=> 'test'},runArtifactEngine:async()=>({miss:true}),setTimeout:()=>0,clearTimeout:()=>{},aiProgress:(_,text)=>text,requestProvider:async(url,options,timeout,read)=>read(await win.fetch(url,options))};
+  vm.runInNewContext(code,{Zotero:{Research:E,getMainWindow:()=>win},URL,ChromeUtils:{importESModule:uri=>uri.endsWith('/research-ai-policy.mjs')?Policy:uri.endsWith('/json-stream.mjs')?JSONStream:Chat}});
+  const result=await E.studio.request('只返回现有 ID 排列的 JSON。',{instruction:'整理已有资料顺序'},()=>{},undefined,{fresh:true});
+  assert.deepEqual(structuredClone(result.value),expected);assert.equal(calls,1);assert.match(body.messages[0].content,/不得代写/);
+  if(endpoint.includes('goldgom')){assert.equal(body.stream,true);assert.equal(body.response_format,undefined);}
+  else{assert.deepEqual(body.response_format,{type:'json_object'});assert.deepEqual(body.thinking,{type:'disabled'});}
+ }
 });

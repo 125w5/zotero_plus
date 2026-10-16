@@ -24,13 +24,7 @@
   return result;
  };
 	E.openWorkflow = async (page, selection) => {
-		const w = E.open();
-		for (let i = 0; i < 200 && !w.EasySchUI?.ready; i++)
-			await Zotero.Promise.delay(30);
-		if (!w.EasySchUI?.ready) throw Error('页面尚未准备好，请重试');
-		if (selection) await w.EasySchUI.setSelection(selection);
-		w.EasySchUI.show(page);
-		return w.EasySchUI;
+		return E.openLibraryWorkspace(Zotero.getMainWindow(),page==='home'?'discovery':page==='research'?'agent':page,{selection});
 	};
 	E.installHomeMenu = (win) => {
 		const doc = win.document,
@@ -92,30 +86,34 @@
 		}
 		items?.append(group);
 	};
-	E.saveReaderNote = async (selection, record) => {
-		const attachment = await Zotero.Items.getAsync(selection.attachmentID),
-			position = selection.position;
+	E.saveReaderNote = async (selection, record, {reader:sourceReader} = {}) => {
+		const attachment = await Zotero.Items.getAsync(selection.attachmentID);
+		let position = selection.position;
 		if (!attachment?.isPDFAttachment() || !position?.rects?.length)
 			throw Error(
 				'该选区没有精确坐标，请在 PDF 中重新划选；不会随意在页面上打标记',
 			);
-		if (!Zotero.Libraries.get(attachment.libraryID).editable)
-			throw Error('当前文库只读');
+		E.assertReaderWritable(sourceReader || E.readerForAttachment(attachment.id), attachment);
 		const h = E.core.escapeHTML,
 			key = Zotero.DataObjectUtilities.generateKey();
 		const summary = record.result.sections
 			.map((s) => s.heading + '\n' + s.body)
 			.join('\n\n');
 		const label=record.model==='原文摘录'?'原文摘录':record.mode==='translate'||String(record.model).includes('机器翻译')?'机器翻译':'AI 补充';
+		const NoteContent=ChromeUtils.importESModule('chrome://zotero/content/research/shared/selection-note-content.mjs'),Formula=ChromeUtils.importESModule('chrome://zotero/content/research/shared/formula-research.mjs');
+		const formula=E.assets?.position&&NoteContent.selectionFormulaAsset(selection,E.assets.active?.get(selection.attachmentID)?.assets,E.assets.position),latex=selection.latex||selection.formulaLatex||(formula&&E.store.get('formulaTranscriptions',Formula.formulaSourceKey(formula))?.latex)||'';
+		const content=NoteContent.selectionNoteHTML({selection,summary,label,latex,render:E.noteContentHTML,escape:h});
+		const snapshot=!!formula&&!content.math;
+		if(snapshot)position=E.assets.position(formula);
 		let annotation = new Zotero.Item('annotation'),
 			note;
 		annotation.libraryID = attachment.libraryID;
 		annotation.key = key;
 		await annotation.loadPrimaryData();
 		annotation.parentID = attachment.id;
-		annotation.annotationType = 'highlight';
-		annotation.annotationText = selection.text;
-		annotation.annotationComment = label + (label==='原文摘录'?'':'（请核对）')+'\n' + summary;
+		annotation.annotationType = snapshot?'image':'highlight';
+		annotation.annotationText = snapshot?'':content.math?'$$\n'+Formula.normalizeFormulaInput(latex)+'\n$$':selection.text;
+		annotation.annotationComment = label + (label==='原文摘录'?'':'（请核对）\n' + summary);
 		annotation.annotationColor = '#a28ae5';
 		annotation.annotationPageLabel = String(position.pageIndex + 1);
 		annotation.annotationSortIndex =
@@ -123,7 +121,13 @@
 			String(position.pageIndex).padStart(5, '0') + '|000000|00000';
 		annotation.annotationPosition = JSON.stringify(position);
 		annotation.setTags([{ tag: label }]);
-		await Zotero.DB.executeTransaction(async () => {
+		if(snapshot){
+			// Native annotation rendering preserves the complete equation's PDF
+			// glyphs and imports its durable image attachment into the new note.
+			await annotation.saveTx();
+			try{note=await Zotero.EditorInstance.createNoteFromAnnotations([annotation],{parentID:attachment.parentID||undefined,collectionID:!attachment.parentID?attachment.getCollections()[0]:undefined,noHeader:true,noComments:label==='原文摘录'});}
+			catch(error){try{await Zotero.Items.trashTx(annotation.id);}catch(cleanupError){Zotero.logError(cleanupError);}throw error;}
+		}else await Zotero.DB.executeTransaction(async () => {
 			await annotation.save({ skipSelect: true });
 			const uri =
 				E.library.uri(attachment, position.pageIndex) + '&annotation=' + key;
@@ -132,15 +136,15 @@
 			if (attachment.parentID) note.parentID = attachment.parentID;
 			else note.setCollections(attachment.getCollections());
 			note.setNote(
-				`<h1>${label}笔记</h1><p>${h(record.model || 'AI')} · ${h(record.at || new Date().toISOString())}</p><blockquote>${h(selection.text)}</blockquote>${E.noteContentHTML(summary)}<p><a href="${h(uri)}">回到 PDF 第 ${position.pageIndex + 1} 页选区</a></p>`,
+				`<h1>${label}笔记</h1><p>${h(record.model || 'AI')} · ${h(record.at || new Date().toISOString())}</p>${content.html}<p><a href="${h(uri)}">回到 PDF 第 ${position.pageIndex + 1} 页选区</a></p>`,
 			);
 			await note.save({ skipSelect: true });
 		});
 		const originalNote = note.getNote(),
 			originalComment = annotation.annotationComment;
-		for(const reader of Zotero.Reader._readers.filter(r=>r.itemID===attachment.id))await reader.setAnnotations([annotation]);
-		await E.rememberNoteLink(annotation,note,{translation:summary,generatedComment:annotation.annotationComment});
-		const reader=Zotero.Reader._readers.find(r=>r.itemID===attachment.id);
+		for(const reader of Zotero.Reader._readers.filter(r=>r.itemID===attachment.id&&r._window&&!r._window.closed&&!r._isTabClosed&&!r._isUninitialized))await reader.setAnnotations([annotation]);
+		await E.rememberNoteLink(annotation,note,{translation:label==='原文摘录'?'':summary,generatedComment:annotation.annotationComment});
+		const reader=E.readerForAttachment(attachment.id);
 		if(reader)await E.openReaderNote(note.id,reader);
 		return {
 			noteID: note.id,

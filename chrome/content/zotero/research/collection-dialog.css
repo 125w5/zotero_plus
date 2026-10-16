@@ -1,0 +1,13 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+#new-collection-dialog{font:13px/1.5 system-ui,"Microsoft YaHei",sans-serif;color:#293340;background:#f7f8fa}
+#new-collection-dialog dialog{padding:22px;gap:16px;background:linear-gradient(145deg,#ffffffed,#f4f6f9ed)}
+#new-collection-dialog dialog>vbox{gap:7px}
+#new-collection-dialog label{font:12px/1.5 system-ui,"Microsoft YaHei",sans-serif;color:#637181;margin:0}
+#new-collection-dialog #name{appearance:none;font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#293340;background:#fff;border:1px solid #d7dee6;border-radius:9px;min-height:40px;padding:7px 11px;box-shadow:inset 0 1px 2px #24354b08;box-sizing:border-box}
+#new-collection-dialog #name:focus-visible{outline:2px solid #94aac0;outline-offset:1px}
+#new-collection-dialog #create-in{appearance:none;font:13px/1.5 system-ui,"Microsoft YaHei",sans-serif;min-height:38px;border:1px solid #d7dee6;border-radius:9px;background:#fff;padding:4px 9px;box-shadow:0 1px 3px #24354b08}
+#new-collection-dialog .dialog-button-box{margin-top:8px;gap:8px}
+#new-collection-dialog .dialog-button-box button{appearance:none;min-height:36px;padding:5px 17px;border:1px solid #d7dee6;border-radius:8px;background:#fff;color:#3a4655;font:13px/1.5 system-ui,"Microsoft YaHei",sans-serif;box-shadow:0 2px 4px #26384c08}
+#new-collection-dialog .dialog-button-box button[dlgtype=accept]{background:linear-gradient(#eaf1f8,#e0eaf5);border-color:#c8d8e8;color:#29445e;box-shadow:0 3px 7px #30495f0f,inset 0 1px #fff}
+#new-collection-dialog .dialog-button-box button:hover{background:#edf2f7}
+#new-collection-dialog .dialog-button-box button:focus-visible{outline:2px solid #94aac0;outline-offset:2px}

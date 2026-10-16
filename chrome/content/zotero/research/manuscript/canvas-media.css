@@ -1,0 +1,9 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.canvas-table-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:24px}
+.canvas-table-preview-button{flex:none;display:grid!important;place-items:center;width:24px!important;height:24px!important;min-width:24px!important;padding:3px!important;margin:0!important;border:1px solid #d7dde666!important;border-radius:6px!important;color:#919aa9!important;background:linear-gradient(145deg,#fffffff2,#f1f3f8e6)!important;box-shadow:0 1px 3px #23344d0c;opacity:.72;transition:opacity .15s ease,transform .15s ease,box-shadow .15s ease}
+.canvas-table-preview-button svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.canvas-table-has-preview:hover .canvas-table-preview-button,.canvas-table-preview-button:focus-visible{opacity:1;color:#617089!important;box-shadow:0 2px 6px #23344d13}
+.canvas-table-preview-button:hover{transform:translateY(-1px)}
+.canvas-table-preview-button:active{transform:translateY(0)}
+[data-appearance=dark] .canvas-table-preview-button{background:linear-gradient(145deg,#333b4bf2,#2a303be6)!important;border-color:#59637266!important;color:#b7c0cf!important}
+@media(prefers-reduced-motion:reduce){.canvas-table-preview-button{transition:none}}

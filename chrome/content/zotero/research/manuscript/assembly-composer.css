@@ -1,0 +1,141 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.assembly-taskbar{display:flex;align-items:center;gap:7px;flex:none;min-height:44px;box-sizing:border-box;margin:0 var(--assembly-console-evidence) 0 var(--assembly-console-sessions);padding:5px 9px;pointer-events:auto;min-width:0;border:1px solid color-mix(in srgb,var(--assembly-border) 58%,transparent);border-radius:15px;background:var(--assembly-chat-shell);backdrop-filter:blur(18px) saturate(1.08);box-shadow:0 2px 9px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
+/* A menu grows above the footer and must remain above the conversation layer. */
+:is(body,.assembly-clui-surface)>footer{z-index:45!important;}
+.assembly-task-tabs{display:flex;align-items:center;gap:4px;min-width:0;flex:1;overflow:auto;scrollbar-width:none;padding:2px 24px 2px 1px;mask-image:linear-gradient(to right,#000 0%,#000 calc(100% - 22px),transparent 100%);}
+.assembly-task-tab{display:flex;align-items:center;min-width:70px;max-width:220px;flex:0 0 auto;border-radius:9px;background:transparent;border:1px solid transparent;box-shadow:none;transition:background 160ms,transform 160ms,box-shadow 160ms,border-color 160ms;}
+.assembly-task-tab[data-active=true]{background:var(--assembly-control);border-color:color-mix(in srgb,var(--assembly-border) 75%,transparent);box-shadow:0 2px 6px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
+.assembly-task-tab:is(:hover,:focus-within){background:var(--assembly-control);border-color:var(--assembly-border);box-shadow:0 3px 8px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);transform:translateY(-1px);}
+html[data-appearance] .assembly-task-select{display:flex;gap:6px;align-items:center;min-height:30px;border:0;border-radius:8px;background:none;box-shadow:none;min-width:0;flex:1;padding:4px 7px;color:var(--muted);font:12px/1.6 var(--ui-font,system-ui,'Microsoft YaHei',sans-serif);text-align:left;}
+.assembly-task-select[aria-selected=true]{color:var(--text)!important;}
+.assembly-task-select:focus-visible{outline:2px solid color-mix(in srgb,var(--muted) 55%,transparent);outline-offset:1px;}
+.assembly-task-select span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.assembly-task-dot{width:6px;height:6px;flex:none;border-radius:50%;background:#8497a7;}
+.assembly-task-tab[data-state=running] .assembly-task-dot{background:#3b7993;animation:assembly-task-pulse 1.25s ease-in-out infinite;}
+.assembly-task-tab[data-state=error] .assembly-task-dot{background:#bf6754;}
+.assembly-task-tab[data-state=complete] .assembly-task-dot{background:#648878;}
+html[data-appearance] .assembly-task-remove{display:grid;place-items:center;width:27px;height:28px;min-height:0;flex:none;padding:6px;border:0;border-radius:50%;background:transparent;box-shadow:none;color:var(--muted);opacity:0;transition:opacity 120ms,background 120ms;}
+.assembly-task-tab[data-active=true] .assembly-task-remove{opacity:.5;}
+.assembly-task-tab:is(:hover,:focus-within) .assembly-task-remove{opacity:.8;}
+html[data-appearance] .assembly-task-remove:hover{opacity:1;background:var(--assembly-hover);}
+.assembly-task-actions{display:flex;gap:2px;flex:none;}
+html[data-appearance] .assembly-compose-control{display:inline-flex;align-items:center;justify-content:center;gap:5px;width:28px;height:28px;padding:5px;border-radius:50%;border:1px solid var(--assembly-border);background:var(--assembly-control);box-shadow:0 2px 5px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);transition:transform 180ms cubic-bezier(.2,.85,.3,1),box-shadow 180ms;}
+html[data-appearance] .assembly-compose-control:hover{transform:translateY(-2px);box-shadow:0 5px 9px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
+html[data-appearance] .assembly-task-actions .assembly-compose-control{background:transparent;box-shadow:none;border-color:transparent;width:32px;height:32px;min-height:0;color:var(--muted);}
+html[data-appearance] .assembly-task-actions .assembly-compose-control:hover{background:var(--assembly-control);border-color:var(--assembly-border);color:var(--text);box-shadow:0 3px 8px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
+.assembly-taskbar svg,.assembly-composer-popup svg,.assembly-interaction-card svg{width:16px;height:16px;flex:none;}
+.assembly-compose-stack{display:flex;align-items:center;flex:none;padding-inline-end:3px;}
+/* Research functions live in the command palette, separate from execution permissions. */
+footer #ai-template-toggle,footer .compose-key-hint{display:none!important;}
+html[data-appearance] .assembly-compose-stack>button{position:relative;width:29px;height:29px;border-radius:50%;padding:6px;background:var(--assembly-control);border:1px solid var(--assembly-border);box-shadow:0 2px 5px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);margin-inline-start:-10px;transition:margin 170ms cubic-bezier(.18,.82,.36,1),transform 170ms,box-shadow 170ms;}
+html[data-appearance] .assembly-compose-stack>button:first-child{margin-inline-start:0;z-index:3;}
+.assembly-compose-stack>button:nth-child(2){z-index:2;}
+.assembly-compose-stack>button:nth-child(3){z-index:1;}
+html[data-appearance] .assembly-compose-stack[data-expanded=true]>button+button{margin-inline-start:3px;}
+html[data-appearance] footer .assembly-execution-mode{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:3px 6px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:11px;white-space:nowrap;}
+.assembly-execution-mode svg{width:13px;height:13px;}
+html[data-appearance] .assembly-composer-popup{position:absolute;bottom:calc(100% + 8px);left:0;right:0;max-height:min(400px,52vh);overflow:auto;z-index:60;padding:6px;border:1px solid var(--assembly-border);border-radius:16px;background:color-mix(in srgb,var(--assembly-control) 92%,transparent);backdrop-filter:blur(20px) saturate(1.08);box-shadow:0 12px 30px var(--assembly-shadow),0 3px 7px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);animation:assembly-popup-in 150ms cubic-bezier(.18,.8,.32,1);font-family:inherit;}
+.assembly-composer-popup[hidden]{display:none!important;}
+html[data-appearance] .assembly-command-row{display:grid;grid-template-columns:20px 90px minmax(0,1fr);align-items:center;column-gap:8px;width:100%;padding:8px 10px;text-align:left;border:0;border-radius:11px;background:transparent;box-shadow:none;font:inherit;font-size:12px;}
+.assembly-command-row code{font-size:11px;color:var(--muted);}
+.assembly-command-row small{grid-column:3;color:var(--muted);font-size:11px;line-height:1.5;}
+html[data-appearance] .assembly-command-row[aria-selected=true]{background:color-mix(in srgb,var(--assembly-bar) 86%,transparent);box-shadow:inset 0 1px var(--assembly-highlight);}
+html[data-appearance] .assembly-execution-menu{left:auto;right:35px;width:260px;}
+html[data-appearance] .assembly-menu-choice{display:grid;grid-template-columns:18px 1fr;gap:2px 8px;width:100%;padding:9px;text-align:left;border:0;border-radius:10px;background:transparent;font:inherit;font-size:12px;}
+.assembly-menu-choice small{grid-column:2;font-size:11px;color:var(--muted);}
+.assembly-menu-choice[aria-checked=true]{background:var(--assembly-bar);}
+.assembly-picker-heading{display:flex;align-items:center;gap:8px;padding:5px 5px 9px;height:auto;min-height:0;background:transparent;box-shadow:none;border:0;}
+.assembly-picker-heading strong{flex:1;}
+html[data-appearance] .assembly-picker-heading button:has(span){width:auto;border-radius:10px;padding:4px 8px;}
+.assembly-picker-search{box-sizing:border-box;width:calc(100% - 10px);margin:0 5px 7px;padding:7px 10px;border-radius:10px;font:inherit;}
+.assembly-picker-list{max-height:290px;overflow:auto;}
+html[data-appearance] .assembly-picker-row{display:flex;align-items:center;gap:8px;width:100%;padding:8px;text-align:left;border:0;border-radius:10px;background:transparent;box-shadow:none;font:inherit;font-size:12px;}
+.assembly-picker-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.assembly-picker-row small{font-size:10px;color:var(--muted);}
+html[data-appearance] .assembly-picker-row[aria-pressed=true]{background:var(--assembly-bar);}
+.assembly-picker-empty{padding:10px;color:var(--muted);font-size:12px;}
+.assembly-interaction-cards{display:flex;flex-direction:column;gap:9px;}
+/* A decision stays legible while the surrounding glass is unfocused. */
+html[data-appearance] #ai:has(.assembly-interaction-card:not([data-state=resolved])) #ai-history{animation:none;opacity:1;}
+html[data-appearance] .assembly-interaction-card{padding:11px 13px;border:1px solid var(--assembly-border);border-radius:13px;background:color-mix(in srgb,var(--assembly-control) 94%,transparent);backdrop-filter:blur(18px) saturate(1.08);box-shadow:0 4px 10px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);animation:assembly-popup-in 170ms ease-out;}
+.assembly-interaction-heading{display:flex;align-items:center;gap:7px;font-size:12px;margin-bottom:6px;}
+.assembly-interaction-text{font-size:13px;line-height:1.65;}
+.assembly-interaction-text p{margin:4px 0;}
+.assembly-question-basis{color:var(--muted);font-size:12px;line-height:1.55;}
+.assembly-interaction-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:9px;}
+html[data-appearance] .assembly-interaction-actions>button{min-height:34px;padding:6px 11px;border-radius:10px;font-size:12px;}
+.assembly-interaction-result{color:var(--muted);font-size:11px;}
+.assembly-interaction-card[data-state=resolved] .assembly-interaction-text,.assembly-interaction-card[data-state=resolved] .assembly-question-basis{display:none;}
+.assembly-check-issue{display:block;width:100%;margin-top:6px;text-align:left;}
+.assembly-region-picker{position:fixed;z-index:500;cursor:crosshair;background:#8096ad10;touch-action:none;}
+.assembly-region-box{position:absolute;border:1px solid #437ba7;border-radius:4px;background:#6b91b21c;box-shadow:0 0 0 9999px #24374b18;pointer-events:none;}
+.assembly-region-hint{position:absolute;top:12px;left:50%;transform:translateX(-50%);padding:6px 12px;border-radius:20px;background:var(--assembly-control);box-shadow:0 3px 12px var(--assembly-shadow);font:inherit;font-size:12px;pointer-events:none;white-space:nowrap;}
+footer .ai-attachment:has(img){min-height:35px;padding:3px 5px 3px 3px;border-radius:10px;}
+footer .ai-attachment img{width:38px!important;height:30px!important;border-radius:6px!important;object-fit:contain!important;background:color-mix(in srgb,var(--assembly-bar) 50%,transparent);cursor:zoom-in;}
+@keyframes assembly-task-pulse{50%{opacity:.35;transform:scale(.8);}}
+@keyframes assembly-popup-in{from{opacity:0;transform:translateY(6px) scale(.985);}to{opacity:1;transform:none;}}
+@media(prefers-reduced-motion:reduce){.assembly-taskbar *, .assembly-compose-stack *, .assembly-composer-popup,.assembly-interaction-card{animation:none!important;transition:none!important;}}
+/* The task strip and transcript are one work surface; only message cards are
+   raised. Side surfaces exist solely after an explicit open or a source drop. */
+html[data-appearance] #ai{--assembly-chat-shell:color-mix(in srgb,var(--assembly-bar) 76%,transparent);}
+html[data-appearance] #ai :is(.ai-transcript-frame,.ai-side-frame){border:1px solid color-mix(in srgb,var(--assembly-border) 58%,transparent);border-radius:15px;background:var(--assembly-chat-shell);backdrop-filter:blur(18px) saturate(1.08);box-shadow:0 3px 13px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
+/* A single work row gives the three real cards an identical top and bottom.
+   Hidden side cards leave the underlying material/details panes exposed. */
+html[data-appearance] #ai .ai-panel:has(.ai-center-master){display:grid;grid-template-columns:var(--assembly-console-sessions) minmax(0,1fr) var(--assembly-console-evidence);grid-template-rows:44px minmax(0,1fr) auto;gap:0;}
+#ai .ai-panel:has(.ai-center-master) .ai-history-layout{display:contents;}
+html[data-appearance] #ai .ai-center-master{position:relative;isolation:isolate;grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;pointer-events:auto;border:1px solid color-mix(in srgb,var(--assembly-border) 58%,transparent);border-radius:15px;background:var(--assembly-chat-shell);backdrop-filter:blur(18px) saturate(1.08);box-shadow:0 3px 13px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
+html[data-appearance] #ai .ai-center-master>.assembly-taskbar{height:44px;min-height:44px;margin:0;padding-block:3px;border:0;border-bottom:1px solid color-mix(in srgb,var(--assembly-border) 45%,transparent);border-radius:0;background:transparent;backdrop-filter:none;box-shadow:none;}
+html[data-appearance] #ai .ai-center-master>.ai-transcript-frame{flex:1;border:0;border-radius:0;background:transparent;backdrop-filter:none;box-shadow:none;}
+html[data-appearance] #ai .ai-panel:has(.ai-center-master) .ai-heading{grid-column:2;grid-row:1;}
+html[data-appearance] #ai .ai-panel:has(.ai-center-master) #collapse-chat{width:100%;margin:0;}
+html[data-appearance] #ai .ai-panel:has(.ai-center-master) .ai-side-frame{position:relative;top:auto;bottom:auto;grid-row:2;width:auto;min-width:0;align-self:stretch;}
+html[data-appearance] #ai .ai-panel:has(.ai-center-master) .ai-side-frame[data-side=left]{left:auto;grid-column:1;}
+html[data-appearance] #ai .ai-panel:has(.ai-center-master) .ai-side-frame[data-side=right]{right:auto;grid-column:3;}
+html[data-appearance] #ai .ai-panel:has(.ai-center-master) #ai-notice{grid-column:2;grid-row:3;}
+html[data-appearance] #ai .chat-side-controls{position:relative;z-index:4;box-sizing:border-box;display:flex;align-items:center;gap:7px;height:44px;min-height:44px;flex:none;padding:4px 8px 4px 14px;border-bottom:1px solid color-mix(in srgb,var(--assembly-border) 45%,transparent);background:transparent;font:500 12px/1.6 var(--ui-font,system-ui,'Microsoft YaHei',sans-serif);}
+.chat-side-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);}
+.chat-side-count{display:inline-flex;align-items:center;justify-content:center;min-width:21px;height:21px;box-sizing:border-box;padding:0 5px;border-radius:7px;background:color-mix(in srgb,var(--assembly-control) 68%,transparent);border:1px solid color-mix(in srgb,var(--assembly-border) 55%,transparent);color:var(--muted);font:11px/1.6 var(--ui-font,system-ui,'Microsoft YaHei',sans-serif);}
+html[data-appearance] #ai :is(.chat-side-close,.chat-side-new){display:grid;place-items:center;width:36px;height:36px;min-width:36px;min-height:36px;flex:none;padding:8px;border:1px solid transparent;border-radius:50%;background:transparent;box-shadow:none;color:var(--muted);transition:color 130ms,background 130ms,border-color 130ms,box-shadow 130ms;}
+html[data-appearance] #ai :is(.chat-side-close,.chat-side-new) svg{width:18px;height:18px;pointer-events:none;}
+html[data-appearance] #ai :is(.chat-side-close,.chat-side-new):is(:hover,:focus-visible){border-color:color-mix(in srgb,var(--assembly-border) 70%,transparent);background:var(--assembly-control)!important;color:var(--text);box-shadow:0 2px 6px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
+html[data-appearance] #ai :is(.chat-evidence-card,.chat-pinned-card),html[data-appearance] #ai-session-context :is(.chat-context-session,.chat-context-file){border:1px solid color-mix(in srgb,var(--assembly-border) 70%,transparent);border-radius:10px;background:var(--assembly-control);box-shadow:0 2px 7px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
+html[data-appearance] #ai-session-context :is(.chat-context-session,.chat-context-file){min-height:42px;padding:10px 10px 10px 32px;font:13px/1.6 var(--ui-font,system-ui,'Microsoft YaHei',sans-serif);}
+html[data-appearance] #ai-session-context .chat-context-session[aria-current=true]{border-color:color-mix(in srgb,var(--muted) 35%,var(--assembly-border));box-shadow:0 2px 7px var(--assembly-shadow),inset 2px 0 color-mix(in srgb,var(--muted) 50%,transparent),inset 0 1px var(--assembly-highlight);}
+#ai-session-context .chat-context-sessions{gap:8px;}
+#ai-session-context .chat-context-icon{top:14px;left:10px;}
+html[data-appearance] #ai .ai-side-frame::before{top:44px;}
+html[data-appearance] #ai .ai-heading{height:44px;min-height:44px;}
+html[data-appearance] #ai #collapse-chat{height:44px;min-height:44px;}
+html[data-appearance] #ai #collapse-chat::before{content:'';position:absolute;left:calc(50% - 33px);top:5px;width:66px;height:34px;border:1px solid color-mix(in srgb,var(--assembly-border) 65%,transparent);border-radius:17px;background:var(--assembly-chat-shell);box-shadow:0 2px 6px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);backdrop-filter:blur(16px);opacity:0;transform:translateY(-3px) scale(.96);transition:opacity 140ms,transform 180ms;pointer-events:none;}
+html[data-appearance] #ai #collapse-chat svg{width:19px;height:19px;z-index:1;pointer-events:none;}
+html[data-appearance] #ai #collapse-chat::after{top:10px;left:calc(50% - 18px);width:36px;pointer-events:none;}
+html[data-appearance] #ai .ai-heading:is(:hover,:focus-within) #collapse-chat::before,html[data-appearance] #ai #collapse-chat[data-focused=true]::before{opacity:1;transform:none;}
+html[data-appearance] #ai .ai-heading:is(:hover,:focus-within) #collapse-chat svg,html[data-appearance] #ai #collapse-chat[data-focused=true] svg{opacity:.85;transform:translateY(5px);}
+@media(max-width:1100px){.assembly-command-row{grid-template-columns:18px 80px minmax(0,1fr);}.assembly-task-tab{max-width:145px;}.assembly-task-actions{gap:0;}}
+@media(prefers-reduced-motion:reduce){html[data-appearance] #ai #collapse-chat::before{transition:none;}}
+
+/* The CLUI surface owns both portals without adding a layout box. All three
+   shells use the same glass, height, edge fades and transition. */
+html[data-appearance] .assembly-clui-surface[data-clui-native]{display:contents;position:static;width:auto;isolation:auto;--clui-container-bg:color-mix(in srgb,var(--assembly-control) 78%,transparent);--clui-container-border:color-mix(in srgb,var(--assembly-border) 78%,transparent);--clui-card-shadow:0 7px 24px var(--assembly-shadow),0 1px 3px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);--clui-text-primary:var(--text);--clui-text-tertiary:var(--muted);--clui-btn-hover-bg:var(--assembly-hover);--clui-btn-hover-color:var(--text);}
+html[data-appearance] .assembly-clui-surface[data-dimmed=true]{opacity:1;filter:none;}
+html[data-appearance] .assembly-clui-surface[data-dimmed=true] :is(.assembly-taskbar>*,.ai-side-frame>*,#ai-form>*){opacity:.68;}
+html[data-appearance] .assembly-clui-surface #ai{overflow:visible;}
+html[data-appearance] .assembly-clui-surface #ai :is(.ai-center-master,.ai-side-frame){box-sizing:border-box;align-self:stretch;width:100%;margin:0 0 10px;border-radius:20px;background:var(--clui-container-bg);border:1px solid var(--clui-container-border);box-shadow:var(--clui-card-shadow);backdrop-filter:blur(28px) saturate(1.15);transition:width var(--clui-transition),margin var(--clui-transition),opacity var(--clui-transition),box-shadow var(--clui-transition);}
+html[data-appearance] .assembly-clui-surface[data-clui-size=compact] #ai .ai-center-master{width:calc(100% - 30px);margin:0 15px -14px;align-self:end;min-height:57px;}
+html[data-appearance] .assembly-clui-surface #ai .ai-center-master>.clui-native-body{display:grid;grid-template-rows:0fr;opacity:0;overflow:hidden;flex:1;transition:grid-template-rows var(--clui-transition),opacity var(--clui-transition);}
+html[data-appearance] .assembly-clui-surface[data-expanded=true] #ai .ai-center-master>.clui-native-body{grid-template-rows:minmax(0,1fr);opacity:1;}
+html[data-appearance] .assembly-clui-surface #ai-history.clui-native-conversation{height:100%;max-height:none;box-sizing:border-box;padding:10px 16px 24px;mask-image:linear-gradient(0deg,transparent,#000 18px,#000 calc(100% - 12px),transparent);}
+html[data-appearance] .assembly-clui-surface #ai .ai-center-master>.assembly-taskbar{min-height:43px;height:43px;padding:4px 9px;border-radius:0;background:transparent;}
+html[data-appearance] .assembly-clui-surface footer #ai-form.clui-native-input-pill{width:100%;margin:0;min-height:50px;padding:7px 8px 6px 16px;border-radius:25px;background:color-mix(in srgb,var(--assembly-control) 88%,transparent);backdrop-filter:blur(28px) saturate(1.15);border:1px solid var(--clui-container-border);box-shadow:var(--clui-card-shadow);}
+html[data-appearance] .assembly-clui-surface .assembly-compose-stack.clui-native-btn-stack{position:relative;display:block;width:160px;height:46px;padding:0;margin-right:-48px;margin-block:-7px;transform:scale(.7);transform-origin:left center;}
+html[data-appearance] .assembly-clui-surface #ai-form .assembly-compose-stack>.clui-native-stack-btn{position:absolute;width:46px;height:46px;min-height:46px;min-width:46px;margin:0;padding:0;border-radius:50%;background:var(--assembly-control);border:1px solid var(--clui-container-border);transform:none;box-shadow:var(--clui-card-shadow);transition:right .4s cubic-bezier(.34,1.3,.64,1),color .15s,background .15s;}
+html[data-appearance] .assembly-clui-surface .assembly-compose-stack>.clui-native-stack-btn svg{width:21px;height:21px;}
+html[data-appearance] .assembly-clui-surface .assembly-compose-stack>.clui-native-stack-btn-1{right:0;z-index:3;}
+html[data-appearance] .assembly-clui-surface .assembly-compose-stack>.clui-native-stack-btn-2{right:28px;z-index:2;}
+html[data-appearance] .assembly-clui-surface .assembly-compose-stack>.clui-native-stack-btn-3{right:56px;z-index:1;}
+html[data-appearance] .assembly-clui-surface .assembly-compose-stack[data-expanded=true]>.clui-native-stack-btn-2{right:56px;}
+html[data-appearance] .assembly-clui-surface .assembly-compose-stack[data-expanded=true]>.clui-native-stack-btn-3{right:112px;}
+html[data-appearance] .assembly-clui-pin{display:grid;place-items:center;flex:none;width:32px;height:32px;min-height:32px;padding:7px;border:0;border-radius:50%;background:transparent;box-shadow:none;color:var(--muted);}
+html[data-appearance] .assembly-clui-pin[aria-pressed=true]{background:var(--assembly-pressed);color:var(--text);box-shadow:inset 0 1px 3px var(--assembly-shadow);}
+html[data-appearance] .assembly-clui-surface .assembly-task-tab[data-active=true]{background:var(--selected-bg,#e9f2ff);border-color:color-mix(in srgb,var(--assembly-border) 80%,transparent);box-shadow:0 2px 6px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
+.assembly-drop-feedback{position:fixed;z-index:2147483001;max-width:270px;padding:9px 13px;pointer-events:none;border:1px solid var(--assembly-border);border-radius:13px;background:color-mix(in srgb,var(--assembly-control) 90%,transparent);backdrop-filter:blur(22px);box-shadow:0 5px 20px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);color:var(--text);font:12px/1.6 var(--ui-font,system-ui)}.assembly-drop-feedback[data-rejected=true]{color:var(--muted)}.block[data-file-drop-position=before]{box-shadow:0 -3px #87a7c6}.block[data-file-drop-position=after]{box-shadow:0 3px #87a7c6}

@@ -5,9 +5,187 @@ import subprocess
 import sys
 from pathlib import Path
 import fitz
-from pdf_materials import index_pdf, translation_layout
+from pdf_materials import index_pdf, translation_layout, _inline_crop, _inline_math_line, _joined_lines, _index_heading
 
 class PDFMaterialsTest(unittest.TestCase):
+    def test_index_chapters_use_printed_numbered_titles_and_do_not_reclassify_numbered_prose(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'chapters.pdf'
+            with fitz.open() as pdf:
+                page=pdf.new_page()
+                page.insert_text((72,72),'1 Introduction',fontsize=14,fontname='hebo')
+                page.insert_text((72,102),'This study concerns learning policies in a model-based environment.',fontsize=10)
+                page.insert_text((72,142),'2 World Models',fontsize=14,fontname='hebo')
+                page.insert_text((72,172),'A latent dynamics model is trained using the observed transitions.',fontsize=10)
+                page.insert_text((72,212),'2.1 Imagination and Policy Learning',fontsize=12,fontname='hebo')
+                page.insert_text((72,242),'The policy receives model-generated trajectories during training.',fontsize=10)
+                page.insert_text((72,282),'1. Select a model and evaluate its predictions',fontsize=10)
+                page.insert_text((72,322),'3 Ablation Study',fontsize=14,fontname='hebo')
+                page.insert_text((72,352),'The comparison removes one component while preserving other settings.',fontsize=10)
+                page.insert_text((72,392),'References',fontsize=12,fontname='hebo')
+                page.insert_text((72,422),'[1] A controlled reference for the chapter parsing fixture.',fontsize=10)
+                pdf.save(path)
+            rows=index_pdf({'file':str(path)})['paragraphs']
+            source={row['sourceText']:row for row in rows}
+            self.assertEqual(source['A latent dynamics model is trained using the observed transitions.']['section'],'2 World Models')
+            self.assertEqual(source['The policy receives model-generated trajectories during training.']['section'],'2.1 Imagination and Policy Learning')
+            self.assertEqual(source['1. Select a model and evaluate its predictions']['section'],'2.1 Imagination and Policy Learning')
+            self.assertEqual(source['The comparison removes one component while preserving other settings.']['section'],'3 Ablation Study')
+            self.assertEqual(source['[1] A controlled reference for the chapter parsing fixture.']['section'],'References')
+        self.assertTrue(_index_heading('参考文献',{},10))
+        self.assertFalse(_index_heading('2. Our model uses an equation.',{},10))
+        self.assertFalse(_index_heading('2 x = y',{'lines':[{'spans':[{'text':'2 x = y','size':14,'flags':16}]}]},10))
+
+    def test_computer_modern_roman_prose_does_not_create_math_placeholders(self):
+        text='I am pleased to submit our work on local adaptation. We use a method to compare results.'
+        with fitz.open() as pdf:
+            page=pdf.new_page();x=72
+            for word in text.split(' '):
+                page.insert_text((x,100),word+' ',fontname='tiro',fontsize=10)
+                x+=fitz.get_text_length(word+' ',fontname='tiro',fontsize=10)
+            raw={'lines':[line for b in page.get_text('dict')['blocks'] for line in b['lines']]}
+            # Real CMR exporters emit each short prose word as an individual
+            # span, just like the actual C-AMC cover letter that regressed.
+            for line in raw['lines']:
+                for span in line['spans']:span['font']='CMR10'
+            lines=_joined_lines(raw)
+            for line in lines:
+                protected,assets=_inline_math_line(page,line,None,'roman-prose',0,lines)
+                self.assertEqual(assets,[])
+                self.assertEqual(protected,line['text'])
+                self.assertNotIn('ZXQMATH',protected)
+
+    def test_source_roles_protect_metadata_but_not_capitalized_headings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'roles.pdf'
+            with fitz.open() as pdf:
+                page=pdf.new_page()
+                page.insert_text((72,72),'A Research Paper About Reliable Methods',fontsize=18)
+                page.insert_text((170,100),'Hunmin Lee',fontsize=11)
+                page.insert_text((72,135),'Abstract: The method compares recorded samples.',fontsize=10)
+                page.insert_text((72,175),'System Model',fontsize=11)
+                page.insert_text((72,200),'The signal uses a controlled evaluation protocol.',fontsize=10)
+                page.insert_text((72,230),'[2] reports a measured result under controlled conditions.',fontsize=10)
+                page.insert_text((72,270),'[1] J. Smith, "A prior method," 2020.',fontsize=9)
+                page.insert_text((72,310),'Sincerely,',fontsize=10)
+                page.insert_text((72,330),'Hunmin Lee',fontsize=10)
+                pdf.save(path)
+            blocks=translation_layout({'file':str(path)})['pages'][0]['blocks']
+            authors=[b for b in blocks if b.get('sourceRole')=='author']
+            self.assertEqual(len(authors),2)
+            self.assertTrue(all(not b['translatable'] and b['sourceText']=='Hunmin Lee' for b in authors))
+            reference=next(b for b in blocks if b['sourceText'].startswith('[1]'))
+            self.assertEqual(reference['sourceRole'],'bibliography');self.assertFalse(reference['translatable'])
+            heading=next(b for b in blocks if b['sourceText']=='System Model')
+            body_citation=next(b for b in blocks if b['sourceText'].startswith('[2]'))
+            for block in [heading,body_citation]:
+                self.assertNotIn('sourceRole',block);self.assertTrue(block['translatable'])
+
+    def test_inline_scripts_keep_native_glyphs_without_flattening_prose(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'inline.pdf';folder=Path(temp)/'cache'
+            with fitz.open() as pdf:
+                page=pdf.new_page()
+                page.insert_text((72,100),'Let ',fontname='tiro',fontsize=10)
+                page.insert_text((89,100),'x',fontname='tiit',fontsize=10)
+                page.insert_text((94,94),'2',fontname='tiro',fontsize=6)
+                page.insert_text((94,104),'i',fontname='tiit',fontsize=6)
+                page.insert_text((101,100),' denote the recorded signal.',fontname='tiro',fontsize=10)
+                page.insert_text((72,135),'The theoretical statement remains ordinary prose.',fontname='tiit',fontsize=10)
+                pdf.save(path)
+            folder.mkdir()
+            with fitz.open(path) as pdf:
+                # TeX exports a paragraph as separate positioned spans. Use
+                # the real native glyphs to verify the paragraph row join and
+                # crop, independent of this synthetic producer's block IDs.
+                raw={'lines':[line for b in pdf[0].get_text('dict')['blocks'] for line in b['lines']]}
+                lines=_joined_lines(raw)
+                line=next(row for row in lines if row['text'].startswith('Let'))
+                protected,assets=_inline_math_line(pdf[0],line,folder,'scripts',0,lines)
+            self.assertEqual(len(assets),1)
+            math=assets[0]
+            self.assertIn(math['placeholder'],protected)
+            self.assertNotIn(math['placeholder'],line['text'])
+            self.assertIn('2',math['sourceText']);self.assertIn('i',math['sourceText'])
+            self.assertGreater(math['height'],10,'native crop must include both displaced scripts')
+            self.assertGreater(math['baselineOffset'],0)
+            self.assertEqual(math['visualAsset']['dpi'],288)
+            self.assertTrue(Path(math['visualAsset']['path']).is_file())
+            with fitz.open(path) as pdf:
+                prose=next(row for row in lines if row['text'].startswith('The theoretical'))
+                unchanged,assets=_inline_math_line(pdf[0],prose,folder,'prose',0,lines)
+            self.assertEqual(assets,[],'italic sentences are not mathematical images')
+            self.assertEqual(unchanged,prose['text'])
+
+    def test_inline_crop_excludes_next_line_ink_without_clipping_fraction(self):
+        with fitz.open() as pdf, fitz.open() as clean:
+            page=pdf.new_page();reference=clean.new_page()
+            for target in [page,reference]:
+                target.insert_text((150,100),'1',fontsize=7)
+                target.draw_line((149,103),(161,103),width=.5)
+                target.insert_text((150,110),'g',fontsize=7)
+            page.insert_text((145,123),'Next unrelated line.',fontsize=10)
+            span=page.get_text('dict')['blocks'][-1]['lines'][0]['spans'][0]
+            metric_rect=fitz.Rect(148,91,170,117)
+            crop=_inline_crop(page,metric_rect,103,[{'baseline':123,'spans':[span]}])
+            self.assertLess(crop.y1,metric_rect.y1)
+            actual=page.get_pixmap(matrix=fitz.Matrix(4,4),clip=crop,alpha=False)
+            expected=reference.get_pixmap(matrix=fitz.Matrix(4,4),clip=crop,alpha=False)
+            self.assertEqual(actual.samples,expected.samples,'adjacent prose must not appear in inline math')
+            full=reference.get_pixmap(matrix=fitz.Matrix(4,4),clip=metric_rect,alpha=False)
+            occupied=[y for y in range(full.height)
+                      if any(v<220 for v in full.samples[y*full.stride:(y+1)*full.stride])]
+            self.assertGreaterEqual(crop.y1,(full.y+max(occupied)+1)/4,'the complete denominator must remain')
+
+    def test_same_baseline_words_and_pdf_hyphenation_form_one_prose_paragraph(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'fragmented.pdf'
+            with fitz.open() as pdf:
+                page=pdf.new_page()
+                for x, word in [(72,'geometry'),(140,'dissolves'),(214,'it'),(240,'entirely.')]:
+                    page.insert_text((x,100),word,fontsize=10)
+                page.insert_text((72,112),'C-AMC is, to our knowledge, the first frame-',fontsize=10)
+                page.insert_text((72,124),'work to meet all three properties.',fontsize=10)
+                pdf.save(path)
+            text=' '.join(b['sourceText'] for b in translation_layout({'file':str(path)})['pages'][0]['blocks'])
+            self.assertIn('geometry dissolves it entirely.',text)
+            self.assertIn('the first framework',text)
+            self.assertNotIn('\n',text)
+
+    def test_visual_resources_keep_full_fraction_and_image_and_table(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'visuals.pdf';folder=Path(temp)/'cache'
+            with fitz.open() as pdf:
+                page=pdf.new_page()
+                page.insert_text((72,72),'TABLE I: Comparison')
+                for y in [85,103,136]:page.draw_line((72,y),(280,y))
+                page.insert_text((80,98),'Method');page.insert_text((220,98),'Result')
+                page.insert_text((80,119),'CNN');page.insert_text((220,119),'0.8')
+                page.insert_text((80,132),'SVM');page.insert_text((220,132),'0.7')
+                page.insert_text((72,175),'With x = 1, the method compares recorded samples.')
+                page.insert_text((90,205),'E =');page.insert_text((140,200),'a + b')
+                page.draw_line((138,205),(177,205));page.insert_text((150,220),'c')
+                page.insert_text((270,205),'(1)')
+                pix=fitz.Pixmap(fitz.csRGB,fitz.IRect(0,0,30,20),False);pix.clear_with(220)
+                page.insert_image(fitz.Rect(72,260,200,330),stream=pix.tobytes('png'))
+                pdf.save(path)
+            page=translation_layout({'file':str(path),'outputDir':str(folder)})['pages'][0]
+            self.assertTrue(Path(page['visualAsset']['path']).is_file())
+            self.assertEqual(page['visualAsset']['dpi'],216)
+            table=next(b for b in page['blocks'] if b['kind']=='table')
+            image=next(b for b in page['blocks'] if b['kind']=='image')
+            equation=next(b for b in page['blocks'] if b['kind']=='formula' and '(1)' in b['sourceText'])
+            self.assertIn('c',equation['sourceText'])
+            with fitz.open(path) as pdf:
+                rect=fitz.Rect(equation['position']['rects'][0])*pdf[0].transformation_matrix
+                denominator=pdf[0].search_for('c')[-1]
+                self.assertGreaterEqual(rect.y1,denominator.y1)
+            for block in [table,image,equation]:
+                self.assertEqual(block['visualAsset']['dpi'],216)
+                self.assertTrue(Path(block['visualAsset']['path']).is_file())
+            prose=next(b for b in page['blocks'] if b['sourceText'].startswith('With x'))
+            self.assertEqual(prose['kind'],'text','inline symbols cannot swallow ordinary prose')
+
     def test_translation_layout_preserves_standalone_space_spans(self):
         with tempfile.TemporaryDirectory() as temp:
             path=Path(temp)/'spaces.pdf'
@@ -71,7 +249,7 @@ class PDFMaterialsTest(unittest.TestCase):
 
             result=translation_layout({'file':str(path)})
             self.assertEqual(result['pageCount'],2)
-            self.assertEqual(result['extractorVersion'],'pymupdf-translation-layout-v2')
+            self.assertEqual(result['extractorVersion'],'pymupdf-translation-layout-v5')
             first=result['pages'][0]['blocks']
             title=next(b for b in first if 'Short Title' in b['sourceText'])
             caption=next(b for b in first if 'Fig. 1.' in b['sourceText'])

@@ -34,7 +34,7 @@ describe('Imported manuscript translation cache',function(){
    assert.equal(page1.status,'complete');assert.equal(page1.blocks[0].kind,'formula');
    assert.isUndefined(page1.blocks[0].translatedText,'公式保留来源，不送翻译');
    assert.isAbove(updates.length,0);assert.equal(requests,1,'同页两个段落合并请求');
-   const file=PathUtils.join(E.dataDir,'translation-cache',E.assets.key([documentKey,'fulltext-zh-v3',0])+'.json');
+   const file=PathUtils.join(E.dataDir,'translation-cache',E.assets.key([documentKey,'fulltext-zh-v5',0])+'.json');
    assert.isTrue(await IOUtils.exists(file),'译文以文件指纹和翻译版本持久化');
    await E.manuscripts.queueTranslation(attachmentID);assert.equal(requests,1,'重复打开或导入复用缓存');
   }finally{unsubscribe();E.quickTranslate=originalTranslate;}
@@ -97,7 +97,7 @@ describe('Imported manuscript translation cache',function(){
    E.runArtifactEngine=async(request,...rest)=>{
     if(request.operation!=='manuscript-translation-layout'||request.file!==fixture)return originalEngine(request,...rest);
     calls++;
-    return {pdfHash:key,extractorVersion:'pymupdf-translation-layout-v2',pageCount:2,pages:[
+    return {pdfHash:key,extractorVersion:'pymupdf-translation-layout-v5',pageCount:2,pages:[
      {pageIndex:0,blocks:[{sourceRecordID:'title',sourceText:'Short Title',kind:'text',translatable:true,
       position:{pageIndex:0,rects:[[10,10,110,30]]},fontFamily:'Times New Roman',fontSize:17,fontWeight:700,fontStyle:'normal',serif:true}]},
      {pageIndex:1,blocks:[{sourceRecordID:'equation',sourceText:'E = mc2',kind:'formula',translatable:false,
@@ -106,7 +106,7 @@ describe('Imported manuscript translation cache',function(){
        position:{pageIndex:1,rects:[[10,40,120,55]]},fontSize:9,fontStyle:'italic',serif:true}]}
     ]};
    };
-   E.quickTranslate=async(text,...rest)=>/Short Title|Fig\. 1\. Results\./.test(text)?{text:'中文译文'}:originalTranslate(text,...rest);
+   E.quickTranslate=async(text,...rest)=>/Short Title|Fig\. 1\. Results\./.test(text)?{text:text.includes('Fig. 1.')?'图 1。中文译文':'中文译文'}:originalTranslate(text,...rest);
    await E.manuscripts.queueTranslation(id,{priorityPages:[1]});
    const first=E.manuscripts.translationPage(id,0),second=E.manuscripts.translationPage(id,1);
    assert.equal(first.status,'complete');assert.deepEqual(first.blocks.map(b=>b.id),['title']);
@@ -114,7 +114,7 @@ describe('Imported manuscript translation cache',function(){
    assert.isTrue(first.blocks[0].serif);assert.equal(first.blocks[0].translatedText,'中文译文');
    assert.equal(second.status,'complete');assert.deepEqual(second.blocks.map(b=>b.id),['equation','caption']);
    assert.equal(second.blocks[0].kind,'formula');assert.isUndefined(second.blocks[0].translatedText);
-   assert.equal(second.blocks[1].fontStyle,'italic');assert.equal(second.blocks[1].translatedText,'中文译文');
+   assert.equal(second.blocks[1].fontStyle,'italic');assert.equal(second.blocks[1].translatedText,'图 1。中文译文');
    await E.manuscripts.queueTranslation(id);assert.equal(calls,1,'版式提取复用同一来源版本缓存');
   }finally{
    E.runArtifactEngine=originalEngine;Zotero.Items.getAsync=originalGetAsync;E.quickTranslate=originalTranslate;

@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import * as Policy from '../../../chrome/content/zotero/research/shared/research-ai-policy.mjs';
+import * as Chat from '../../../chrome/content/zotero/research/shared/chat-completion.mjs';
+import * as JSONStream from '../../../chrome/content/zotero/research/shared/json-stream.mjs';
 import fs from 'node:fs/promises';
 import {materialExcerpts,bindMaterialEvidence} from '../../../chrome/content/zotero/research/shared/material-evidence.mjs';
 test('material evidence binds original PDF text and individual table cells, rejecting invented IDs',()=>{
@@ -24,8 +27,8 @@ const studioSource=await fs.readFile(new URL('../../../chrome/content/zotero/xpc
 function studioHarness(replies){
  const calls=[],cached=[];
  const E={studio:{model:{}},settings:()=>({}),resolveModel:async()=>({endpoint:'https://provider.example',model:'controlled'}),core:{endpoint:x=>x},credentials:{get:async()=> 'controlled-test-key'},assets:{key:()=> 'test-cache'},aiProgress:(_model,stage)=>stage,setTimeout,clearTimeout,
-  runArtifactEngine:async command=>{if(command.operation==='assets-cache-get')return {miss:true};cached.push(command.value);}};
- vm.runInNewContext(studioSource,{URL,Zotero:{Research:E,getMainWindow:()=>({AbortController,fetch:async(_url,options)=>{calls.push(JSON.parse(options.body));const next=replies.shift();return {ok:true,json:async()=>({choices:[{message:{content:next.text},finish_reason:next.finish||'stop'}]})};}})}});
+  runArtifactEngine:async command=>{if(command.operation==='assets-cache-get')return {miss:true};cached.push(command.value);},requestProvider:async(url,options,timeout,readResponse)=>{assert.equal(url,'https://provider.example/chat/completions');assert.equal(timeout,150000);assert.equal(options.headers.Authorization,'Bearer controlled-test-key');assert.equal(typeof readResponse,'function');calls.push(JSON.parse(options.body));const next=replies.shift();return readResponse({json:async()=>({choices:[{message:{content:next.text},finish_reason:next.finish||'stop'}]})});}};
+ vm.runInNewContext(studioSource,{URL,ChromeUtils:{importESModule:uri=>uri.endsWith('/research-ai-policy.mjs')?Policy:uri.endsWith('/json-stream.mjs')?JSONStream:Chat},Zotero:{Research:E,getMainWindow:()=>({AbortController})}});
  return {E,calls,cached};
 }
 test('studio repairs malformed JSON only once and caches only parsed output',async()=>{

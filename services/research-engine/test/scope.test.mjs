@@ -2,8 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
+import * as Policy from '../../../chrome/content/zotero/research/shared/research-ai-policy.mjs';
+import * as Chat from '../../../chrome/content/zotero/research/shared/chat-completion.mjs';
+import * as JSONStream from '../../../chrome/content/zotero/research/shared/json-stream.mjs';
 import * as model from '../../../chrome/content/zotero/research/shared/ppt-model.mjs';
 import * as scopeModule from '../../../chrome/content/zotero/research/shared/ppt-scope.mjs';
+import * as OverviewData from '../../../chrome/content/zotero/research/shared/paper-overview-data.mjs';
+import * as AnnotationGeometry from '../../../chrome/content/zotero/research/shared/annotation-geometry.mjs';
+import * as RapidReading from '../../../chrome/content/zotero/research/shared/reader-rapid-reading.mjs';
+import * as ActiveReader from '../../../chrome/content/zotero/research/shared/active-reader.mjs';
 import {parsePageRange,scopedPages} from '../../../chrome/content/zotero/research/shared/ppt-scope.mjs';
 test('selected PDF pages exclude unrelated evidence and reject invalid ranges',()=>{
  const pages=Array.from({length:8},(_,pageIndex)=>({pageIndex,text:'page '+pageIndex}));
@@ -25,17 +32,21 @@ test('native collection never adds full text or figures to a selected excerpt',a
  await E.studio.patch('draft',d=>d.scope={mode:'annotations'});await assert.rejects(E.studio.collect('draft',()=>{}),/没有可用文字/);
 });
 test('native context menu exposes selected-text actions only when a selection exists',async()=>{
- let handler;const E={id:'test'},view={_selectionRanges:[]};
- vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/reader-results.js',import.meta.url),'utf8'),{Zotero:{Research:E,Reader:{registerEventListener:(type,fn)=>handler=fn},Items:{get:()=>({id:2,parentID:1})}}});
- E.installReaderContext();const entries=[],reader={itemID:2,_internalReader:{_lastView:view},_iframeWindow:{document:{}}};handler({reader,append:(...v)=>entries.push(...v)});assert.equal(entries.length,0);
- view._selectionRanges=[{collapsed:false}];view._getAnnotationFromSelectionRanges=()=>({text:'exact quote',position:{pageIndex:3}});handler({reader,append:(...v)=>entries.push(...v)});assert.equal(entries.length,4);
- E.runReaderText=async(r,doc,selection,label,mode)=>{assert.equal(selection.text,'exact quote');assert.equal(selection.pageIndex,3);assert.equal(mode,'translate');};entries[0].onCommand();
+ let handler,commands=0;const E={id:'test'},view={_selectionRanges:[],_getAnnotationFromSelectionRanges:()=>({text:'exact quote',position:{pageIndex:3,rects:[[20,20,100,40]]}})},attachment={id:2,parentID:1,libraryID:1,isPDFAttachment:()=>true,isEditable:()=>true};
+ const modules={'paper-overview-data.mjs':OverviewData,'annotation-geometry.mjs':AnnotationGeometry,'reader-rapid-reading.mjs':RapidReading,'active-reader.mjs':ActiveReader};
+ const context={Zotero:{Research:E,Reader:{_readers:[],registerEventListener:(type,fn)=>handler=fn},Items:{get:id=>id===2?attachment:null},Libraries:{get:()=>({editable:true})},getMainWindow:()=>({})},ChromeUtils:{importESModule:uri=>{const module=modules[uri.split('/').at(-1)];if(module)return module;throw Error('unexpected module '+uri);}}};
+ for(const file of ['reader-tools.js','reader-results.js'])vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/'+file,import.meta.url),'utf8'),context);
+ E.installReaderContext();const entries=[],reader={itemID:2,_internalReader:{_lastView:view,_state:{readOnly:false}},_iframeWindow:{document:{}}};handler({reader,append:(...v)=>entries.push(...v)});assert.equal(entries.length,0);
+ view._selectionRanges=[{collapsed:false}];handler({reader,append:(...v)=>entries.push(...v)});assert.equal(entries.length,6);assert.ok(entries.every(entry=>entry.disabled===false));
+ E.annotateSelection=(r,selection,type)=>{assert.equal(r,reader);assert.equal(selection.text,'exact quote');assert.equal(selection.pageIndex,3);assert.equal(selection.attachmentID,2);assert.equal(type,'highlight');commands++;};entries[0].onCommand();assert.equal(commands,1);
+ reader._internalReader._state.readOnly=true;const readOnly=[];handler({reader,append:item=>readOnly.push(item)});assert.equal(readOnly.length,6);assert.ok(readOnly.every(entry=>entry.disabled===true));
 });
 test('selected-text requests do not resend previous whole-paper analysis',async()=>{
  const state={papers:{p:{records:[{prompt:'old',result:'OUTSIDE ANALYSIS'}]}}};let sent;
- const E={core:{endpoint:v=>v,paperKey:()=> 'p',validateResult:()=>({sections:[]}),resultMarkdown:()=> 'OUTSIDE ANALYSIS'},getPaperSkill:()=>({}),paperSystemPrompt:()=> 'test',setTimeout:()=>0,clearTimeout:()=>{}};
- vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/ai.js',import.meta.url),'utf8'),{EasySch:E,URL});
+ const E={core:{endpoint:v=>v,paperKey:()=> 'p',validateResult:()=>({sections:[]}),resultMarkdown:()=> 'OUTSIDE ANALYSIS'},setTimeout:()=>0,clearTimeout:()=>{}};
+ const context={EasySch:E,URL,ChromeUtils:{importESModule:uri=>uri.endsWith('/research-ai-policy.mjs')?Policy:Chat}};
+ for(const module of ['paper-skills','ai'])vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/'+module+'.js',import.meta.url),'utf8'),context);
  const ai=E.createAI({fetch:async(url,options)=>{sent=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:'{}'}}]})};},controller:()=>new AbortController(),settings:()=>({endpoint:'https://example.com',model:'fixture'}),credential:async()=>'',store:{get:()=>state,update:async fn=>fn(state)},collect:async()=>({sources:[{id:'s',label:'selection',text:'ONLY THIS'}],warnings:[]})});
- await ai.run({mode:'translate',papers:[{title:'paper'}],selection:{text:'ONLY THIS'}});
+ await ai.run({mode:'translate',papers:[{title:'paper'}],selection:{text:'ONLY THIS'},evidenceByID:false});
  const input=JSON.parse(sent.messages[1].content);assert.deepEqual(input.memory,[]);assert.equal(input.sources[0].text,'ONLY THIS');assert.ok(!JSON.stringify(sent).includes('OUTSIDE ANALYSIS'));
 });

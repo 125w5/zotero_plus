@@ -1,0 +1,42 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {pptConversationSessions,pptAssistantIntent,pptDiscussionContext,pptDroppedFiles} from '../../chrome/content/zotero/research/ui/ppt-assistant.mjs';
+
+test('PPT discussions retain their own draft history rather than adopting another active paper or assembly session',()=>{
+ const rows=[{id:'other-draft',pptDraftID:'B',updatedAt:'2026-10-15T12:00:00Z'},{id:'paper',paperID:1,updatedAt:'2026-10-15T13:00:00Z'},{id:'first',pptDraftID:'A',createdAt:'2026-10-15T10:00:00Z'},{id:'second',pptDraftID:'A',updatedAt:'2026-10-15T11:00:00Z'}];
+ assert.deepEqual(pptConversationSessions(rows,'A').map(row=>row.id),['second','first']);assert.equal(rows[0].id,'other-draft');
+});
+test('explicit PPT commands reach real operations, while questions and negative instructions remain discussion',()=>{
+ for(const [prompt,intent]of [['请读取当前论文材料','collect'],['帮我优化汇报大纲','outline'],['补齐所有未完成页面','generate'],['预览整套PPT','preview'],['导出可编辑 PPTX','export']])assert.equal(pptAssistantIntent(prompt),intent,prompt);
+ for(const prompt of ['不要导出 PPT，先讨论结果','如何生成全部页面？','怎么优化大纲才有重点？','解释一下预览和导出的区别','我想比较这两篇论文的方法'])assert.equal(pptAssistantIntent(prompt),'discuss',prompt);
+});
+const draft={title:'独立批次汇报',step:3,minutes:15,papers:[{id:1,title:'Controlled paper A',year:2025},{id:2,title:'Controlled paper B',year:2026}],sources:[{id:'A',label:'Controlled paper A · PDF 第 1 页',text:'Measured batches use independent acquisition.'},{id:'B',label:'Controlled paper B · PDF 第 2 页',text:'Unselected source must not enter the model context.'}],outline:[{title:'研究问题',purpose:'解释独立批次'}],slides:[{id:'s',title:'批次比较',explanation:'人工设置',status:'user',assetIDs:['figure-a'],blocks:[{text:'完整人工正文保留在草稿'}]}],contributions:[{title:'人工实验',text:'明确标记自己的观察。'}]};
+test('unchecking a paper removes its sources from model evidence and preserves the editable PPT',()=>{
+ const before=structuredClone(draft),context=pptDiscussionContext(draft,{paperIDs:[1]});assert.deepEqual(context.papers.map(row=>row.id),[1]);assert.deepEqual(context.sources.map(row=>row.id),['A']);assert.equal(JSON.stringify(context).includes('Unselected source'),false);assert.deepEqual(draft,before);assert.equal(context.slides[0].explanation,'人工设置');assert.deepEqual(context.contributions,draft.contributions);
+});
+test('an explicit empty paper choice remains empty; attachment text is separate readable evidence with its actual ID',()=>{
+ const context=pptDiscussionContext(draft,{paperIDs:[],attachments:[{id:'attachment:9'}],attachmentRows:[{id:'cell-9',stableID:'evidence:sheet9',title:'实验工作表',sourceText:'Batch 1: 0.73',coverage:'工作表 Sheet1 的选区 A1:B2'}]});
+ assert.deepEqual(context.papers,[]);assert.deepEqual(context.attachmentIDs,['attachment:9']);assert.equal(context.sources.length,1);assert.equal(context.sources[0].id,'evidence:sheet9');assert.equal(context.sources[0].coverage,'工作表 Sheet1 的选区 A1:B2');assert.equal(context.sources[0].text,'Batch 1: 0.73');
+});
+test('default PPT evidence retains per-source bounds and a discussion excludes large slide edit payloads',()=>{
+ const context=pptDiscussionContext({...draft,sources:[{id:'large',label:'large',text:'x'.repeat(15000)}]});assert.equal(context.sources[0].text.length,2600);assert.equal(context.slides[0].blocks,undefined);assert.deepEqual(context.outline,[{title:'研究问题',purpose:'解释独立批次'}]);
+});
+test('ambiguous truncated paper labels cannot silently leak an unchecked source into a subset discussion',()=>{
+ const prefix='A'.repeat(45),context=pptDiscussionContext({...draft,papers:[{id:1,title:prefix+' first paper'},{id:2,title:prefix+' second paper'}],sources:[{id:'ambiguous',label:prefix+' · PDF 第 1 页',text:'Unknown ownership.'}]},{paperIDs:[1]});assert.deepEqual(context.sources,[]);assert.deepEqual(context.papers.map(row=>row.id),[1]);
+});
+
+test('page-linked spreadsheet evidence follows the current file selection even while all report papers are selected',()=>{
+ const linked={...draft,sources:[...draft.sources,{id:'cells',label:'测量表',text:'B2 = 0.73',conversationFileID:'file-9'}]};
+ assert.deepEqual(pptDiscussionContext(linked).sources.map(row=>row.id),['A','B']);
+ assert.deepEqual(pptDiscussionContext(linked,{attachments:[{id:'file-9',selected:false}]}).sources.map(row=>row.id),['A','B']);
+ assert.deepEqual(pptDiscussionContext(linked,{attachments:[{id:'file-9'}]}).sources.map(row=>row.id),['A','B','cells']);
+ assert.equal(linked.sources.at(-1).text,'B2 = 0.73');
+});
+
+test('dropping an already imported file still resolves that exact reference for a page association',()=>{
+ const files=[{id:'file-9',attachmentID:9},{id:'file-10',attachmentID:10}];
+ assert.deepEqual(pptDroppedFiles(files,files,{items:[{sessionID:'other',attachmentID:'file-9'}]}),[files[0]]);
+ assert.deepEqual(pptDroppedFiles(files,files,{items:[10]}),[files[1]]);
+ assert.deepEqual(pptDroppedFiles(files,files,{items:[]}),[]);
+});

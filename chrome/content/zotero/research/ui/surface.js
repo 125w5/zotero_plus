@@ -2,7 +2,8 @@
 Object.assign(EasySchUI,{
  async initSurface(){
   const nav=document.querySelector('.rail nav'),group=this.el('details',undefined,'workbench-group');group.open=true;group.append(this.el('summary','工作台'));
-  for(const id of ['research','search','writing','ppt']){const b=nav.querySelector('[data-tab="'+id+'"]');if(b){b.removeAttribute('data-l10n-id');b.removeAttribute('data-l10n-args');b.textContent=({research:'文献阅读',search:'文献搜集',writing:'论文装配',ppt:'组会 PPT'})[id];group.append(b);}}
+  nav.querySelector('[data-tab="research"]')?.remove();
+  for(const id of ['search','writing','ppt']){const b=nav.querySelector('[data-tab="'+id+'"]');if(b){b.removeAttribute('data-l10n-id');b.removeAttribute('data-l10n-args');b.textContent=({search:'文献搜集',writing:'论文装配',ppt:'组会 PPT'})[id];group.append(b);}}
   nav.prepend(group);for(const id of ['graph','meetings','journal'])nav.querySelector('[data-tab="'+id+'"]')?.remove();
   const bottom=document.querySelector('.rail-bottom');bottom.replaceChildren();nav.querySelector('[data-tab="schedule"]').hidden=true;
   const {mountCalendar}=await import('../shared/compact-ui.mjs');this.surfaceCalendar=mountCalendar(bottom,this.E,{openSchedule:day=>{this.show('schedule');this.$('task-date').value=day+'T18:00';}});

@@ -1,0 +1,70 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+#details .clue-page{padding:12px;background:linear-gradient(145deg,#f5f6f9,#eef0f4);border:1px solid #e0e3eaa6;border-radius:11px;box-shadow:inset 0 1px #ffffffd9}
+#details .clue-page-content{display:block}
+#details details.clue-page{padding:0!important;overflow:hidden}
+#details .clue-page-heading{display:flex;align-items:center;gap:8px;min-height:38px;padding:9px 11px;font:500 12px/1.5 var(--ui-font,system-ui);color:var(--muted);list-style:none;user-select:none}
+#details .clue-page-heading::before{content:'›';font-size:17px;line-height:1;transition:transform 150ms ease}
+#details .clue-page[open]>.clue-page-heading::before{transform:rotate(90deg)}
+#details .clue-page-heading small{margin-left:auto;font-size:11px;font-weight:400;color:var(--muted)}
+#details .clue-page[open]>.clue-page-content{padding:0 11px 11px;animation:clue-source-reveal 160ms ease-out}
+#details .clue-page-heading:hover{background:color-mix(in srgb,var(--assembly-control) 55%,transparent);color:var(--text)}
+#details .clue-page-heading:focus-visible{outline:2px solid var(--ui-focus,#89a4bf);outline-offset:-3px;border-radius:10px}
+@keyframes clue-source-reveal{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){#details .clue-page-heading::before{transition:none}#details .clue-page[open]>.clue-page-content{animation:none}}
+#details .clue-quote{font-family:Georgia,'Times New Roman','Microsoft YaHei',serif;font-size:12.5px;line-height:1.75;color:#646b75;white-space:pre-wrap;overflow-wrap:anywhere}
+#details .clue-quote sup,#details .clue-quote sub{font-size:.72em;line-height:0}
+#details .clue-thumbnail{display:inline-block;width:82px;min-height:0;margin:10px 0 0;border:1px solid #dce1e8;border-radius:7px;background:white;box-shadow:0 2px 6px #242d4610;overflow:hidden;vertical-align:top}
+#details .clue-thumbnail img{width:82px;max-height:110px;object-fit:contain}
+.material-explanation-editor{padding:13px 14px;margin:12px 0 14px;border:1px solid #e2e5ec;border-radius:12px;background:linear-gradient(145deg,#fff,#fafbfc);box-shadow:0 2px 8px #1d2d4908}
+.material-explanation-heading,.formula-editor-heading,.material-content-edit-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.material-explanation-heading h4{font-size:12px;font-weight:600;line-height:1.4;margin:0!important;color:#586273}
+.material-explanation-edit{margin:0!important;width:26px;height:26px;padding:0!important;color:#7a8493!important;border:0!important;border-radius:6px!important;background:transparent!important}
+.material-explanation-edit:hover{background:#edf0f5!important;color:#424c5c!important}
+.material-explanation-body{font-size:13px;line-height:1.75;overflow-wrap:anywhere}
+.material-explanation-body p{margin:8px 0}
+#details .clue-page:not([open])>.clue-page-content{display:none}
+.material-explanation-body .katex,.formula-typeset .katex{color:inherit;max-width:100%}
+.material-explanation-form textarea,.formula-latex-input{box-sizing:border-box;width:100%;resize:vertical;font:13px/1.65 system-ui,'Microsoft YaHei',sans-serif;color:#384252;border:1px solid #dde2ea;border-radius:8px;background:#fff;padding:9px 10px;margin:8px 0}
+.material-explanation-form textarea:focus,.formula-latex-input:focus{outline:2px solid #879abb5c;outline-offset:1px}
+.material-content-toolbar{display:flex;gap:3px;align-items:center;margin-bottom:9px}
+.material-content-toolbar>button{height:27px;min-width:27px;margin:0!important;border:0!important;border-radius:6px!important;color:#758195!important;background:#eef1f6!important;padding:3px 7px!important;font-size:13px}
+.material-content-toolbar>button:hover{background:#e0e5ee!important;color:#394b68!important;transform:translateY(-1px)}
+.material-content-toolbar>.material-refine-button{margin-left:auto!important;font-size:11px}
+.material-content-edit-block{padding:9px;margin:8px 0;border:1px solid #e4e8ef;border-radius:8px;background:#f8f9fc}
+.material-content-edit-heading{color:#7a8494;font-size:11px}
+.material-content-edit-heading button{padding:0 4px!important;margin:0!important;border:0!important;background:transparent!important;color:#8a93a1!important}
+.material-explanation-save{display:flex;justify-content:flex-end;gap:6px;margin-top:10px}
+.material-explanation-save button{margin:0!important;padding:5px 12px!important;font-size:12px}
+.material-explanation-feedback:empty,.formula-editor-status:empty{display:none}
+.material-explanation-feedback,.formula-editor-status{display:block;color:#768293;font-size:11px;line-height:1.5;margin:5px 0}
+.material-content-block{margin:9px 0}
+.material-content-block img,.material-content-edit-block img{display:block;max-width:100%;max-height:240px;object-fit:contain;margin:auto;border-radius:6px;background:#fff}
+.material-content-caption{font-size:11.5px;color:#7d8795;text-align:center;line-height:1.55}
+.material-content-table-scroll{overflow:auto;max-width:100%}
+.material-content-table-scroll table{width:100%;border-collapse:collapse;background:#fff;font-size:12px}
+.material-content-table-scroll td,.material-content-table-scroll th{border:1px solid #dce2eb;padding:5px 7px;vertical-align:top;min-width:65px;font-weight:400}
+.material-content-table-scroll th{background:#f0f3f8;color:#4b596d;font-weight:600}
+.material-content-table-scroll p{margin:0}
+.material-content-table-scroll input{box-sizing:border-box;width:100%;min-width:65px;max-width:180px;font:inherit;border:0;background:transparent;padding:3px 0;color:inherit}
+.material-content-edit-block>input{box-sizing:border-box;width:100%;margin-top:7px;padding:5px 7px;border:1px solid #dde2ea;border-radius:6px;font-size:12px}
+.material-table-size{display:flex;gap:5px;align-items:center;font-size:11px;color:#748095;padding:7px;background:#f1f3f7;border-radius:6px}
+.material-table-size input{width:42px;padding:3px;margin-left:4px}
+.formula-editor{min-width:0;margin:10px 0;padding:10px 11px;background:#f5f6fa;border-radius:10px;border:1px solid #e4e7ef}
+.formula-editor-heading strong{font-size:12px;font-weight:600;color:#636d80}
+.formula-source-action{font-size:11px!important;padding:3px 6px!important;margin:0!important;border:0!important;background:transparent!important;color:#768297!important}
+.formula-latex-input{font-family:Consolas,'Cascadia Code',monospace!important;font-size:12px!important;min-height:64px}
+.formula-live-preview{border-radius:7px;background:#fff;min-height:42px;border:1px solid #e4e8ef;padding:8px 5px;overflow:auto}
+.formula-typeset{overflow:auto;color:#343e4f}
+.formula-typeset .katex-display{margin:.35em 0}
+.formula-empty{color:#9aa2ae;font:12px system-ui;text-align:center;padding:6px}
+.formula-error{color:#b47b64;font-size:12px;padding:6px}
+.formula-code{font-family:Consolas,monospace}
+.formula-source-list{max-height:340px;overflow:auto;margin-top:9px;scrollbar-width:thin}
+.formula-source-card{padding:8px;background:#fff;border:1px solid #e4e8ef;border-radius:8px;margin:7px 0;box-shadow:0 2px 5px #28365308}
+.formula-source-heading{display:flex;gap:7px;align-items:baseline;font-size:12px;color:#5c677a}
+.formula-source-heading small{margin-left:auto;color:#99a0ab;font-size:10px}
+.formula-source-card img{display:block;width:100%;max-height:110px;object-fit:contain;margin:7px 0}
+.formula-source-actions{display:flex;justify-content:flex-end;gap:3px}
+.formula-source-actions button{font-size:11px!important;margin:0!important;padding:3px 6px!important;border:0!important;color:#758299!important;background:#f0f3f8!important}
+[data-appearance=dark] .material-explanation-editor,[data-appearance=dark] .formula-editor,[data-appearance=dark] .formula-source-card{background:var(--surface,#252931);border-color:var(--line,#363d49)}
+[data-appearance=dark] .material-explanation-form textarea,[data-appearance=dark] .formula-latex-input,[data-appearance=dark] .formula-live-preview,[data-appearance=dark] .material-content-table-scroll table{background:var(--soft,#20252c);color:var(--text,#d9dee9);border-color:var(--line,#363d49)}

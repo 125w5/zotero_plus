@@ -1,16 +1,42 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 (function (R) {
+	let transport;
+	const providerTransport = () => {
+		if (!transport) transport = new Cu.Sandbox(Services.scriptSecurityManager.getSystemPrincipal(), {
+			sandboxName: 'EasySch background provider transport',
+			wantGlobalProperties: ['fetch', 'AbortController']
+		});
+		return transport;
+	};
 	R.requestProvider = async function (url, options = {}, timeout = 30000, readResponse = response => response.text()) {
-		let win = Zotero.getMainWindow(), controller = new win.AbortController();
-		const external=options.signal,abort=()=>controller.abort();external?.addEventListener('abort',abort,{once:true});if(external?.aborted)abort();
-		let timer = win.setTimeout(() => controller.abort(), timeout);
+		// A background request must outlive closing its originating library or
+		// Reader window. A persistent system-principal sandbox owns fetch and
+		// its stream; hiddenDOMWindow is unavailable in Windows Zotero builds.
+		const win=providerTransport();
+		if(!win?.fetch||!win.AbortController)throw new Error('后台网络环境不可用，请重新打开软件');
+		const timers=R.setTimeout&&R.clearTimeout?R:ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
+		const controller=new win.AbortController(),external=options.signal;let reason,timer,rejectStopped;
+		const stopError=()=>{const error=new Error(reason==='cancel'?'服务请求已取消':'服务请求超时，请重试');error.name=reason==='cancel'?'AbortError':'TimeoutError';return error;};
+		const stopped=new Promise((_,reject)=>{rejectStopped=reject;});
+		const stop=cause=>{if(reason)return;reason=cause;controller.abort();rejectStopped(stopError());};
+		const abort=()=>stop('cancel');external?.addEventListener('abort',abort,{once:true});if(external?.aborted)abort();
+		if(!reason)timer=timers.setTimeout(()=>stop('timeout'),timeout);
 		try {
-			let response = await win.fetch(url, { ...options, signal: controller.signal, redirect: 'error' });
-			if (!response.ok) throw new Error(`服务返回 HTTP ${response.status}`);
-			return await readResponse(response);
+			const reading=(async()=>{
+				if(reason)throw stopError();
+				let response;try{response=await win.fetch(url,{...options,signal:controller.signal,redirect:'error'});}
+				catch(error){if(reason)throw stopError();throw Object.assign(new Error('无法连接服务，请检查网络或代理'),{name:'ProviderTransportError'});}
+				if(reason)throw stopError();
+				if(!response.ok){const errors=ChromeUtils.importESModule('chrome://zotero/content/research/shared/provider-error.mjs');throw await errors.providerResponseError(response);}
+				return await readResponse(response);
+			})();
+			// Covers headers, response.text() and custom streaming readers. Abort
+			// also rejects our own promise if a reader is awaiting a stalled chunk.
+			// Promise.race observes a later rejection from the interrupted reader.
+			const result=await Promise.race([reading,stopped]);if(reason)throw stopError();return result;
 		}
-		catch (e) { throw new Error(controller.signal.aborted ? '服务请求超时，请重试' : (/^(服务返回 HTTP|模型流式响应|模型响应在完成前)/.test(e.message) ? e.message : '无法连接服务，请检查网络或代理')); }
-		finally { win.clearTimeout(timer);external?.removeEventListener('abort',abort); }
+		catch (e) { if(reason)throw stopError();if(e.name==='ProviderRequestError'||e.name==='ProviderTransportError')throw e;throw Object.assign(new Error(/^(服务返回 HTTP|模型流式响应|模型响应在完成前)/.test(e.message)?e.message:'服务已连接，但返回内容无法读取，请重试'),{name:'ProviderResponseError'}); }
+		finally { if(timer!==undefined)timers.clearTimeout(timer);external?.removeEventListener('abort',abort); }
 	};
 	R.configureProviders = async function (data) {
 		// Import a user-supplied OpenAI-compatible provider into the profile's
@@ -92,10 +118,14 @@
 		}
 		return results;
 	};
-	R.translateYoudao = async function (text, to = 'zh-CHS', {signal} = {}) {
+	R.translateYoudao = async function (text, to = 'zh-CHS', {signal,timeout=30000} = {}) {
 		if (!text?.trim()) throw new Error('请先选择或输入待翻译文字');
 		if (text.length > 5000) throw new Error('一次最多翻译 5000 字符，请分段选择');
+		const Deadline=ChromeUtils.importESModule('chrome://zotero/content/research/shared/request-deadline.mjs');
+		const timers=R.setTimeout&&R.clearTimeout?R:ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
+		return Deadline.requestWithinDeadline(async currentSignal=>{
 		let appKey = R.settings().youdaoAppID, secret = await R.credentials.get('https://openapi.youdao.com');
+		if(currentSignal.aborted)throw Object.assign(new Error('请求已取消'),{name:'AbortError'});
 		if (!appKey || !secret) throw new Error('请在设置中配置有道应用 ID 和密钥');
 		let formulas = [];
 		let q = text.replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, value => { formulas.push(value); return `ZXQFORMULA${formulas.length}ZXQ`; });
@@ -103,11 +133,12 @@
 		let salt = Zotero.Utilities.randomString(24), curtime = String(Math.floor(Date.now() / 1000));
 		let win = Zotero.getMainWindow();
 		let digest = await win.crypto.subtle.digest('SHA-256', new win.TextEncoder().encode(appKey + input + salt + curtime + secret));
+		if(currentSignal.aborted)throw Object.assign(new Error('请求已取消'),{name:'AbortError'});
 		let sign = [...new Uint8Array(digest)].map(n => n.toString(16).padStart(2, '0')).join('');
 		let body = new win.URLSearchParams({ q, from: 'auto', to, appKey, salt, curtime, signType: 'v3', sign });
 		let data = JSON.parse(await R.requestProvider('https://openapi.youdao.com/api', {
-			method: 'POST', signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
-		}));
+			method: 'POST', signal:currentSignal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+		},timeout));
 		if (String(data.errorCode) !== '0') throw new Error(`有道翻译错误码 ${data.errorCode || '未知'}（请检查密钥、服务授权和余额）`);
 		let translation = data.translation?.join('\n');
 		if (!translation) throw new Error('有道未返回译文');
@@ -117,5 +148,6 @@
 			translation = translation.replace(token, () => formula);
 		}
 		return { text: translation, provider: '有道智云', at: new Date().toISOString() };
+		},{signal,timeout,AbortController:providerTransport().AbortController,setTimeout:timers.setTimeout.bind(timers),clearTimeout:timers.clearTimeout.bind(timers)});
 	};
 })(Zotero.Research);

@@ -86,6 +86,10 @@ import { getCSSItemTypeIcon } from 'components/icons';
 			}
 			this.setAttribute("aria-label", this._parentTitle.textContent);
 			this._noteContent.textContent = note.body;
+			if (Zotero.Research?.renderContent && /\$[^$]+\$/.test(note.body || '')) {
+				Zotero.Research.prepareContentStyles(this.ownerDocument).catch(Zotero.logError);
+				Zotero.Research.renderContent(this._noteContent, note.body);
+			}
 			this._noteContent.hidden = !note.body;
 			this._noteDate.textContent = note.date;
 		}

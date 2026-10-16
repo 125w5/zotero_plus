@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {cleanDOI,parseReferenceText,referenceFromCrossref,crossrefRecord,selectReferenceCandidate,resolveReferences} from '../../../chrome/content/zotero/research/shared/reference-matcher.mjs';
+import {readFile} from 'node:fs/promises';
+import {cleanDOI,parseReferenceText,referenceFromCrossref,crossrefRecord,referenceTags,selectReferenceCandidate,resolveReferences} from '../../../chrome/content/zotero/research/shared/reference-matcher.mjs';
 const p={title:'Deep Learning for Radio Signal Classification',doi:'10.1234/abc',date:'2018',authors:[{lastName:'Smith'}]};
 test('DOI identity is normalized and mismatches never become cited papers',()=>{
  assert.equal(cleanDOI('https://doi.org/10.1234/ABC.'),'10.1234/abc');
@@ -38,4 +39,23 @@ test('collection deduplicates exact matches, preserves origins, skips failures a
 });
 test('cancellation never returns a successful stale collection',async()=>{
  const controller=new AbortController();await assert.rejects(resolveReferences([{doi:p.doi}],{signal:controller.signal,lookup:async()=>{controller.abort();return [p];}}),/已取消/);
+});
+test('provider tags are preserved without manufacturing subjects from a title',()=>{
+ const record=crossrefRecord({DOI:p.doi,title:[p.title],subject:['Signal Processing','Signal Processing'],keywords:['CNN']});
+ assert.deepEqual(record.tags,['Signal Processing','CNN']);
+ assert.deepEqual(referenceTags({tags:[{tag:'ＣＮＮ'},'cnn'],subject:'卷积神经网络'}),['CNN','卷积神经网络']);
+ assert.deepEqual(crossrefRecord({title:['A neural signal classification paper']}).tags,[]);
+});
+test('matching publishes each actual record before the rest of the bibliography completes',async()=>{
+ let release;const held=new Promise(resolve=>{release=resolve;}),progress=[];
+ const done=resolveReferences([{id:'1',doi:p.doi},{id:'2',doi:'10.1234/slow'}],{lookup:async ref=>{if(ref.id==='2')await held;return [p];},onProgress:state=>progress.push(state)});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(progress[0].done,1);assert.equal(progress[0].record.doi,p.doi);assert.equal(progress[0].reference.id,'1');
+ release();await done;assert.equal(progress.at(-1).record,null);assert.equal(progress.at(-1).reason,'未找到可核验题录');
+});
+test('the actual seven-page World Model PDFWorker bibliography retains all fourteen labels joined to authors',async()=>{
+ const text=await readFile(new URL('./fixtures/world-model-pdfworker-bibliography.txt',import.meta.url),'utf8'),refs=parseReferenceText(text);
+ assert.equal(refs.length,14);assert.deepEqual(refs.map(ref=>Number(ref.id)),Array.from({length:14},(_,index)=>index+1));
+ assert.match(refs[0].title,/Fast MIMO beamforming/);assert.ok(refs.every(ref=>ref.quote.length<400));assert.ok(refs.every(ref=>!/[\s]\[\d+\]/.test(ref.quote)),'no later numbered source remains inside a merged entry');
+ const result=await resolveReferences(refs,{lookup:async()=>[]});assert.equal(result.records.length,0);assert.equal(result.total,14);assert.equal(result.skipped.length,14);
 });

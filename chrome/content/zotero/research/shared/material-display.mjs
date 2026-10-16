@@ -15,5 +15,6 @@ export function materialDisplay(host,m,E,{mode='summary',type=materialType(m),re
  else{host.append(el('strong',name,'material-heading'));const summary=el('div',undefined,'material-excerpt');E.renderContent(summary,A.summaryFor(m));summary.title=A.summaryFor(m);host.append(summary);}
  if(m.sourceType==='ai-illustration')host.append(el('small','AI 生成示意图 · 构想，非论文证据','material-provenance material-origin-warning'));
  else{const line=E.appendMaterialProvenance(host,m);if(mode==='source')line.querySelector('.source-paper-title').textContent=Number.isInteger(m.pageIndex)?'PDF 第 '+(m.pageIndex+1)+' 页':type;}
+ const labels=[m.sectionType,...(m.explicitTags||[]).slice(0,2)].filter(Boolean);if(labels.length){const row=el('div','', 'material-labels');row.setAttribute('aria-label','章节与原文关键词');for(const label of [...new Set(labels)])row.append(el('span',label,'material-label'));host.append(row);}
  host.title=[name,A.summaryFor(m),origin.title,type,reason,snippet].filter(Boolean).join('\n');host.setAttribute('aria-label',name+'，'+type+'，'+A.summaryFor(m));
 }

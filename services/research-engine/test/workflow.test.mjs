@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs/promises';
 import * as Ref from '../../../chrome/content/zotero/research/shared/reference-matcher.mjs';
-const ChromeUtils={importESModule:()=>Ref};
+import * as Feed from '../../../chrome/content/zotero/research/shared/discovery-feed.mjs';
+const ChromeUtils={importESModule:url=>{if(url.endsWith('/reference-matcher.mjs'))return Ref;if(url.endsWith('/discovery-feed.mjs'))return Feed;throw Error('Unexpected fixture module: '+url);}};
 const source = await fs.readFile(
 	new URL(
 		'../../../chrome/content/zotero/xpcom/research/discovery.js',
@@ -33,7 +34,7 @@ test('reference discovery preserves publisher provenance, caches by DOI and neve
 			});
 		},
 	};
-	vm.runInNewContext(source, { Zotero: { Research: E, Items:{getAsync:async()=>({isPDFAttachment:()=>false,getBestAttachment:async()=>null})},Promise:{delay:async()=>{}},getMainWindow:()=>({DOMParser:class {parseFromString(text){return {body:{textContent:text}};}}}) }, URL,ChromeUtils });
+	vm.runInNewContext(source, { Zotero: { Research: E,addShutdownListener:()=>{}, Items:{getAsync:async()=>({isPDFAttachment:()=>false,getBestAttachment:async()=>null})},Promise:{delay:async()=>{}},getMainWindow:()=>({AbortController,DOMParser:class {parseFromString(text){return {body:{textContent:text}};}}}) }, URL,ChromeUtils });
 	const result = await E.discover({ id:1,doi: '10.1234/current' });
 	assert.equal(result.records[0].doi, '10.1234/source');
 	assert.equal(result.records[0].abstract, '');
@@ -51,7 +52,7 @@ test('cancelled discovery cannot populate the cache', async () => {
 			requestProvider: async () =>
 				JSON.stringify({ message: { reference: [] } }),
 		};
-	vm.runInNewContext(source, { Zotero: { Research: E }, URL,ChromeUtils });
+	vm.runInNewContext(source, { Zotero: { Research: E,addShutdownListener:()=>{} }, URL,ChromeUtils });
 	await assert.rejects(
 		E.discover({ doi: '10.1/test' }, 'references', {
 			signal: { aborted: true },
@@ -61,7 +62,7 @@ test('cancelled discovery cannot populate the cache', async () => {
 	assert.equal(state.discovery, undefined);
 });
 test('PDF references split individually even when the PDF text layer joins lines',async()=>{
- const state={},attachment={id:1,isPDFAttachment:()=>true},E={assets:{key:t=>t},library:{uri:()=> 'zotero://open-pdf/library/items/TEST'},store:{get:()=>state,update:async fn=>fn(state)}};
- vm.runInNewContext(source,{Zotero:{Research:E,Items:{getAsync:async()=>attachment},PDFWorker:{getFullText:async()=>({text:'REFERENCES\n[1] A. Author, “First paper title”, 2020. [2] B. Author, “Second paper title”, 2021.\n[3] C. Author, Third paper, 2022.'})}},URL,ChromeUtils});
+ const state={},attachment={id:1,isPDFAttachment:()=>true,getFilePathAsync:async()=>'/controlled/reference.pdf'},E={assets:{key:t=>t},library:{uri:()=> 'zotero://open-pdf/library/items/TEST'},store:{get:()=>state,update:async fn=>fn(state)}};
+ vm.runInNewContext(source,{Zotero:{Research:E,addShutdownListener:()=>{},Items:{getAsync:async()=>attachment},PDFWorker:{getFullText:async()=>({text:'REFERENCES\n[1] A. Author, “First paper title”, 2020. [2] B. Author, “Second paper title”, 2021.\n[3] C. Author, Third paper, 2022.'})}},IOUtils:{stat:async()=>({size:123,lastModified:1})},URL,ChromeUtils});
  const r=await E.referencesFromPDF({id:1});assert.equal(r.records.length,3);assert.equal(r.records[0].title,'First paper title');assert.doesNotMatch(r.records[0].quote,/\[2\]/);
 });

@@ -15,6 +15,20 @@ describe("Item Tags Box", function () {
 	after(function () {
 		win.close();
 	});
+
+	it("should accept a tag notification before the first render", async function () {
+		const item = await createDataObject('item', { tags: [] });
+		const box = doc.createXULElement('tags-box');
+		doc.documentElement.append(box);
+		try {
+			box.item = item;
+			assert.isFunction(box._tagColors.has);
+			const id = item.id + '-987654';
+			box.notify('add', 'item-tag', [id], { [id]: { tag: 'early-render-tag', type: 0 } });
+			assert.equal(box.querySelector('.row').getAttribute('tagName'), 'early-render-tag');
+		}
+		finally { box.remove(); }
+	});
 	
 	
 	describe("Tag Editing", function () {

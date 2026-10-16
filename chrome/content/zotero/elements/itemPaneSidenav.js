@@ -26,6 +26,9 @@
 "use strict";
 
 {
+	const ResearchNavigation = ChromeUtils.importESModule(
+		"chrome://zotero/content/research/shared/reader-navigation.mjs"
+	);
 	class ItemPaneSidenav extends XULElementBase {
 		content = MozXULElement.parseXULToFragment(`
 			<!-- Standard mode only: Toggle Item/Context Pane button -->
@@ -205,7 +208,7 @@
 				return false;
 			}
 			// The first button in the group is not pinnable
-			if (this._buttonContainer.querySelector(".pin-wrapper:not([hidden])").querySelector(".btn").dataset.pane == id) {
+			if (this._buttonContainer.querySelector(".pin-wrapper:not([hidden])")?.querySelector(".btn").dataset.pane == id) {
 				return false;
 			}
 			return true;
@@ -253,6 +256,9 @@
 
 		init() {
 			this._buttonContainer = this.querySelector('.inherit-flex');
+			this._contextNotesWrapper = this.querySelector('.highlight-notes-active');
+			this._contextNotesDivider = this._contextNotesWrapper.previousElementSibling;
+			this._contextNotesAnchor = this._contextNotesWrapper.nextElementSibling;
 			this.loadBuiltInButtons();
 			this.toggleDefaultStatus(true);
 
@@ -364,6 +370,19 @@
 
 		render() {
 			if (!this.container) return;
+			const paper = !!this.container.researchPaperNavigation;
+			if (paper) this.dataset.easyschNavigation = 'paper';
+			else delete this.dataset.easyschNavigation;
+			// The reader's note editor is the sole notes destination. Move its
+			// existing wrapper into the fixed notes slot instead of adding an alias.
+			if (paper && this._contextNotesPane && this.contextNotesPaneEnabled) {
+				if (this._contextNotesWrapper.parentElement !== this._buttonContainer) {
+					this._buttonContainer.append(this._contextNotesWrapper);
+				}
+			}
+			else if (this._contextNotesWrapper.parentElement === this._buttonContainer) {
+				this.insertBefore(this._contextNotesWrapper, this._contextNotesAnchor);
+			}
 
 			for (let paneElem of this.container.getPanes()) {
 				let paneID = paneElem.dataset.pane;
@@ -385,14 +404,27 @@
 					let selected = contextNotesPaneVisible;
 					
 					button.parentElement.hidden = hidden;
-					button.parentElement.previousElementSibling.hidden = hidden; // Divider
+					this._contextNotesDivider.hidden = hidden || paper;
 					
 					button.setAttribute('aria-selected', selected);
+					button.parentElement.classList.toggle('research-active', paper && selected);
 					
 					continue;
 				}
 				
-				button.closest("[role='tab']").setAttribute('aria-selected', !contextNotesPaneVisible);
+				if (paper) {
+					const selectedID = ResearchNavigation.resolvePaperPaneID(
+						this.container.getPanes().map(node => node.dataset.pane), pane
+					);
+					const selected = !contextNotesPaneVisible && selectedID === this.container.researchActivePane;
+					button.setAttribute('aria-selected', String(selected));
+					button.parentElement.classList.toggle('research-active', selected);
+				}
+				else {
+					button.removeAttribute('aria-selected');
+					button.parentElement.classList.remove('research-active');
+					button.closest("[role='tab']").setAttribute('aria-selected', !contextNotesPaneVisible);
+				}
 				// No need to set `hidden` here, since it's updated by ItemDetails#_handlePaneStatus
 				// Set .pinned on the container, for pin styling
 				button.parentElement.classList.toggle('pinned', pane == pinnedPane);
@@ -402,7 +434,7 @@
 				let action = button.dataset.action;
 				
 				if (action == 'toggle-pane' || action == 'locate') {
-					button.parentElement.hidden = false;
+					button.parentElement.hidden = action === 'locate' && paper;
 				}
 				if (action == 'toggle-pane') {
 					document.l10n.setAttributes(button,
@@ -418,9 +450,31 @@
 
 			// Update the pane order
 			this.container.initPaneOrder(this.getPersistedOrder());
+			if (paper) {
+				const wrappers = this._wrappers;
+				const order = ResearchNavigation.paperRailOrder(
+					wrappers.map(wrapper => wrapper.querySelector('.btn')?.dataset.pane),
+					!!this._contextNotesPane && this.contextNotesPaneEnabled
+				);
+				let index = 0;
+				for (const id of order) {
+					const wrapper = wrappers.find(node => node.querySelector('.btn')?.dataset.pane === id);
+					if (wrapper) {
+						wrapper.draggable = false;
+						const before = this._buttonContainer.children[index++];
+						if (before !== wrapper) this._buttonContainer.insertBefore(wrapper, before || null);
+					}
+				}
+			}
+			else {
+				for (const wrapper of this._wrappers) {
+					wrapper.draggable = this.isPaneOrderable(wrapper.querySelector('.btn')?.dataset.pane);
+				}
+			}
 		}
 
 		async persistOrder(currentOrder = undefined) {
+			if (this.container?.researchPaperNavigation) return;
 			let panes = Array.from(this._buttonContainer.querySelectorAll('.btn[data-pane]'));
 			if (currentOrder === undefined) {
 				currentOrder = [];
@@ -577,7 +631,10 @@
 
 			let button = this.querySelector(`.btn[data-pane=${CSS.escape(paneID)}]`);
 			if (!button) return;
-			button.parentElement.hidden = !this.container.getEnabledPane(paneID);
+			const paperOverview = paneID === 'info' && this.container.researchPaperNavigation
+				? this.container.getPanes().find(pane => ResearchNavigation.researchPaneKind(pane.dataset.pane) === 'overview' && !pane.hidden) : null;
+			button.parentElement.hidden = !(paperOverview || this.container.getEnabledPane(paneID))
+				|| this.container.isPaneInSidenav?.(paneID) === false;
 			if (this.pinnedPane) {
 				if (paneID == this.pinnedPane && !button.parentElement.classList.contains("pinned")) {
 					this.querySelector(".pin-wrapper.pinned")?.classList.remove("pinned");
@@ -607,6 +664,7 @@
 		 * @returns {Promise<boolean>} Whether the order was changed
 		 */
 		async changePaneOrder(paneID, newIndex, options = {}) {
+			if (!this.container?.supportsReorder) return false;
 			let button = this.querySelector(`.btn[data-pane=${CSS.escape(paneID)}]`);
 			if (!button) return false;
 			let wrappers = this._wrappers;
@@ -792,6 +850,12 @@
 			let button = event.target.closest('.btn[data-pane]');
 			let pane = button?.dataset.pane;
 			if (!pane) return;
+			if (this.container.researchPaperNavigation) {
+				if (event.button !== 0) return;
+				await this.container.selectResearchPane(pane);
+				this.render();
+				return;
+			}
 			switch (pane) {
 				case "context-notes":
 					if (event.button !== 0) {
@@ -817,9 +881,9 @@
 							// Call scrolling before expanding the pane to avoid flickering
 							// Selecting a section is an explicit request to read it, even
 							// when its previous state was collapsed.
-							const targetPane = this.container.getEnabledPane(pane);
+							let targetPane = this.container.getEnabledPane(pane);
 							if (targetPane) targetPane.open = true;
-							await this.container.scrollToPane(pane, scrollType);
+							await this.container.scrollToPane(targetPane?.dataset.pane || pane, scrollType);
 							break;
 						case 2:
 							if (this.pinnedPane == pane || !pinnable) {

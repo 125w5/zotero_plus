@@ -1,0 +1,33 @@
+/* SPDX-License-Identifier: MIT
+ * CLUI CC App.tsx shell and index.css action stack, adapted to native Gecko.
+ * Copyright (c) 2025-2026 Lucas Couto. See ../vendor/CLUI-CC-LICENSE.txt.
+ */
+[data-clui-native]{--clui-container-bg:color-mix(in srgb,var(--ui-card,#fff) 94%,transparent);--clui-container-border:var(--ui-border,#dce2e9);--clui-card-shadow:0 2px 8px #0000000f;--clui-text-tertiary:var(--ui-secondary,#657386);--clui-text-primary:var(--ui-text,#253141);--clui-btn-hover-bg:var(--ui-selection,#e8f1ff);--clui-btn-hover-color:var(--ui-text,#253141);--clui-btn-disabled:#a9b2bc;--clui-transition:.26s cubic-bezier(.4,0,.1,1);position:relative;width:min(700px,100%);color:var(--clui-text-primary);transition:width var(--clui-transition);isolation:isolate}
+[data-clui-native] .clui-native-glass{background:var(--clui-container-bg);border:1px solid var(--clui-container-border);box-shadow:var(--clui-card-shadow);backdrop-filter:blur(28px) saturate(1.15)}
+[data-clui-native] .clui-native-shell{display:flex;flex-direction:column;width:calc(100% - 30px);margin:0 15px -14px;border-radius:20px;position:relative;z-index:10;overflow:hidden;transition:width var(--clui-transition),margin var(--clui-transition),box-shadow var(--clui-transition),background var(--clui-transition)}
+[data-clui-native][data-expanded=true] .clui-native-shell{width:100%;margin:0 0 10px;z-index:20;box-shadow:0 6px 28px #1b2b3b14,0 1px 6px #1b2b3b08}
+[data-clui-native] .clui-native-tab-strip{display:flex;align-items:center;gap:7px;min-height:37px;padding:0 10px 9px;flex:none}
+[data-clui-native][data-expanded=true] .clui-native-tab-strip{padding-block:4px;border-bottom:1px solid color-mix(in srgb,var(--clui-container-border) 65%,transparent)}
+[data-clui-native] .clui-native-body{display:grid;grid-template-rows:0fr;opacity:0;overflow:hidden;transition:grid-template-rows var(--clui-transition),opacity var(--clui-transition)}
+[data-clui-native][data-expanded=true] .clui-native-body{grid-template-rows:1fr;opacity:1}
+[data-clui-native] .clui-native-conversation{overflow:auto;min-height:0;max-height:min(460px,52vh);padding:0 16px;scrollbar-width:thin;overscroll-behavior:contain;user-select:text;scroll-padding-block:16px;mask-image:linear-gradient(0deg,transparent,#000 16px,#000 calc(100% - 8px),transparent)}
+[data-clui-native][data-expanded=true] .clui-native-conversation{padding-block:10px 24px}
+[data-clui-native][data-clui-size=conversation] .clui-native-conversation{max-height:min(336px,42vh)}
+[data-clui-native][data-clui-size=detail] .clui-native-conversation{max-height:min(520px,62vh)}
+/* Dimming an ancestor's opacity/filter creates a backdrop root and prevents
+   its glass children from blurring the document behind them in Gecko. Keep
+   the glass opaque enough to read; dim only the foreground content. */
+[data-clui-native][data-dimmed=true]{opacity:1;filter:none}
+[data-clui-native][data-dimmed=true] :is(.clui-native-tab-strip>*,.clui-native-conversation,.clui-native-input-pill>*){opacity:.68}
+[data-clui-native] .clui-native-input-row{position:relative;min-height:50px;z-index:15;margin-bottom:10px}
+[data-clui-native] .clui-native-input-pill{position:relative;min-height:50px;border-radius:25px;padding:7px 8px 6px 16px}
+[data-clui-native] .clui-native-input-pill:focus-within{border-color:color-mix(in srgb,var(--ui-secondary,#657386) 38%,var(--clui-container-border));box-shadow:0 3px 18px #1b2b3b12,inset 0 1px #ffffffa0}
+/* The actual CLUI index.css overlap/spread values, kept within our footer so
+   controls never cover the surrounding paper/material rails. */
+[data-clui-native] .clui-native-btn-stack{position:relative;width:160px;height:46px;overflow:visible;flex:none;transform:scale(.7);transform-origin:left center;margin-right:-48px;margin-block:-7px}
+[data-clui-native] .clui-native-stack-btn{position:absolute;width:46px;height:46px;min-height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--clui-text-tertiary);cursor:pointer;transition:right .4s cubic-bezier(.34,1.3,.64,1),color .15s ease,background .15s ease;box-shadow:var(--clui-card-shadow);padding:0}
+[data-clui-native] .clui-native-stack-btn:hover:not(:disabled){color:var(--clui-btn-hover-color);background:var(--clui-btn-hover-bg)}
+[data-clui-native] .clui-native-stack-btn:disabled{color:var(--clui-btn-disabled);cursor:default}
+[data-clui-native] .clui-native-stack-btn-1{right:0;z-index:3}[data-clui-native] .clui-native-stack-btn-2{right:28px;z-index:2}[data-clui-native] .clui-native-stack-btn-3{right:56px;z-index:1}
+[data-clui-native] .clui-native-btn-stack:is(:hover,:focus-within) .clui-native-stack-btn-1{right:0}[data-clui-native] .clui-native-btn-stack:is(:hover,:focus-within) .clui-native-stack-btn-2{right:56px}[data-clui-native] .clui-native-btn-stack:is(:hover,:focus-within) .clui-native-stack-btn-3{right:112px}
+@media(prefers-reduced-motion:reduce){[data-clui-native],[data-clui-native] *{transition:none!important;scroll-behavior:auto!important}}

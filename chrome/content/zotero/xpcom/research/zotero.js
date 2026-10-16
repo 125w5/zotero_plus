@@ -45,8 +45,29 @@
 		return `zotero://${type}/${scope}/items/${item.key}`
 			+ (Number.isInteger(pageIndex) && pageIndex >= 0 ? `?page=${pageIndex + 1}` : '');
 	};
-	Z.sources = async function (papers, selection) {
+	Z.sources = async function (papers, selection, {rapidReading=false,signal}={}) {
 		let sources = [], warnings = [];
+		if(rapidReading){
+			// Keep complete page text until rapid reading applies its own bounded,
+			// balanced excerpt selection. User annotations never consume this budget.
+			for(const [index,paper]of papers.entries()){
+				if(signal?.aborted)throw Error('已停止读取本地论文');
+				const item=await Zotero.Items.getAsync(paper.id),pdf=item?.isPDFAttachment()?item:await Z.localPDF(item);
+				if(!pdf){warnings.push(`${paper.title}：无本地 PDF`);continue;}
+				try{
+					const result=await E.runArtifactEngine({operation:'assets-text',pdf:await pdf.getFilePathAsync()},()=>{},signal);
+					for(const page of result.pages||[])if(page.text?.trim())sources.push({id:`P${index+1}-PAGE${page.pageIndex+1}`,paperKey:E.core.paperKey(paper),label:`原文 · PDF 第 ${page.pageIndex+1} 页`,text:page.text,uri:Z.uri(pdf,page.pageIndex),attachmentID:pdf.id,paperItemID:pdf.parentID||pdf.id,pageIndex:page.pageIndex});
+				}catch(error){
+					if(signal?.aborted)throw error;
+					// PDFWorker text has no exact page positions. Keep its actual
+					// attachment anchor instead of inventing a page for an excerpt.
+					const {text}=await Zotero.PDFWorker.getFullText(pdf.id,null);
+					if(text?.trim())sources.push({id:`P${index+1}-TEXT`,paperKey:E.core.paperKey(paper),label:'原文（定位到附件）',text,uri:Z.uri(pdf),attachmentID:pdf.id,paperItemID:pdf.parentID||pdf.id});
+					warnings.push(`${paper.title}：逐页正文读取未完成，已保留可读取的附件正文。`);
+				}
+			}
+			return {sources,warnings};
+		}
 		if(selection?.text && selection.attachmentID){
 			const attachment=await Zotero.Items.getAsync(selection.attachmentID);
 			const docx=attachment.attachmentContentType==='application/vnd.openxmlformats-officedocument.wordprocessingml.document';

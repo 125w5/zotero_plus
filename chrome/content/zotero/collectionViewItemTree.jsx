@@ -47,6 +47,7 @@ const { LibraryHeaderItemTreeRow, SpacerItemTreeRow } = require('zotero/itemTree
 
 const { OS } = ChromeUtils.importESModule("chrome://zotero/content/osfile.mjs");
 const { ZOTERO_CONFIG } = ChromeUtils.importESModule('resource://zotero/config.mjs');
+const { libraryItemScopeActive, belongsToLibraryScope } = ChromeUtils.importESModule('chrome://zotero/content/research/shared/library-item-scope.mjs');
 
 const COLORED_TAGS_RE = new RegExp("^(?:Numpad|Digit)([0-" + Zotero.Tags.MAX_COLORED_TAGS + "]{1})$");
 
@@ -401,6 +402,10 @@ class CollectionViewItemTreeRowProvider extends ItemTreeRowProvider {
 			// Embedded-image attachments (images pasted into notes) are never shown in the
 			// tree, so don't let one match a search and pull in its parents
 			newSearchItems = newSearchItems.filter(item => !item.isEmbeddedImageAttachment());
+			if (libraryItemScopeActive(this.itemTree)) {
+				const projectIDs = new Set(Object.values(Zotero.Research?.store?.get('manuscriptLibrary') || {}).map(ref => ref.itemID));
+				newSearchItems = newSearchItems.filter(item => belongsToLibraryScope(item, this.itemTree.researchItemScope, id => Zotero.Items.get(id), item => projectIDs.has(item.id)));
+			}
 			if (this.viewMode == 'trash') {
 				// When in trash, also fetch trashed collections and searches
 				// so that they're displayed among the deleted items
@@ -660,6 +665,15 @@ class CollectionViewItemTreeRowProvider extends ItemTreeRowProvider {
 	async notify(action, type, ids, extraData) {
 		// Wait for any in-progress refresh to complete (including view update)
 		await this.itemTree._refreshPromise;
+
+		// The scoped main library still uses real search results and real child
+		// rows. Re-evaluate additions/parent changes instead of letting a direct
+		// notifier insertion leak unrelated notes into the paper list.
+		if (libraryItemScopeActive(this.itemTree) && ['item', 'collection-item'].includes(type)
+				&& ['add', 'modify', 'delete', 'remove', 'trash'].includes(action)) {
+			for (const row of this.collectionTreeRows) row.clearCache();
+			return this.refresh({restoreSelection: true, restoreScroll: true});
+		}
 
 		const cachedSelection = this.itemTree._cachedSelection;
 				const collectionTreeRows = this.collectionTreeRows;

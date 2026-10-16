@@ -18,7 +18,7 @@
    if(!await R.credentials.get(origin))throw Error('IF 需配置 easyScholar');
    const rank=await R.readJournalRank(journal),value=Number(rank.sciif);
    if(rank.sciif==null||rank.sciif===''||!Number.isFinite(value)||value<0)throw Error('期刊暂无可用 IF');
-   entry={at:new Date().toISOString(),metric:{issn:key.startsWith('journal:')?'':key,journal,impact_factor:value,metric_year:null,source:'easyScholar 当前返回（年份未标明）',fetched_at:new Date().toISOString()}};
+   entry={at:new Date().toISOString(),metric:{issn:key.startsWith('journal:')?'':key,journal,impact_factor:value,jcr_quartile:rank.sci||rank.ssci||null,cas_top:rank.sciUpTop||null,metric_year:null,source:'easyScholar 当前返回（年份未标明）',fetched_at:new Date().toISOString()}};
   }catch(e){entry={at:new Date().toISOString(),error:e.message};}
   load().set(key,entry);await R.store.update(s=>{s.journalMetricSnapshots||={};s.journalMetricSnapshots[key]=entry;});R.refreshTrees();return entry.metric;})();
   pendingMetrics.set(key,task);try{return await task;}finally{pendingMetrics.delete(key);}

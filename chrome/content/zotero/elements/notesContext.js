@@ -498,13 +498,36 @@
 					text = text.slice(0, 500);
 					let parts = text.split('\n').map(x => x.trim()).filter(x => x.length);
 					let title = parts[0] && parts[0].slice(0, Zotero.Notes.MAX_TITLE_LENGTH);
+					let body = parts[1] || '';
+					// Preserve authored TeX in previews rather than flattening a math
+					// node into an OCR-looking string. This never changes the note.
+					let html = note.getNote();
+					if (/class=["'][^"']*\bmath\b/.test(html)) {
+						let parsed = new DOMParser().parseFromString(html, 'text/html');
+						for (let formula of parsed.querySelectorAll('span.math,pre.math')) {
+							let value = formula.textContent.trim().replace(/^\${1,2}|\${1,2}$/g, '');
+							if (formula.localName === 'pre') {
+								formula.textContent = '$$' + value + '$$';
+							}
+							else {
+								formula.replaceWith(parsed.createTextNode('$' + value + '$'));
+							}
+						}
+						let candidates = [...parsed.querySelectorAll('p,blockquote,pre')].map(node => node.textContent.trim()).filter(value => value && !/^(?:机器翻译|原文摘录|AI补充|AI)\s*·|^回到 PDF/.test(value));
+						body = candidates.find(value => /\$[^$]+\$/.test(value)) || candidates[0] || body;
+						if (body.length > 800) body = candidates.find(value => value.length <= 800) || '';
+					}
+					if (/^(?:机器翻译|原文摘录|AI补充).*笔记/.test(title || '')) {
+						title = title.replace(/(?:机器翻译|原文摘录|AI补充)\s*·\s*\d{4}-\d{2}-\d{2}.*$/, '').trim();
+						if (/^(?:机器翻译|原文摘录|AI补充)\s*·\s*\d{4}-\d{2}-\d{2}/.test(body)) body = parts[2] || '';
+					}
 					let date = Zotero.Date.sqlToDate(note.dateModified, true);
 					date = Zotero.Date.toFriendlyDate(date);
 					
 					return {
 						id: note.id,
 						title: title || Zotero.getString('pane.item.notes.untitled'),
-						body: parts[1] || '',
+						body,
 						date,
 						parentID: note.parentID,
 						parentItemType: parentItem && parentItem.itemType,

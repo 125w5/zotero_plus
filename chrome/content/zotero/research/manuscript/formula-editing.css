@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.formula-inline{position:relative;min-height:36px;margin:4px 0}
+.formula-inline-rendered{min-height:32px;cursor:text;border-radius:6px;outline-offset:3px}
+.formula-inline-rendered:hover{background:#edf0f333}
+.formula-inline-rendered .formula-empty{cursor:text;color:#969eaa}
+.formula-inline-input{box-sizing:border-box;width:100%;min-height:56px;resize:vertical;font:13px/1.6 Consolas,'Cascadia Code',monospace;color:#485267;background:#f8faff;border:1px solid #b7c4d7;border-radius:7px;padding:8px 10px;box-shadow:0 0 0 2px #a9bdd31c}
+.formula-inline[data-editing=true] .formula-inline-rendered{pointer-events:none;opacity:.78;margin-bottom:6px}
+.formula-editor-tools{display:flex;gap:5px;align-items:center;margin:5px 0}
+.formula-editor-tools button{font-size:10.5px!important;padding:3px 6px!important;margin:0!important;border:0!important;border-radius:5px!important;background:#eaf0f7!important;color:#788698!important}
+.formula-editor-tools button:hover{background:#dfe7f2!important;color:#4e6380!important}
+.formula-source-search{box-sizing:border-box;width:100%;position:sticky;top:0;z-index:1;margin:0 0 5px!important;font-size:12px!important;padding:6px 8px!important;border:1px solid #dce3ec!important;border-radius:7px!important;background:#fffffff0!important;backdrop-filter:blur(12px)}
+.formula-source-paper{display:block;color:#909bab;font-size:10.5px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.formula-source-explanation{margin-top:8px;padding:10px 11px;background:#fff;border:1px solid #e1e7ef;border-radius:8px;font-size:12px;line-height:1.65}
+.formula-source-explanation>button{font-size:11px!important;margin:5px 0 0!important;padding:4px 7px!important}
+.formula-transcription-review{display:inline-block;color:#9a825b;font-size:10px;margin-bottom:6px;border-radius:4px;padding:2px 5px;background:#f7f0e2}
+.formula-tex-choice{display:block;width:100%;text-align:left;font:11px/1.5 Consolas,monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+[data-appearance=dark] .formula-inline-input,[data-appearance=dark] .formula-source-search,[data-appearance=dark] .formula-source-explanation{background:#252d39!important;color:#d7dfed;border-color:#49566b!important}

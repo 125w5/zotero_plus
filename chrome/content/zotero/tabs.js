@@ -232,7 +232,8 @@ var Zotero_Tabs = new function () {
 			}
 		},
 		restoreState: {
-			'research-notebook': async tab => {await Zotero.Research.notebook.open(tab.data.projectID,{select:!!tab.selected});return {};},
+			// Legacy preparation tabs are migrated after the other tabs restore.
+			'research-notebook': async () => { return {}; },
 			manuscript: async tab => { await Zotero.Research.manuscripts.open(tab.data.projectID,{select:!!tab.selected}); return {}; },
 			researchDocx: async tab => { if (Zotero.Items.exists(tab.data.itemID)) await Zotero.Research.openDOCX(tab.data.itemID); return {}; },
 			research: async () => { return {}; },
@@ -612,8 +613,15 @@ var Zotero_Tabs = new function () {
 
 	this.restoreState = async function (tabs) {
 		let itemIDs = [];
+		let notebookTabs = [];
 		for (let i = 0; i < tabs.length; i++) {
 			let tab = tabs[i];
+			if (tab.type === 'research-notebook') {
+				// parseTabType splits hyphenated types, so handle the historical
+				// preparation page explicitly. Keep its data without opening a tab.
+				notebookTabs.push(tab);
+				continue;
+			}
 			let { tabContentType } = this.parseTabType(tab.type);
 			let restoreStateHook = this._getHook(tabContentType, 'restoreState');
 			let { itemID } = await restoreStateHook(tab, i);
@@ -628,6 +636,42 @@ var Zotero_Tabs = new function () {
 		// potentially not-yet-loaded items.
 		let items = await Zotero.Items.getAsync(itemIDs);
 		await Zotero.Items.loadDataTypes(items);
+		let library = this._getTab('zotero-pane').tab;
+		// The library restore hook borrows session data. Migration metadata
+		// belongs to the live tab and must not mutate the saved input snapshot.
+		library.data = { ...library.data };
+		let previousNotebooks = Array.isArray(library.data.researchNotebookTabs)
+			? library.data.researchNotebookTabs : [];
+		if (notebookTabs.length) {
+			// Retain complete legacy descriptors in the library's session data.
+			// Projects and notebook drafts remain in their existing stores and
+			// unselected preparations load only when the user opens that project.
+			library.data.researchNotebookTabs = [...new Map(
+				[...previousNotebooks, ...notebookTabs].map(tab => [tab.data?.projectID || tab, tab])
+			).values()];
+		}
+		let selectedNotebook = notebookTabs.find(tab => tab.selected)?.data?.projectID;
+		if (!selectedNotebook && tabs.some(tab => tab.type === 'library' && tab.selected)) {
+			selectedNotebook = library.data.researchNotebookProjectID;
+		}
+		if (selectedNotebook) {
+			try {
+				// Pane session restoration is not awaited by ZoteroPane. The
+				// item tree and research service can still be attaching here.
+				await window.ZoteroPane.itemsView.waitForLoad();
+				if (window.closed) return;
+				await Zotero.Research.attachWindow(window);
+				if (window.closed) return;
+				if (Zotero.Research.manuscripts.get(selectedNotebook)) {
+					await Zotero.Research.notebook.open(selectedNotebook, { host: 'library', win: window });
+				}
+			}
+			catch (error) {
+				// A preparation-page failure must not prevent reader/note recovery.
+				Zotero.logError(error);
+			}
+		}
+		this._prevSelectedID = null;
 	};
 	
 	/**

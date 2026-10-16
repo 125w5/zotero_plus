@@ -50,7 +50,7 @@
 			this.clickHandler = null;
 
 			this._tabDirection = null;
-			this._tagColors = [];
+			this._tagColors = new Map();
 			this._notifierID = null;
 
 			this.initCollapsibleSection();

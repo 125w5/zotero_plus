@@ -1,0 +1,94 @@
+@import url('surface-tokens.css');
+/* Shared chrome. PDF, manuscript prose and KaTeX keep their own typography. */
+html[data-appearance] {--bg:var(--ui-canvas);--surface:var(--ui-card);--text:var(--ui-text);--muted:var(--ui-secondary);--line:var(--ui-border);--soft:var(--ui-hover);--assembly-bar:var(--ui-tray);--assembly-control:var(--ui-card);--assembly-border:var(--ui-border);}
+html[data-appearance] body {font-family:var(--ui-font);}
+html[data-appearance] :is(.rail,.agent-sources,#left,#right,#sources,#artifacts) {background:var(--ui-tray);}
+html[data-appearance] :is(.rail nav,#easysch-home-navigation,.agent-source-tabs,#left-tabs) button {font-size:13px;font-weight:450;}
+html[data-appearance] :is(.rail,.workspace) h1 {font-size:18px;font-weight:600;letter-spacing:0;}
+html[data-appearance] .workspace>header {padding:14px 22px;background:var(--ui-glass);backdrop-filter:blur(16px);border-bottom:1px solid var(--ui-border);}
+html[data-appearance] .workspace>header .eyebrow {display:none;}
+html[data-appearance] .workspace>header #refresh {font-size:12px;color:var(--ui-secondary);background:transparent;border:0;}
+html[data-appearance] .rail .brand {font-family:var(--ui-font);font-weight:600;font-size:18px;}
+html[data-appearance] :is(.rail button,.agent-topbar button,.agent-preview-tabs button) {transition:background var(--ui-motion),box-shadow var(--ui-motion);}
+html[data-appearance] :is(.material,.source-row,.card,.section-card,.workbench-home-list) {border:1px solid var(--ui-border);box-shadow:var(--ui-shadow);border-radius:var(--ui-radius);background:var(--ui-card);}
+html[data-appearance] :is(.material,.source-row) {padding:12px;transition:box-shadow var(--ui-motion),border-color var(--ui-motion);}
+html[data-appearance] :is(.material,.source-row):hover {box-shadow:0 4px 12px rgba(28,38,53,.09);border-color:color-mix(in srgb,var(--ui-secondary) 30%,var(--ui-border));}
+html[data-appearance] #library .catalog-top {gap:6px;}
+html[data-appearance] #library .catalog-top>.primary {font-size:12px;padding:5px 9px;min-height:32px;border-radius:8px;background:var(--ui-card);color:var(--ui-secondary);border:1px solid var(--ui-border);box-shadow:var(--ui-shadow);}
+html[data-appearance] #library .compact-search-field {border-radius:9px;min-width:0;flex:1;background:var(--ui-card);box-shadow:inset 0 1px 3px rgba(28,38,53,.035);}
+html[data-appearance] #library .active-filters {font-size:11px;line-height:1.6;margin:4px 0 9px;}
+html[data-appearance] .agent-grid {gap:0;background:var(--ui-canvas);}
+html[data-appearance] .agent-sources {border-right:1px solid var(--ui-border);padding:10px;}
+html[data-appearance] .agent-topbar {background:var(--ui-glass);border-color:var(--ui-border);backdrop-filter:blur(16px);}
+html[data-appearance] .agent-preview {background:var(--ui-tray);border-color:var(--ui-border);}
+html[data-appearance] .agent-preview-header {padding:12px 14px 0;background:var(--ui-glass);backdrop-filter:blur(16px);}
+html[data-appearance] .agent-preview-header h3 {font-size:13px;font-weight:600;line-height:1.6;}
+html[data-appearance] .agent-preview-tabs {gap:4px;margin-block:8px 6px;}
+html[data-appearance] .agent-preview-tabs button {border-radius:7px;padding:6px 4px;font-size:12px;box-shadow:none;}
+html[data-appearance] .agent-preview-tabs [aria-selected=true] {background:var(--ui-card);box-shadow:var(--ui-shadow);}
+html[data-appearance] .agent-message {font-size:14px;line-height:1.85;max-width:var(--agent-transcript-width);margin:0 0 28px;text-align:left;}
+html[data-appearance] .agent-message.user {max-width:min(100%,var(--agent-transcript-width));margin-inline:0;background:var(--ui-hover)!important;border:1px solid var(--ui-border);border-radius:13px 13px 13px 4px;}
+html[data-appearance] .agent-message-text :is(h1,h2,h3,h4) {font-size:14px;font-weight:600;line-height:1.65;margin:16px 0 6px;}
+html[data-appearance] .agent-message-text p {margin:0 0 10px;}
+html[data-appearance] :is(.agent-execution,.agent-message-sources) {color:var(--ui-secondary);font-size:12px;}
+.agent-message-actions {display:flex;align-items:center;gap:4px;margin-top:8px;}
+html[data-appearance] .agent-message-actions button {font-size:11px;color:var(--ui-secondary);padding:3px 6px;min-height:24px;border:0;background:transparent;box-shadow:none;}
+.agent-message-actions .agent-message-grip {cursor:grab;}
+.agent-message-actions .agent-message-save {opacity:0;transition:opacity var(--ui-motion);}
+.agent-message:is(:hover,:focus-within) .agent-message-save {opacity:1;}
+html[data-appearance] .agent-composer {width:min(calc(100% - var(--agent-transcript-gutter) - var(--agent-transcript-gutter)),var(--agent-transcript-width));align-self:flex-start;margin-inline:var(--agent-transcript-gutter);border-radius:14px;border-color:var(--ui-border);background:var(--ui-card);box-shadow:0 4px 16px rgba(28,38,53,.065);margin-bottom:16px;}
+html[data-appearance] .agent-composer>textarea {font:14px/1.65 var(--ui-font);}
+html[data-appearance] .agent-composer-footer select {font:12px/1.5 var(--ui-font);}
+html[data-appearance] .workbench-home {max-width:1120px;padding:20px 24px;}
+html[data-appearance] .workbench-home-heading h2 {font-size:18px;font-weight:600;}
+html[data-appearance] .workbench-recommendation {padding:14px 16px;}
+html[data-appearance] .workbench-recommendation-body>button {font-size:14px;line-height:1.6;}
+html[data-appearance] .recommendation-abstract {font-size:13px;color:var(--ui-secondary);line-height:1.65;}
+/* Reading shares the existing conversation and source viewer in the same page. */
+.reading-workbench .agent-grid {grid-template-columns:220px minmax(360px,1fr) minmax(290px,340px);}
+.reading-workbench .agent-sources {grid-column:1;grid-row:1;}
+.reading-workbench .agent-preview {grid-column:2;grid-row:1;border-left:0;border-right:1px solid var(--ui-border);}
+.reading-workbench .agent-conversation {grid-column:3;grid-row:1;}
+.reading-workbench .agent-preview-header h3 {font-size:14px;}
+.reading-workbench .agent-conversation {--agent-transcript-gutter:16px;}
+.reading-workbench .agent-messages {padding-block:20px;}
+.reading-workbench .agent-preview-body[data-pane=read] {min-height:0;}
+.reading-workbench .workbench-source-pane,.reading-workbench .workbench-pdf-reader {min-height:0!important;}
+html[data-appearance] .reading-workbench .agent-topbar .agent-session-title {font-size:13px;}
+/* Assembly layout and glass layers are owned by its console stylesheet.
+   Shared chrome contributes typography, without overriding message geometry. */
+html[data-appearance] #ai .coauthor-message :is(h1,h2,h3,h4) {font-size:14px;font-weight:600;line-height:1.65;}
+html[data-appearance] #ai .coauthor-message small {font:11px/1.5 var(--ui-font);color:var(--ui-secondary);}
+html[data-appearance] footer #ai-prompt {font:14px/1.65 var(--ui-font);}
+html[data-appearance] :is(dialog,.assembly-context,.search-filter-popover) {border-radius:12px;border:1px solid var(--ui-border);box-shadow:var(--ui-float-shadow);}
+@media(max-width:1050px){.reading-workbench .agent-grid{grid-template-columns:170px minmax(250px,1fr) minmax(230px,28%);}}
+@media(max-width:740px){.reading-workbench .agent-grid{grid-template-columns:130px minmax(220px,1fr);}.reading-workbench .agent-conversation{display:none;}}
+
+/* Selection is a quiet shared fill, independent of evidence/revision colours. */
+html[data-appearance] :is(.agent-source-row[aria-selected=true],.agent-session-row[aria-current=true],.agent-preview-tabs button[aria-selected=true],.agent-source-tabs button[aria-selected=true],.library-workspace-tabs button[aria-selected=true],.rail nav button.active){background:var(--ui-selection)!important;box-shadow:none!important;color:var(--ui-text);border-color:var(--ui-border);outline:0}
+html[data-appearance] #library :is(.outline-content.selected,.outline-section.active,.material-collection-root[aria-current=true],.topic-tile[aria-current=true]),html[data-appearance] #material-results .material.selected,html[data-appearance] .block.material-frame.selected{background:var(--ui-selection)!important;box-shadow:none!important;border-color:var(--ui-border)!important;outline:0}
+html[data-appearance] .material[aria-selected=true],html[data-appearance] .outline-block.selected{background:var(--ui-selection)!important;outline:0;box-shadow:none}
+html[data-appearance] #left-tabs button[aria-selected=true],html[data-appearance] #tools.writing-ribbon .writing-ribbon-tabs button[aria-selected=true]{background:var(--ui-selection)!important;box-shadow:none}
+/* Sources and the input share one width and a single glass vocabulary. */
+html[data-appearance] .agent-workbench .agent-topbar{min-height:48px;height:auto;padding:8px 18px;gap:10px;background:var(--ui-glass);box-shadow:inset 0 1px color-mix(in srgb,var(--ui-card) 80%,transparent);backdrop-filter:blur(20px) saturate(1.08)}
+html[data-appearance] .agent-workbench .agent-topbar button{min-height:32px;padding:6px 11px;border-radius:8px;font-size:12px}
+html[data-appearance] .agent-workbench .agent-new-session{background:var(--ui-card)!important;border:1px solid var(--ui-border);box-shadow:var(--ui-shadow)}
+html[data-appearance] .agent-workbench .agent-conversation{background:var(--ui-canvas)}
+html[data-appearance] .agent-workbench .agent-sources{background:var(--ui-tray);padding:12px 10px}
+html[data-appearance] .agent-workbench .agent-source-tabs{background:transparent;border:1px solid var(--ui-border);padding:3px;border-radius:9px}
+html[data-appearance] .agent-workbench .agent-source-tabs button{min-height:31px}
+html[data-appearance] .agent-workbench .agent-sources>input{min-height:36px;border-radius:9px;background:color-mix(in srgb,var(--ui-card) 65%,transparent);border-color:var(--ui-border);font-size:12px}
+html[data-appearance] .agent-workbench .agent-source-row{padding:10px 9px;gap:9px;border-radius:9px}
+html[data-appearance] .agent-workbench .agent-source-row strong{font-weight:500;font-size:12px;line-height:1.6}
+html[data-appearance] .agent-workbench .agent-source-row small{font-size:11px;line-height:1.5}
+html[data-appearance] .agent-workbench .agent-messages{padding-block:28px;scrollbar-width:thin}
+html[data-appearance] .agent-workbench .agent-message.user{border-radius:13px;background:var(--ui-card)!important;box-shadow:var(--ui-shadow);border:1px solid var(--ui-border)}
+html[data-appearance] .agent-workbench .agent-conversation .agent-composer{border-radius:16px;background:var(--ui-glass);border:1px solid var(--ui-border);box-shadow:0 3px 0 color-mix(in srgb,var(--ui-tray) 85%,transparent),0 4px 0 var(--ui-border),var(--ui-shadow),inset 0 1px color-mix(in srgb,var(--ui-card) 90%,transparent);backdrop-filter:blur(20px) saturate(1.1)}
+html[data-appearance] .agent-workbench .agent-composer>textarea{border-radius:16px 16px 0 0;padding:15px 17px 8px}
+html[data-appearance] .agent-workbench .agent-composer-footer{min-height:42px;padding:6px 12px 10px;gap:7px}
+html[data-appearance] .agent-workbench .agent-send{width:34px;height:34px;min-height:34px;border-radius:10px;line-height:34px;font-size:21px}
+html[data-appearance] .agent-workbench .agent-welcome{gap:14px;color:var(--ui-secondary)}
+html[data-appearance] .agent-workbench .agent-preview-body{padding:18px;background:var(--ui-tray)}
+html[data-appearance] .agent-workbench .agent-preview-tabs button{min-height:34px;border-radius:8px}
+html[data-appearance] .agent-workbench .agent-preview-open{width:32px;height:32px;min-height:32px;border-radius:8px;display:grid;place-items:center;font-size:16px}
+html[data-appearance] footer #ai-form:not(.clui-native-input-pill){border-radius:14px!important}

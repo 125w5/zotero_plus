@@ -13,6 +13,9 @@ EasySch 的新增源码标注 AGPL-3.0-or-later；Zotero 源码及其原有许�
 | LibreOffice | DOCX/PPTX 预览转换 | runtime/libreoffice/LICENSE.html、license.txt、NOTICE；https://git.libreoffice.org/core |
 | Poppler | PDF 页面渲染 | runtime/poppler 附带声明（GPL）；https://gitlab.freedesktop.org/poppler/poppler |
 | 研究引擎 npm 依赖 | PPTX、结构图、文档解析 | runtime/research-engine/package-lock.json 锁定版本，各 node_modules 保留许可证 |
+| Pi Agent / Pi AI 0.73.1 | 研究助手状态、流式取消、受限工具循环 | MIT；badlogic/pi-mono 提交 781152fc24841dc54b22284514604048ebe5e2c9；vendor/PI-AGENT-LICENSE.txt；docs/references/pi-agent-0.73.1.md |
+| TypeBox 1.3.36 | Pi 工具的 JSON Schema 参数校验 | MIT；vendor/TYPEBOX-LICENSE.txt；https://github.com/sinclairzx81/typebox |
+| CLUI CC | 原生 AI 对话卡片、输入层、滚动与叠放动作适配 | MIT；Copyright (c) 2025-2026 Lucas Couto；vendor/CLUI-CC-LICENSE.txt；docs/references/clui-native-surface.md |
 
 不附带 Microsoft Office、不附带模型权重。参考项目原有版权、许可和引用声明位于客户端源码的 `docs/references` 与 `chrome/content/zotero/research/third-party`。
 

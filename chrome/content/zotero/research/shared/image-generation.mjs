@@ -1,19 +1,11 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
+import {assertAIAction} from './research-ai-policy.mjs';
 
 // The configured image provider exposes this OpenAI-compatible model name.
 // GPT Image replies contain base64 bytes, never a durable download URL.
 export const IMAGE_MODEL = 'gpt-image-2.5';
 
-export function imageRequest(prompt) {
- const description=String(prompt||'').trim();
- if(!description)throw Error('请描述要生成的示意图');
- if(description.length>3000)throw Error('示意图描述过长，请缩短至 3000 字以内');
- return {
-  model:IMAGE_MODEL,
-  prompt:'生成一张简洁的科研概念示意图。只表达研究设想；不要绘制虚构的实验数据、结果图表、论文截图或引文。图中文字尽量少且准确。用户描述：'+description,
-  size:'1024x1024',quality:'low',output_format:'png',n:1
- };
-}
+export function imageRequest(){assertAIAction('image_generate');}
 
 export function generatedImageBytes(response) {
  const encoded=response?.data?.[0]?.b64_json;

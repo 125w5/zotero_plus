@@ -38,7 +38,7 @@ test('scatter and heatmap retain supplied values in editable objects',async()=>{
     assert.ok(Object.keys(zip.files).some(p=>p.startsWith('ppt/embeddings/')&&p.endsWith('.xlsx')));
   } finally {await runtime.dispose();}
 });
-test('real DSH registry rejects unknown tools and emits editable PPTX, diagram and chart',async()=>{
+test('Pi tool registry rejects unknown tools and emits editable PPTX, diagram and chart',async()=>{
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'easysch-engine-test-'));
   const runtime=await createRuntime({directory,evidence,datasets});
   try {

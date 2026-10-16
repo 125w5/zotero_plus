@@ -7,8 +7,8 @@ test('explicit source exclusions survive later ingestion and bulk actions do not
  const next=computeSourceSelections(existing,sources,'include');assert.deepEqual(next,{paper:'off',new:'full'});assert.deepEqual(existing,{paper:'off'});
  assert.deepEqual(applyBulkSourceContext(next,sources,'insights'),{paper:'insights',new:'off'});
 });
-test('explicit writing mode overrides feasibility words, auto detects evaluation intent',()=>{
- assert.equal(resolveMode('auto','评估这个 Idea 的可行性'),'evaluate');assert.equal(resolveMode('write','写一段关于可行性的内容'),'write');assert.equal(resolveMode('search','CNN'),'search');
+test('removed writing mode falls back to source research and auto detects evaluation or organization',()=>{
+ assert.equal(resolveMode('auto','评估这个 Idea 的可行性'),'evaluate');assert.equal(resolveMode('write','写一段关于可行性的内容'),'source');assert.equal(resolveMode('search','CNN'),'search');assert.equal(resolveMode('auto','整理素材逻辑'),'organize');
 });
 test('recents never replace Chinese search relevance or lose old material IDs',()=>{
  const rows=[{m:{id:'a'}},{m:{id:'b'}}];assert.deepEqual(recentResults(rows,{recentMaterials:['b']},'方法'),rows);assert.deepEqual(recentResults(rows,{recentMaterials:['b']},'').map(x=>x.m.id),['b','a']);assert.equal(rows[0].m.id,'a');

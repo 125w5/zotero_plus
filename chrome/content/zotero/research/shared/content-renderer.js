@@ -8,16 +8,26 @@
   if(text.startsWith('"')&&text.endsWith('"'))try{const decoded=JSON.parse(text);if(typeof decoded==='string')text=decoded;}catch{}
   return text;
  }
+ function normalizeStrong(text){
+  // Model Markdown often puts a space just inside ** or a Chinese colon
+  // directly before the closing delimiter. CommonMark then leaves literal
+  // asterisks. Repair complete inline pairs only, leaving code untouched.
+  return text.split(/(```[\s\S]*?```|`[^`\n]*`)/g).map((part,index)=>index%2?part:part.replace(/(?<!\*)\*\*([^*\n]{1,2000}?)\*\*(?!\*)/g,(full,body,offset,value)=>{
+   const cleaned=body.trim();if(!cleaned)return full;const next=value[offset+full.length]||'';
+   return '**'+cleaned+'**'+(/[\p{P}\p{S}]$/u.test(cleaned)&&/[\p{L}\p{N}]/u.test(next)?' ':'');
+  })).join('');
+ }
  function render(target,value,{sources=[],onSource=()=>{},original, bilingual=false}={}){
   const doc=target.ownerDocument,make=(tag,text)=>{const e=doc.createElementNS(NS,tag);if(text!==undefined)e.textContent=text;return e;};
   let text=normalize(value),math=[],prefix='EASYMATH'+Math.random().toString(36).slice(2)+'TOKEN';
   text=text.replace(/\$\$[\s\S]*?\$\$|(?<!\\)\$(?:\\.|[^$\\\n])+\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)/g,v=>{math.push(v);return prefix+(math.length-1)+'END';});
+  text=normalizeStrong(text);
   const safe=root.DOMPurify.sanitize(root.marked.parse(text,{async:false,breaks:true}),{RETURN_DOM_FRAGMENT:true,ALLOWED_TAGS:['p','br','strong','em','del','h1','h2','h3','h4','h5','h6','ul','ol','li','blockquote','pre','code','table','thead','tbody','tr','th','td','hr','a'],ALLOWED_ATTR:['href','title'],ALLOWED_URI_REGEXP:/^(?:https?:|zotero:)/i});
   target.replaceChildren(doc.importNode(safe,true));target.classList.add('easysch-content');target.style.whiteSpace='normal';
   const walker=doc.createTreeWalker(target,4),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
-  const known=new Map(sources.map(s=>[String(s.id),s]));
-  for(const node of nodes){node.nodeValue=node.nodeValue.replace(new RegExp(prefix+'(\\d+)END','g'),(_,i)=>math[+i]);if(node.parentElement.closest('pre,code,a'))continue;
-   const parts=node.nodeValue.split(/(\[[A-Za-z0-9:_-]+\])/g);if(parts.length<2)continue;const fragment=doc.createDocumentFragment();for(const part of parts){const source=known.get(part.slice(1,-1));if(source){const b=make('button',source.id.length>14?'['+(sources.findIndex(s=>s.id===source.id)+1)+']':part);b.dataset.sourceID=source.id;b.type='button';b.className='source-citation';b.title=source.label||source.title||'定位原文';b.onclick=()=>onSource(source);fragment.append(b);}else fragment.append(doc.createTextNode(part));}node.replaceWith(fragment);
+  const known=new Map(),citationNumbers=new Map();for(const source of sources){for(const id of [source.id,source.stableID,source.materialID,source.sourceRecordID].filter(Boolean).map(String)){known.set(id,source);known.set(id.startsWith('evidence:')?id.slice(9):'evidence:'+id,source);}}
+  for(const node of nodes){if(node.parentElement.closest('pre,code,a'))continue;
+   const parts=node.nodeValue.split(/(\[[A-Za-z0-9:._/-]+\])/g);if(parts.length<2)continue;const fragment=doc.createDocumentFragment();for(const part of parts){const source=known.get(part.slice(1,-1));if(source){if(!citationNumbers.has(source))citationNumbers.set(source,citationNumbers.size+1);const b=make('button','['+citationNumbers.get(source)+']');b.dataset.sourceID=source.stableID||source.id;b.type='button';b.className='source-citation';b.title=source.label||source.title||'定位原文';b.onclick=()=>onSource(source);fragment.append(b);}else fragment.append(doc.createTextNode(part));}node.replaceWith(fragment);
   }
   // Links are usable only when matched to an actual supplied source. No arbitrary AI URLs.
   for(const a of target.querySelectorAll('a')){
@@ -25,8 +35,9 @@
    // Several excerpts may share one PDF page URL. Match the stable excerpt ID
    // before falling back to a unique URL, so a citation retains its exact position.
    const source=matches.find(s=>String(s.id)===label)||(matches.length===1?matches[0]:null);
-   if(source){a.removeAttribute('href');a.setAttribute('role','button');a.dataset.sourceID=source.id;a.tabIndex=0;a.onclick=()=>onSource(source);a.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSource(source);}};}else a.replaceWith(...a.childNodes);
+   if(source){if(!citationNumbers.has(source))citationNumbers.set(source,citationNumbers.size+1);a.removeAttribute('href');a.setAttribute('role','button');a.classList.add('source-citation');a.textContent='['+citationNumbers.get(source)+']';a.title=source.label||source.title||source.paperTitle||'定位原文';a.dataset.sourceID=source.stableID||source.id;a.tabIndex=0;a.onclick=()=>onSource(source);a.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSource(source);}};}else a.replaceWith(...a.childNodes);
   }
+  const mathWalker=doc.createTreeWalker(target,4);while(mathWalker.nextNode()){const node=mathWalker.currentNode;node.nodeValue=node.nodeValue.replace(new RegExp(prefix+'(\\d+)END','g'),(_,i)=>math[+i]);}
   root.renderMathInElement(target,{trust:false,throwOnError:false,delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}]});
   if(bilingual&&original){const wrap=make('div'),source=make('blockquote',original),answer=make('div');answer.append(...target.childNodes);wrap.className='bilingual-content';wrap.append(source,answer);target.append(wrap);}
   return target;

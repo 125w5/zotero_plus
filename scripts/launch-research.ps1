@@ -1,10 +1,15 @@
-param([switch]$Test, [switch]$LiveServices, [switch]$LivePPT, [string]$PDF, [string]$Suite = 'researchWorkstation', [string]$Grep)
+param([switch]$Test, [switch]$LiveServices, [switch]$LivePPT, [switch]$LiveConversation, [switch]$LiveLongHistory, [switch]$LiveEvidence, [string]$PDF, [string]$Suite = 'researchWorkstation', [string]$Grep, [ValidatePattern('^[a-zA-Z0-9-]{1,48}$')][string]$TestRunID)
 if ($PDF) { $PDF = [IO.Path]::GetFullPath($PDF) }
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $toolsDir = Join-Path (Split-Path $repo -Parent) '.tools'
 $profile = Join-Path $toolsDir $(if ($Test) { 'research-native-test-profile' } else { 'research-native-profile' })
 $dataDir = Join-Path $toolsDir $(if ($Test) { 'research-native-test-data' } else { 'research-native-data' })
+if ($TestRunID) {
+    if (!$Test) { throw 'TestRunID is available only for isolated tests.' }
+    $profile = Join-Path $toolsDir ('research-native-test-profile-' + $TestRunID)
+    $dataDir = Join-Path $toolsDir ('research-native-test-data-' + $TestRunID)
+}
 $exe = Join-Path $repo 'app/staging/Zotero_win-x64/zotero.exe'
 if (!(Test-Path -LiteralPath $exe)) { throw 'Build the native client first.' }
 $running = @(Get-CimInstance Win32_Process -Filter "Name='zotero.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine -notmatch '-contentproc' })
@@ -41,6 +46,9 @@ user_pref("app.update.auto", false);
 user_pref("extensions.zotero.httpServer.port", 23126);
 "@
 if ($Test) {
+    $prefs += "`nuser_pref(`"extensions.easysch.liveProviderLongHistoryProbe`", $($LiveLongHistory.IsPresent.ToString().ToLowerInvariant()));`n"
+    $prefs += "user_pref(`"extensions.easysch.liveProviderEvidenceProbe`", $($LiveEvidence.IsPresent.ToString().ToLowerInvariant()));`n"
+    $prefs += "`nuser_pref(`"extensions.easysch.liveProviderTwoTurnProbe`", $($LiveConversation.IsPresent.ToString().ToLowerInvariant()));`n"
     $prefs += "`nuser_pref(`"extensions.easysch.livePPTTest`", $($LivePPT.IsPresent.ToString().ToLowerInvariant()));`n"
     $prefs += "`nuser_pref(`"extensions.easysch.liveProviderTest`", $($LiveServices.IsPresent.ToString().ToLowerInvariant()));`n"
     $prefs += "user_pref(`"extensions.easysch.testPDF`", $(ConvertTo-Json $PDF -Compress));`n"

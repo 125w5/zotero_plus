@@ -1,12 +1,16 @@
 (function (E) {
+	const Policy=ChromeUtils.importESModule('chrome://zotero/content/research/shared/research-ai-policy.mjs');
 	E.createAI = function ({ fetch, controller, settings, credential, store, collect }) {
 		let running = null;
 		return {
 			cancel() { running?.abort(); },
 			async run({ mode, papers, prompt = '', selection, memoryContext = [], sourceContext = [], evidenceByID = true, onStatus = () => {} }) {
+				Policy.assertAIAction(['write','continue','coauthor','rewrite','propose'].includes(mode)?mode:'research_discuss');
+				Policy.assertResearchPrompt(prompt);
 				if (running) throw new Error('已有分析进行中，请等待或取消');
 				if (!papers.length || papers.length > 12) throw new Error('请选择 1–12 篇文献');
 				let config = settings();
+				const skill = E.assertPaperInstructions(E.getPaperSkill(mode, config), config);
 				if (!config.endpoint || !config.model) throw new Error('请先在设置中填写模型接口和模型名称');
 				let endpoint = E.core.endpoint(config.endpoint);
 				let abort = controller();
@@ -28,7 +32,6 @@
 					let key = await credential(endpoint);
 					let headers = { 'Content-Type': 'application/json' };
 					if (key) headers.Authorization = `Bearer ${key}`;
-					let skill = E.getPaperSkill(mode, config);
 					let system = E.paperSystemPrompt(skill, config);
 					if(mode==='ask')system+='\n本次为简洁学术问答：用户当前问题优先于个人全文分析模板。先直接回答，通常 150–300 个中文字，最多三个小节；不要补充问题未要求的全文综述。保留关键条件与证据；术语准确，表达易懂。后续疑问仅放 questions。用户明确要求长篇时才展开。';
                     const binder=evidenceByID?ChromeUtils.importESModule('chrome://zotero/content/research/shared/academic-evidence.mjs'):null;

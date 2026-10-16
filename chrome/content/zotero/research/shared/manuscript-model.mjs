@@ -1,6 +1,7 @@
 import {sourceQuote} from './source-quote.mjs';
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {protectEdit} from './writing-protection.mjs';
+import {assertAIAction} from './research-ai-policy.mjs';
 export const id = prefix => prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,9);
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const WRITING_TEMPLATES = [
@@ -63,4 +64,4 @@ export function validateProposal(p,b,value){
  if(numbers.some(n=>!known.has(n)))throw Error('AI 添加了来源中没有的数字，已拒绝应用');
  return {id:id('diff'),blockID:b.id,before:b.text,after:value.text,evidence:clone(evidence),materialRevisions:allowed.map(m=>({id:m.id,revision:m.revision})),status:'pending',at:new Date().toISOString()};
 }
-export function applyProposal(p,d){const b=p.blocks.find(b=>b.id===d.blockID);if(!b||b.locked||b.text!==d.before||d.materialRevisions.some(r=>p.materials.find(m=>m.id===r.id)?.revision!==r.revision))throw Error('正文或素材已变化，请重新生成修改建议');if(d.status!=='pending')throw Error('该建议已经处理');protectEdit(d.before,d.after);b.text=d.after;if(b.runs?.length){const start=d.selection?.start||0,end=d.selection?.end??d.before.length,newText=d.after.slice(start,d.after.length-(d.before.length-end));let offset=0;const before=[],after=[];for(const r of b.runs){const next=offset+r.text.length;if(offset<start)before.push({...r,text:r.text.slice(0,Math.max(0,start-offset))});if(next>end)after.push({...r,text:r.text.slice(Math.max(0,end-offset))});offset=next;}b.runs=[...before,{text:newText},...after].filter(r=>r.text);}else delete b.runs;b.evidence=clone(d.evidence);b.claim=d.preserveClaim?d.originalClaim:true;b.review='missing';b.revision++;d.status='applied';}
+export function applyProposal(){assertAIAction('manuscript_apply');}

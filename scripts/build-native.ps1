@@ -6,9 +6,12 @@ $scratch = [IO.Path]::GetFullPath((Join-Path $repo 'app/build-temp'))
 foreach ($target in @($stage, $scratch)) {
     if (!$target.StartsWith($repo + [IO.Path]::DirectorySeparatorChar)) { throw 'Build target outside repository' }
 }
-if (Get-CimInstance Win32_Process -Filter "Name='zotero.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($stage + '\') }) {
-    throw 'Close the source-built client before rebuilding it.'
+function Assert-SourceClientClosed {
+    if (Get-CimInstance Win32_Process -Filter "Name='zotero.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($stage + '\') }) {
+        throw 'Close the source-built client before rebuilding it.'
+    }
 }
+Assert-SourceClientClosed
 $bash = 'C:\msys64\usr\bin\bash.exe'
 if (!(Test-Path -LiteralPath $bash)) { throw 'MSYS2 is required: install zip, unzip, rsync, python, p7zip.' }
 $env:PATH = 'C:\msys64\usr\lib\p7zip;C:\msys64\usr\bin;E:\Git\cmd;E:\nodejs;' + $env:PATH
@@ -44,6 +47,9 @@ try {
     }
     & node scripts/build-research.mjs
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
+    # Frontend compilation can take long enough for the daily client to reopen.
+    # Recheck before dir_build removes or replaces any staged application files.
+    Assert-SourceClientClosed
     $env:ZOTERO_TEST = if ($Test) { '1' } else { '0' }
     # Full staging includes submodule resources and the optional native test suite.
     if ($Incremental) { & $bash app/scripts/dir_build -p w -a x64 }

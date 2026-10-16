@@ -991,7 +991,7 @@ var ZoteroPane = new function () {
 			if (Zotero_Tabs.selectedType === 'manuscript') {
 				const frame = document.querySelector('#' + Zotero_Tabs.selectedID + ' iframe');
 				if (frame?.contentWindow.ManuscriptUI?.composing) return;
-				if (frame?.contentWindow.ManuscriptUI?.handleCompletionKey?.(event)) return;
+				if (frame?.contentWindow.ManuscriptUI?.handleEvidenceKey?.(event)) return;
 			}
 
 			if (event.shiftKey) {
@@ -1754,7 +1754,7 @@ var ZoteroPane = new function () {
 		var collectionTreeRows = this.getCollectionTreeRows();
 		if (!collectionTreeRows.length) return;
 		var tagSelector = document.getElementById('zotero-tag-selector-container');
-		return !tagSelector.hasAttribute('collapsed');
+		return !!tagSelector && !tagSelector.hasAttribute('collapsed');
 	};
 
 

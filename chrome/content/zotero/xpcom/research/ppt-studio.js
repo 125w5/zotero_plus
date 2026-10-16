@@ -78,9 +78,7 @@
  },{snapshot:true});
  S.open=async({papers,reader,newDraft=false,scope}={})=>{
   if(reader){const attachment=await Zotero.Items.getAsync(reader.itemID);papers=[E.library.describe(attachment.parentItem||attachment)];}
-  const view=E.open();for(let i=0;i<200&&!view.EasySchUI?.ready;i++)await Zotero.Promise.delay(50);
-  if(!view.EasySchUI?.ready)throw Error('组会页面尚未准备好，请重新打开');
-  await view.EasySchUI.openPPTStudio({papers:papers||E.library.selection(),newDraft,scope});
+  return E.openLibraryWorkspace(Zotero.getMainWindow(),'ppt',{pptOptions:{papers:papers||E.library.selection(),newDraft,scope}});
  };
  S.addEntries=win=>{
   const doc=win.document,bar=doc.getElementById('zotero-items-toolbar')||doc.getElementById('zotero-toolbar');

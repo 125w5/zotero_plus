@@ -32,7 +32,12 @@ var EasySchUI = {
 		for (let button of document.querySelectorAll('[data-tab]')) button.classList.toggle('active', button.dataset.tab === (tab==='journal'?'settings':tab));
 		this.$('view-title').textContent = tab==='journal'?'设置':document.querySelector(`[data-tab="${tab}"]`)?.textContent||'工作台';
 		if (tab === 'graph') this.renderGraph();
-		if (tab === 'writing') { this.renderOutline(); this.renderManuscriptProjects?.(); }
+		if (tab === 'writing') {
+			this.renderOutline();
+			// A native workflow dialog retains an unfinished create form when
+			// switching to PPT and back, or when it is temporarily dismissed.
+			if (!window.frameElement?.researchOverlayMode || !this.$('manuscript-projects')?.querySelector('.project-create')) this.renderManuscriptProjects?.();
+		}
 		if (tab === 'schedule') this.renderTasks();
 		if (tab === 'search') this.prepareDiscovery();
 		this.renderSurfaceSteps?.();
@@ -59,20 +64,49 @@ var EasySchUI = {
 		this.current = this.papers[0];
 		this.$('selection-box').hidden = !selection.text;
 		this.$('selection-text').textContent = selection.text;
-		this.renderPapers(); this.loadProject(); this.show('research');
-		this.status(selection.text ? '已读取选段；点击翻译或追问开始分析' : '已选中论文；可进行精读、组会和写作');
+		this.renderPapers(); this.loadProject();
+		if (this.openAgentWorkbench) { this.openAgentWorkbench(); this.previewAgentSource({ ...this.current, kind: 'paper', stableID: 'paper:' + this.current.id, selection }); }
+		else this.show('research');
+		this.status(selection.text ? '已定位选段，可继续讨论或翻译。' : '已选中论文，可讨论研究问题。');
 	},
-	async init() {
-		for (let button of document.querySelectorAll('[data-tab]')) button.addEventListener('click', () => this.show(button.dataset.tab));
+	init() {
+		if (this.ready) return this.openInitialSelection();
+		if (this.initPromise) return this.initPromise;
+		this.initPromise = this.initialize();
+		return this.initPromise;
+	},
+	async openInitialSelection() {
+		if (window.frameElement?.researchLibraryMode) {
+			document.body.classList.add('library-discovery');this.current=this.E.library.selection()[0]||null;
+			const requested=window.frameElement.researchLibraryView||'discovery';
+			if(requested==='agent')this.openAgentWorkbench();else if(requested!=='local')this.show(requested==='discovery'?'home':requested);
+			return;
+		}
+		if (window.frameElement?.researchOverlayMode) { document.body.classList.add('workflow-overlay-content');this.current=this.E.library.selection()[0]||null;this.show('writing');return; }
+		const initialSelection = window.frameElement?.researchSelection;
+		if (window.frameElement) window.frameElement.researchSelection = null;
+		if (initialSelection) await this.setSelection(initialSelection);
+		else { await this.refresh(); this.openAgentWorkbench(); }
+	},
+	async initialize() {
+		for (let button of document.querySelectorAll('[data-tab]')) button.addEventListener('click', () => {
+			const tab = button.dataset.tab;
+			if (['writing', 'ppt'].includes(tab) && !window.frameElement?.researchOverlayMode) {
+				this.E.openWorkflow(tab).catch(error => this.status(error.message, true));
+				return;
+			}
+			this.show(tab);
+		});
 		this.bind('refresh', () => this.refresh());
 		this.bind('cancel', () => this.E.ai.cancel());
 		this.initResearch(); this.initWriting(); this.initSettings(); this.initMeetings(); this.initSearch(); this.initPaperSkills();
 		this.initPPTStudio(); this.initFlow();this.initDiscovery();this.initKnowledge();this.initWritingCards(); await this.initTasks();
 		this.initManuscriptProjects();await this.initSurface();
+		await this.initAgentWorkbench();
+		this.initReadingWorkbench();
 		this.loadSettings();
 		this.loadProject();
-		if (window.frameElement?.researchSelection) await this.setSelection(window.frameElement?.researchSelection);
-		else await this.refresh();
+		await this.openInitialSelection();
 		window.addEventListener('beforeunload', event => {
 			if (this.dirty) {
 				event.preventDefault(); event.returnValue = '';
@@ -81,4 +115,4 @@ var EasySchUI = {
 		this.ready = true;
 	}
 };
-window.addEventListener('DOMContentLoaded', () => EasySchUI.init().catch(e => EasySchUI.status(e.message, true)));
+window.addEventListener('DOMContentLoaded', event => { if (event.target === document) EasySchUI.init().catch(e => EasySchUI.status(e.message, true)); });

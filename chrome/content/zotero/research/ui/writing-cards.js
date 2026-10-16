@@ -104,7 +104,7 @@ Object.assign(EasySchUI, {
 			box,
 		);
 		const more = this.el('details');
-		more.append(this.el('summary', '表格、图片与 AI 补充'));
+		more.append(this.el('summary', '表格与图片'));
 		box.append(more);
 		this.pptButton(
 			'插入实验数据表',
@@ -122,35 +122,6 @@ Object.assign(EasySchUI, {
 					text.value +=
 						'\n\n![我的实验图片](<' + image.path.replace(/\\/g, '/') + '>)\n';
 					text.dispatchEvent(new Event('input'));
-				}
-			},
-			more,
-		);
-		this.pptButton(
-			'AI 根据当前论文补充建议',
-			async () => {
-				if (!this.current) throw Error('先选择作为证据的论文');
-				if (this.busy) throw Error('已有分析进行中');
-				this.busy = true;
-				this.$('cancel').hidden = false;
-				try {
-					const record = await this.E.ai.run({
-						mode: 'ask',
-						papers: this.papers,
-						prompt:
-							'请根据原文证据对以下写作材料提出补充建议。区分论文事实与我的内容，缺失实验数据保留待补充，不得填造。输出语言：' +
-							this.$('documentLanguage').value +
-							'\n材料：' +
-							text.value,
-						onStatus: (s) => this.status(s),
-					});
-					this.previewWritingInsert(
-						'### AI 补充建议（请核对）\n\n' +
-							this.E.core.resultMarkdown(record),
-					);
-				} finally {
-					this.busy = false;
-					this.$('cancel').hidden = true;
 				}
 			},
 			more,

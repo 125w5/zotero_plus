@@ -1,0 +1,40 @@
+/* Raised reading cards on a quiet shared rail. PDF and user document fonts
+   retain their typography; these rules target only navigation and note chrome. */
+#sidebarContainer #sidebarContent {color:var(--es-read-ink);font:13px/1.6 system-ui,'Microsoft YaHei',sans-serif}
+#sidebarContainer .outline-view{padding:10px 8px}
+#sidebarContainer .outline-view ul{margin:0;padding:0}
+#sidebarContainer .outline-view .item{min-height:30px;align-items:flex-start;border-radius:7px;padding:3px 5px;margin:1px 0;transition:background-color 130ms,box-shadow 130ms}
+#sidebarContainer .outline-view .item:hover{background:color-mix(in srgb,var(--es-read-muted) 8%,transparent)}
+#sidebarContainer .outline-view .item.active{background:var(--es-read-selection,#e9f2ff);box-shadow:none}
+#sidebarContainer .outline-view .item .title{font:13px/1.5 system-ui,'Microsoft YaHei',sans-serif;color:var(--es-read-ink);padding:2px 4px;overflow-wrap:anywhere;flex:1;min-width:0}
+#sidebarContainer .outline-view .item.active .title{outline:0;border-radius:0}
+#sidebarContainer .outline-view .item.expandable>.title{font-weight:550}
+#sidebarContainer .outline-view .item .toggle{box-sizing:border-box;border:0;background:transparent;margin:1px 1px 0 0;min-width:20px;width:20px;height:24px;align-items:center;justify-content:center;cursor:pointer;border-radius:5px;color:var(--es-read-muted)}
+#sidebarContainer .outline-view .item .toggle:hover{background:color-mix(in srgb,var(--es-read-muted) 12%,transparent)}
+#sidebarContainer .outline-view .children{padding-inline-start:16px;border-inline-start:1px solid var(--es-read-line);margin-inline-start:13px}
+#sidebarContainer #annotationsView .annotations{padding:8px}
+#sidebarContainer #annotationsView .annotation{margin:0 0 9px;outline:0;border:1px solid var(--es-read-line);border-radius:10px;background:var(--es-read-surface);box-shadow:0 2px 7px var(--es-read-shadow),inset 0 1px var(--es-read-highlight);transition:box-shadow 130ms,border-color 130ms,background-color 130ms}
+#sidebarContainer #annotationsView .annotation:hover{box-shadow:0 4px 12px var(--es-read-shadow);border-color:color-mix(in srgb,var(--es-read-muted) 35%,var(--es-read-line))}
+#sidebarContainer #annotationsView .annotation.selected{outline:0;background:var(--es-read-selection,#e9f2ff);border-color:var(--es-read-line);box-shadow:none}
+#sidebarContainer .annotation .preview header{padding:7px 9px;min-height:25px;font:11px/1.5 system-ui,'Microsoft YaHei',sans-serif;background:color-mix(in srgb,var(--es-read-tray) 70%,var(--es-read-surface));border-bottom:1px solid var(--es-read-line);color:var(--es-read-muted)}
+#sidebarContainer .annotation .preview header .page{font-weight:550;color:var(--es-read-muted)}
+#sidebarContainer .annotation .preview .text{color:var(--es-read-muted);font:12px/1.65 system-ui,'Microsoft YaHei',sans-serif}
+#sidebarContainer .annotation .preview .comment{color:var(--es-read-ink);font:13px/1.65 system-ui,'Microsoft YaHei',sans-serif}
+#sidebarContainer .annotation .preview[data-easysch-generated=translation] .comment{color:var(--es-read-muted)}
+#sidebarContainer .annotation .preview .comment .content{padding:7px 10px}
+#sidebarContainer .annotation .preview .text .content{padding:7px 12px 7px 17px}
+.easysch-comment-lane{right:auto;width:178px;overflow:visible}
+.easysch-margin-card{width:178px;right:auto}
+.easysch-margin-card{border-left-color:var(--comment-color,#87aaca)}
+.easysch-margin-card[data-generated=translation]{color:var(--es-read-muted)}
+.easysch-comment-connector{position:absolute;pointer-events:none;height:1px;background:var(--comment-color,#87aaca);opacity:.75}
+.easysch-comment-map{position:absolute;top:36px;bottom:8px;right:3px;width:5px;z-index:34;pointer-events:none}
+.easysch-comment-marker{position:absolute;width:5px;height:5px;min-height:5px;padding:0;border:0;border-radius:2px;background:var(--comment-color,#87aaca);pointer-events:auto;cursor:pointer;transition:width 120ms}
+.easysch-comment-marker:hover{width:9px;transform:translateX(-4px)}
+.primary-editor.ProseMirror{font:14px/1.75 system-ui,'Microsoft YaHei',sans-serif;color:var(--es-read-ink);padding:18px 18px 32px}
+.primary-editor.ProseMirror :is(h1,h2,h3){font-family:system-ui,'Microsoft YaHei',sans-serif;line-height:1.45;margin:18px 0 10px}
+.primary-editor.ProseMirror h1{font-size:20px}.primary-editor.ProseMirror h2{font-size:17px}.primary-editor.ProseMirror h3{font-size:15px}
+.primary-editor.ProseMirror blockquote{margin:12px 0;padding:8px 12px;border-left:3px solid #9eafc3;border-radius:0 7px 7px 0;background:color-mix(in srgb,var(--es-read-tray) 70%,var(--es-read-surface));color:var(--es-read-muted);font-size:13px}
+.primary-editor.ProseMirror .math-node{font-family:'Cambria Math','Times New Roman',serif;color:var(--es-read-ink)}
+.primary-editor.ProseMirror table{width:100%;border-collapse:collapse}.primary-editor.ProseMirror :is(th,td){padding:7px 9px;border:1px solid var(--es-read-line)}
+@media(prefers-reduced-motion:reduce){#sidebarContainer :is(.item,.annotation){transition:none}}

@@ -323,6 +323,7 @@ var CollectionTree = class CollectionTree extends LibraryTree {
 		
 		// Classes
 		div.className = "row";
+		div.dataset.sourceType = treeRow.type;
 		div.classList.toggle('selected', selection.isSelected(index));
 		div.classList.toggle('first-selected', selection.isFirstRowOfSelectionBlock(index));
 		div.classList.toggle('last-selected', selection.isLastRowOfSelectionBlock(index));
@@ -3248,21 +3249,6 @@ var CollectionTree = class CollectionTree extends LibraryTree {
 		
 		var newRows = 0;
 		
-		// Recently Read
-		if (showRecentlyRead && this._isFilterEmpty()) {
-			rows.splice(row + 1 + newRows, 0,
-				new Zotero.CollectionTreeRow(this,
-					'recentlyRead',
-					{
-						libraryID,
-						name: Zotero.getString('recently-read'),
-					},
-					level + 1
-				)
-			);
-			newRows++;
-		}
-
 		// Add collections
 		for (var i = 0, len = collections.length; i < len; i++) {
 			// Skip collections in trash
@@ -3279,6 +3265,15 @@ var CollectionTree = class CollectionTree extends LibraryTree {
 		
 		if (isCollection) {
 			return newRows;
+		}
+
+		// Folders belong directly beneath their library. Utility views follow
+		// those folders rather than splitting the library from its contents.
+		if (showRecentlyRead && this._isFilterEmpty()) {
+			rows.splice(row + 1 + newRows, 0,
+				new Zotero.CollectionTreeRow(this, 'recentlyRead',
+					{libraryID, name: Zotero.getString('recently-read')}, level + 1));
+			newRows++;
 		}
 		
 		// Add searches
@@ -3398,13 +3393,8 @@ var CollectionTree = class CollectionTree extends LibraryTree {
 			else {
 				// Get all collections at the same level that don't have a different parent
 				startRow++;
-				// Skip past virtual collections (e.g., Recently Read) that come
-				// before collections in the tree
-				while (startRow < this._rows.length
-						&& this.getLevel(startRow) == level
-						&& this.getRow(startRow).isRecentlyRead()) {
-					startRow++;
-				}
+				// Keep live inserts in the same order as a full refresh: folders
+				// directly beneath the library, before utility views.
 				loop:
 				for (let i = startRow; i < this._rows.length; i++) {
 					let treeRow = this.getRow(i);

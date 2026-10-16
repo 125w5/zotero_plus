@@ -1,86 +1,140 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 describe('Reader interaction repairs 2026-09-19',function(){
- this.timeout(180000);const E=Zotero.Research;let win,pdf,reader,view,folder,selection,noteSave;const report={native:[],live:[],limitations:['原生 DOM 触发不等同真人鼠标验收；选区坐标为测试构造']};
- const wait=async fn=>{for(let i=0;i<250;i++){if(await fn())return;await Zotero.Promise.delay(100);}throw Error('等待原生界面超时');};
+ this.timeout(180000);const E=Zotero.Research;let win,pdf,reader,view,folder,selection,noteSave,prepareTranslation,indexArticle;const pageMetrics=[];const report={native:[],live:[],limitations:['原生 DOM 触发不等同真人鼠标验收；选区坐标为测试构造','译文版式与增量页面测试使用受控缓存，不代表真实整篇模型翻译']};
+ const wait=async(fn,label='原生界面')=>{for(let i=0;i<250;i++){if(await fn())return;await Zotero.Promise.delay(100);}throw Error('等待'+label+'超时');};
+ const cachedPage=(pageIndex,blocks=[],status='pending')=>({pageIndex,status,...pageMetrics[pageIndex],documentKey:'controlled-reader-interaction-cache',blocks});
  before(async()=>{
+  // Toolbar mounting now starts whole-document preparation. Keep this legacy
+  // DOM suite isolated from real model/index jobs before the reader is opened.
+  prepareTranslation=E.manuscripts.prepareTranslation;E.manuscripts.prepareTranslation=async()=>null;
+  // Import indexing can finish its local parse while a reader cache fixture is
+  // installed and then queue unrelated translation. Isolate that import entry
+  // before opening the pane; the reader's zero-request assertions stay intact.
+  indexArticle=E.manuscripts.indexArticle;E.manuscripts.indexArticle=async()=>null;
   win=await loadZoteroPane();await E.attachWindow(win);folder=PathUtils.join(Zotero.DataDirectory.dir,'reader-interaction-2026-09-19');await IOUtils.makeDirectory(folder,{ignoreExisting:true});
+  await win.Zotero_Tabs.closeAll();
   for(const item of await Zotero.Items.getAll(Zotero.Libraries.userLibraryID))if(item.isPDFAttachment()&&!item.deleted&&await item.fileExists()){pdf=item;break;}
-  assert.exists(pdf,'隔离文库需要一个真实 PDF');reader=await E.openReaderReady(pdf.id);view=reader._internalReader._primaryView;await view.initializedPromise;
+  assert.exists(pdf,'隔离文库需要一个真实 PDF');reader=await Zotero.Reader.open(pdf.id,null,{allowDuplicate:true});await reader._initPromise;
+  assert.strictEqual(reader._window,win,'使用本测试窗口的新阅读器，避免复用前一套用例关闭中的标签');view=reader._internalReader._primaryView;await view.initializedPromise;
+  const document=view._iframeWindow.PDFViewerApplication.pdfDocument;
+  for(let index=0;index<document.numPages;index++){const page=Cu.waiveXrays(await document.getPage(index+1)),viewport=page.getViewport(Cu.cloneInto({scale:1},view._iframeWindow));pageMetrics.push({width:viewport.width,height:viewport.height,rotation:viewport.rotation});}
   selection={paperID:pdf.parentID||pdf.id,attachmentID:pdf.id,text:'Interaction validation, not an experimental result.',pageIndex:0,position:{pageIndex:0,rects:[[60,600,220,612],[60,582,260,594]]},sortIndex:'00000|000003|00000'};
  });
- after(async()=>{await E.store.flush();await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));win?.close();});
+ after(async()=>{E.manuscripts.prepareTranslation=prepareTranslation;E.manuscripts.indexArticle=indexArticle;await E.store.flush();await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));if(win&&!win.closed){try{await win.Zotero_Tabs.closeAll();await wait(()=>!Zotero.Reader._readers.some(value=>value._window===win),'原生交互测试阅读器清理');}finally{win.close();}}});
  afterEach(async function(){report.tests||=[];report.tests.push({name:this.currentTest.title,state:this.currentTest.state,error:this.currentTest.err?.message});await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));});
  it('keeps formula superscripts together and separates lines and columns',()=>{
   const G=ChromeUtils.importESModule('chrome://zotero/content/research/shared/annotation-geometry.mjs');
   const rects=G.lineRects([[10,100,50,112],[50,108,57,116],[58,100,80,112],[300,100,360,112],[10,80,80,92]]);assert.lengthOf(rects,3);
   const strikes=G.strikePositions({pageIndex:0,rects,nextPageRects:[[10,40,80,52]]});assert.lengthOf(strikes,2);assert.lengthOf(strikes[0].paths,3);assert.deepEqual(strikes[1].paths[0],[10,46,80,46]);report.native.push('公式上下标合并，多行/多栏删除线几何与跨页定位');
  });
+ it('keeps available native right-click actions enabled and dispatches the selected action',async()=>{
+  const core=reader._internalReader,previous=core._state.primaryViewSelectionPopup,annotate=E.annotateSelection,quick=E.quickTranslate,commands=[];let popup,closed;
+  E.annotateSelection=(target,value,type)=>commands.push({target,value,type});E.quickTranslate=async()=>({text:'受控右键菜单选区译文'});
+  try{
+   view.clearSelection();core._updateState(Cu.cloneInto({primaryViewSelectionPopup:{rect:[180,180,480,200],annotation:{text:selection.text,position:selection.position,sortIndex:selection.sortIndex}}},reader._iframeWindow));
+   const actions=[];E.readerContextHandler({reader,append:action=>actions.push(action)});assert.includeMembers(actions.map(action=>action.label),['高亮选区','下划线','划掉文字（红色删除线）','保存高亮与笔记']);
+   closed=reader._openContextMenu({x:140,y:160,itemGroups:[[...actions,{label:'受控不可用操作',disabled:true,onCommand(){}}]]});
+   await wait(()=>[...win.document.querySelectorAll('menuitem')].some(node=>node.getAttribute('label')==='受控不可用操作'),'原生右键菜单构建');
+   const disabled=[...win.document.querySelectorAll('menuitem')].find(node=>node.getAttribute('label')==='受控不可用操作');popup=disabled.parentNode;await wait(()=>popup.state==='open','原生右键菜单展开');
+   const entries=[...popup.querySelectorAll('menuitem')];for(const action of actions)assert.isFalse(entries.find(node=>node.getAttribute('label')===action.label).disabled,action.label+'可点击');assert.isTrue(disabled.disabled,'明确不可用的功能仍置灰');
+   // XUL schedules the command after menu activation. Keep the controlled
+   // handler installed until that command has actually crossed the bridge.
+   entries.find(node=>node.getAttribute('label')==='划掉文字（红色删除线）').doCommand();await wait(()=>commands.length>=1,'原生右键删除线命令派发');assert.lengthOf(commands,1);assert.strictEqual(commands[0].target,reader);assert.equal(commands[0].type,'strikeout');assert.deepEqual(commands[0].value.position,selection.position);report.native.push('原生 XUL 右键默认操作可用，明确禁用仍置灰，删除线命令保留选区位置');
+  }finally{popup?.hidePopup();if(closed)await closed;E.annotateSelection=annotate;E.quickTranslate=quick;core._updateState(Cu.cloneInto({primaryViewSelectionPopup:previous},reader._iframeWindow));}
+ });
+ it('disables writing actions and refuses PDF changes while the native Reader is read-only',async()=>{
+  const core=reader._internalReader,previous={readOnly:core._state.readOnly,popup:core._state.primaryViewSelectionPopup},count=pdf.getAnnotations().length,notes=pdf.parentItem?.getNotes().length,items=[];
+  try{
+   view.clearSelection();core._updateState(Cu.cloneInto({readOnly:true,primaryViewSelectionPopup:{rect:[180,180,480,200],annotation:{text:selection.text,position:selection.position,sortIndex:selection.sortIndex}}},reader._iframeWindow));
+   E.readerContextHandler({reader,append:item=>items.push(item)});assert.isAtLeast(items.length,5);assert.isTrue(items.every(item=>item.disabled),'右键写入项跟随原生只读状态');
+   const rejectsReadOnly=async task=>{let failure;try{await task();}catch(error){failure=error;}assert.exists(failure,'只读写入必须拒绝');assert.match(failure.message,/只读/);};
+   assert.throws(()=>E.annotateSelection(reader,selection,'strikeout'),/只读/);await rejectsReadOnly(()=>E.saveSelectionTranslation(selection,undefined,{reader}));await rejectsReadOnly(()=>E.selectionImageNote(reader,selection));
+   assert.equal(pdf.getAnnotations().length,count);if(notes!==undefined)assert.equal(pdf.parentItem.getNotes().length,notes);report.native.push('真实 Reader 只读状态禁用右键写入，保存笔记、图片笔记及删除线拒绝执行；没有增加原生批注和笔记');
+  }finally{core._updateState(Cu.cloneInto({readOnly:previous.readOnly,primaryViewSelectionPopup:previous.popup},reader._iframeWindow));}
+ });
  it('shows a same-layout translated page beside the original PDF',async()=>{
   const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation};
   const split=reader._iframeWindow.document.getElementById('split-view'),previousInset=split.style.insetInlineEnd;
-  const current=(view._iframeWindow.PDFViewerApplication.pdfViewer.currentPageNumber||1)-1;
-  E.manuscripts.translationPage=(id,i)=>i===current?{status:'complete',blocks:[{id:'controlled-translation',sourceText:'Controlled source, x = 1.',translatedText:'受控中文译文，x = 1。',position:{pageIndex:i,rects:[[60,600,220,620]]},kind:'text',fontSize:7.2,fontFamily:'Times New Roman',fontWeight:700,fontStyle:'italic',serif:true}]}:{status:'pending',blocks:[]};
+  const app=view._iframeWindow.PDFViewerApplication,current=0;
+  // The isolated profile restores the previous reader position. Start this
+  // geometry test on page 1 rather than assuming the saved page is scrollable
+  // further down (the preceding run may have left it at the document bottom).
+  await reader.navigate({pageIndex:current});await wait(()=>app.pdfViewer.currentPageNumber===1,'原文定位到第 1 页');
+  E.manuscripts.translationPage=(id,i)=>cachedPage(i,i===current?[{id:'controlled-translation',sourceText:'Controlled source, x = 1.',translatedText:'受控中文译文，x = 1。',position:{pageIndex:i,rects:[[60,600,220,620]]},kind:'text',fontSize:7.2,fontFamily:'Times New Roman',fontWeight:700,fontStyle:'italic',serif:true}]:[],i===current?'complete':'pending');
   E.manuscripts.queueTranslation=()=>Promise.resolve();E.manuscripts.observeTranslation=()=>()=>{};
   try{
    const doc=reader._iframeWindow.document,pdfDoc=view._iframeWindow.document,toolbarButton=doc.querySelector('.easysch-translation-open');assert.exists(toolbarButton,'Reader 工具栏显示译文入口');
    toolbarButton.click();const panel=doc.querySelector('.easysch-page-translation');assert.exists(panel,'同一 PDF 标签右侧显示译文页');
-   await wait(()=>panel.querySelector(`[data-page-index="${current}"] .translation-box p`)?.textContent?.includes('中文译文'));
+   await wait(()=>panel.querySelector(`[data-page-index="${current}"] .translation-box p`)?.textContent?.includes('中文译文'),'受控缓存正文显示');
    const sheet=panel.querySelector(`[data-page-index="${current}"]`),box=sheet.querySelector('.translation-box:not(.translation-formula)');
    assert.isTrue(panel.querySelector('.translation-retry').hidden,'普通译文状态不显示重试操作');
    assert.lengthOf(panel.querySelectorAll('.translation-sheet'),view._iframeWindow.PDFViewerApplication.pdfDocument.numPages,'全篇页占位支持连续滚动');
    assert.isAbove(parseFloat(sheet.style.width),0);assert.isAbove(parseFloat(sheet.style.height),0);
-   const app=view._iframeWindow.PDFViewerApplication,pageNo=app.pdfViewer.currentPageNumber;
+   const frames=()=>new Promise(resolve=>doc.defaultView.requestAnimationFrame(()=>doc.defaultView.requestAnimationFrame(()=>doc.defaultView.requestAnimationFrame(resolve))));
+   await frames();
+   const leftScroll=pdfDoc.getElementById('viewerContainer'),sourcePaper=Cu.waiveXrays(app.pdfViewer.getPageView(current)).div;
+   // Start at a page boundary before checking the matching paper geometry.
+   leftScroll.scrollTop+=sourcePaper.getBoundingClientRect().top-leftScroll.getBoundingClientRect().top;
+   leftScroll.dispatchEvent(new pdfDoc.defaultView.Event('scroll'));
+   await frames();const pageNo=app.pdfViewer.currentPageNumber;
    assert.include(panel.querySelector('header span').textContent,pageNo+' /','右页码跟随左侧 PDF');
-   const rightScroll=panel.querySelector('.translation-scroller'),sourceViewport=Cu.waiveXrays(app.pdfViewer.getPageView(pageNo-1)).viewport;
-   const baseWidth=Cu.waiveXrays(app.pdfViewer.getPageView(0)).viewport.width;
-   const savedZoom=Math.max(.45,Math.min(3,Number(E.store.get('settings','readerTranslationZoom'))||1));
-   const fitted=Math.min(1,Math.max(100,rightScroll.clientWidth-44)/baseWidth)*savedZoom;
-   assert.closeTo(parseFloat(sheet.style.width),sourceViewport.width*fitted,2,'右页按自身栏宽适配，不沿用左页宽度导致裁切');
-   assert.closeTo(sheet.getBoundingClientRect().top,Cu.waiveXrays(app.pdfViewer.getPageView(pageNo-1)).div.getBoundingClientRect().top,2,'原文与译文纸张顶端对齐');
+   const rightScroll=panel.querySelector('.translation-scroller');
+   const rawWidth=pageMetrics[current].width,rawHeight=pageMetrics[current].height;
+   assert.closeTo(sheet.getBoundingClientRect().width,sourcePaper.getBoundingClientRect().width,1,'原文与译文纸张共用实际 CSS 宽度');
+   assert.closeTo(sheet.getBoundingClientRect().height,sourcePaper.getBoundingClientRect().height,1,'原文与译文纸张共用实际 CSS 高度');
+   assert.closeTo(sheet.getBoundingClientRect().top,Cu.waiveXrays(app.pdfViewer.getPageView(pageNo-1)).div.getBoundingClientRect().top+view._iframeWindow.frameElement.getBoundingClientRect().top,2,'原文与译文纸张顶端在同一外层窗口坐标中对齐');
    assert.notExists(pdfDoc.querySelector('.easysch-translation-box'),'左侧原 PDF 不被译文层覆盖');
    assert.isAbove(parseFloat(box.style.width),0);assert.isAbove(parseFloat(box.style.height),0);
    assert.equal(doc.defaultView.getComputedStyle(box).overflowY,'auto','较长译文在原文等尺寸框内滚动');
    assert.include(box.textContent,'x = 1','正文中带公式符号时不能隐藏整段译文');
-   assert.closeTo(parseFloat(box.style.fontSize),7.2*sourceViewport.scale*parseFloat(sheet.style.width)/sourceViewport.width,.5,'译文字号按右页独立缩放');
+   const rightScale=parseFloat(sheet.style.width)/rawWidth;
+   assert.closeTo(parseFloat(box.style.left),60*rightScale,.5,'原PDF的横向点坐标按右页缩放');
+   assert.closeTo(parseFloat(box.style.top),(rawHeight-620)*rightScale,.5,'原PDF的纵向点坐标转换为页顶坐标');
+   assert.closeTo(parseFloat(box.style.width),160*rightScale,.5,'译文框保持原文宽度');
+   assert.closeTo(parseFloat(box.style.height),20*rightScale,.5,'译文框保持原文高度');
+   assert.closeTo(parseFloat(box.style.fontSize),7.2*rightScale,.5,'译文字号只按原PDF点字号和右页缩放，不重复乘左页scale');
    assert.include(box.style.fontFamily,'Noto Serif CJK SC','原文字体为衬线时使用相应中文衬线字体');
    assert.equal(box.style.fontWeight,'700');assert.equal(box.style.fontStyle,'italic');
-   assert.notInclude(E.openReaderTranslation.toString(),'getTextContent','译文使用预提取版式，阅读时不再次扫描本页 PDF 字形');
    assert.notEqual(split.style.insetInlineEnd,previousInset,'左 PDF 为右译文页留出阅读空间');
-   const originalScale=app.pdfViewer.currentScaleValue,initialWidth=parseFloat(sheet.style.width),leftScroll=pdfDoc.getElementById('viewerContainer');
-   const oldLeft=leftScroll.scrollTop,oldLeftX=leftScroll.scrollLeft;
-   const point=rightScroll.getBoundingClientRect(),wheel=new doc.defaultView.WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:savedZoom<=.451?-120:120,clientX:point.left+40,clientY:point.top+80});
+   const originalScale=app.pdfViewer.currentScaleValue,initialWidth=parseFloat(sheet.style.width);
+   const point=rightScroll.getBoundingClientRect(),wheel=new doc.defaultView.WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:120,clientX:point.left+40,clientY:point.top+80});
    rightScroll.dispatchEvent(wheel);
-   await wait(()=>Math.abs(parseFloat(sheet.style.width)-initialWidth)>2);
+   await wait(()=>Math.abs(parseFloat(sheet.style.width)-initialWidth)>2,'Ctrl+滚轮改变译文页缩放');
    assert.isTrue(wheel.defaultPrevented,'Ctrl+滚轮被右译文视图接管');
-   assert.equal(app.pdfViewer.currentScaleValue,originalScale,'右侧缩放不改变左侧 PDF 缩放');
-   assert.closeTo(leftScroll.scrollTop,oldLeft,2,'右侧缩放不纵向移动左侧 PDF');
-   assert.closeTo(leftScroll.scrollLeft,oldLeftX,2,'右侧缩放不横向移动左侧 PDF');
+   assert.notEqual(app.pdfViewer.currentScaleValue,originalScale,'右侧 Ctrl+滚轮同步改变原文 PDF 缩放');
+   assert.closeTo(sheet.getBoundingClientRect().width,sourcePaper.getBoundingClientRect().width,1,'缩放后两侧纸张仍同宽');
+   assert.closeTo(sheet.getBoundingClientRect().height,sourcePaper.getBoundingClientRect().height,1,'缩放后两侧纸张仍同高');
+   assert.closeTo(sheet.getBoundingClientRect().top-rightScroll.getBoundingClientRect().top,sourcePaper.getBoundingClientRect().top-leftScroll.getBoundingClientRect().top,2,'共享缩放后两侧保留同一纵向阅读位置');
    if(leftScroll.scrollHeight>leftScroll.clientHeight+40&&rightScroll.scrollHeight>rightScroll.clientHeight+40){
-    const oldRight=rightScroll.scrollTop;leftScroll.scrollTop=Math.min(oldLeft+40,leftScroll.scrollHeight-leftScroll.clientHeight);
-    await wait(()=>Math.abs(rightScroll.scrollTop-oldRight)>3);leftScroll.scrollTop=oldLeft;
+    // Ctrl+wheel intentionally suppresses bidirectional synchronization for
+    // two frames. Wait for it to release before checking ordinary scrolling.
+    await frames();
+    const oldLeft=leftScroll.scrollTop,oldRight=rightScroll.scrollTop,maxLeft=leftScroll.scrollHeight-leftScroll.clientHeight;
+    const scrollStep=Math.max(40,Math.ceil(8*sourcePaper.getBoundingClientRect().height/sheet.getBoundingClientRect().height));
+    const nextLeft=oldLeft+scrollStep<=maxLeft?oldLeft+scrollStep:Math.max(0,oldLeft-scrollStep);
+    assert.isAbove(Math.abs(nextLeft-oldLeft),3,'选用实际可滚动方向，避免末页钳位');
+    leftScroll.scrollTop=nextLeft;leftScroll.dispatchEvent(new pdfDoc.defaultView.Event('scroll'));
+    await wait(()=>Math.abs(rightScroll.scrollTop-oldRight)>3,'原文滚动带动连续译文');leftScroll.scrollTop=oldLeft;
    }
-   assert.notInclude(E.openReaderTranslation.toString(),'reader.navigate(','译文页不路由到当前焦点的 secondary 阅读视图');
-   assert.include(E.openReaderTranslation.toString(),'view.navigate(','译文位置与翻页固定导航左侧 primary PDF');
    toolbarButton.click();assert.isFalse(panel.isConnected);assert.equal(split.style.insetInlineEnd,previousInset);
-   report.native.push('同一标签左原 PDF、右连续译文页；右侧 Ctrl+滚轮独立缩放、左 PDF 不移动；缓存回复为受控内容');
+   report.native.push('同一标签左原 PDF、右连续译文页；原文与译文同尺寸，Ctrl+滚轮共享缩放与阅读位置；缓存回复为受控内容');
   }finally{reader._iframeWindow.document.querySelector('.easysch-page-translation')&&reader._iframeWindow.document.querySelector('.easysch-translation-open')?.click();E.manuscripts.translationPage=prior.page;E.manuscripts.queueTranslation=prior.queue;E.manuscripts.observeTranslation=prior.observe;}
  });
  it('keeps displayed equations separate from translated two-column prose',async()=>{
   const doc=reader._iframeWindow.document,app=view._iframeWindow.PDFViewerApplication,pageIndex=(app.pdfViewer.currentPageNumber||1)-1;
   const page=Cu.waiveXrays(await app.pdfDocument.getPage(pageIndex+1)),width=page.view[2]-page.view[0],height=page.view[3]-page.view[1];
-  const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation,preview:E.previewImage,assets:E.assets.active.get(reader.itemID)};
+  const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation,preview:E.previewImage};
   const rect=(x,y,w=width*.3)=>({pageIndex,rects:[[x,y,x+w,y+18]]});
   const source=[
    {sourceText:'Left column first passage.',translatedText:'左栏第一段',position:rect(45,height-120)},
    {sourceText:'Left column second passage.',translatedText:'左栏第二段',position:rect(45,height-180)},
    {sourceText:'Right column first passage.',translatedText:'右栏第一段',position:rect(width*.56,height-125)},
    {sourceText:'Right column second passage.',translatedText:'右栏第二段',position:rect(width*.56,height-185)},
-   {sourceText:'E = mc² (1)',position:rect(45,height-300,width*.8),kind:'formula'}
+   {sourceText:'E = mc² (1)',position:rect(45,height-300,width*.8),kind:'formula',translatable:false,visualAsset:{path:'controlled-formula',dpi:216}}
   ].map((b,i)=>({id:'controlled-'+i,kind:'text',status:'complete',...b}));
-  const formula={pageIndex,kind:'formula',thumbnail:'controlled-formula',bbox:[45,270,width*.85,310],pageHeight:height,label:'式 (1)',caption:'E = mc² (1)'};
-  E.manuscripts.translationPage=(id,i)=>i===pageIndex?{status:'complete',blocks:source}:{status:'pending',blocks:[]};
+  E.manuscripts.translationPage=(id,i)=>cachedPage(i,i===pageIndex?source:[],i===pageIndex?'complete':'pending');
   E.manuscripts.queueTranslation=()=>Promise.resolve();E.manuscripts.observeTranslation=()=>()=>{};
-  E.assets.active.set(reader.itemID,{assets:[formula]});E.previewImage=async()=> 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+  E.previewImage=async path=>path==='controlled-formula'?'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=':prior.preview.call(E,path);
   try{
     const button=doc.querySelector('.easysch-translation-open');button.click();const panel=doc.querySelector('.easysch-page-translation');
     await wait(()=>panel.querySelectorAll('.translation-box:not(.translation-formula) p').length===4);
@@ -98,55 +152,69 @@ describe('Reader interaction repairs 2026-09-19',function(){
   }finally{
     doc.querySelector('.easysch-page-translation')&&doc.querySelector('.easysch-translation-open')?.click();
    E.manuscripts.translationPage=prior.page;E.manuscripts.queueTranslation=prior.queue;E.manuscripts.observeTranslation=prior.observe;E.previewImage=prior.preview;
-   if(prior.assets)E.assets.active.set(reader.itemID,prior.assets);else E.assets.active.delete(reader.itemID);
   }
  });
  it('fills a pending translated page from the background cache without reader-side translation',async()=>{
   const doc=reader._iframeWindow.document,app=view._iframeWindow.PDFViewerApplication,pageIndex=(app.pdfViewer.currentPageNumber||1)-1;
   const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation,translate:E.quickTranslate,index:E.assets.index};
-  let notify,ready=false,queued=0,readerCalls=0;
-  E.manuscripts.translationPage=(id,i)=>i!==pageIndex?{status:'pending',blocks:[]}:{status:ready?'complete':'pending',blocks:ready?[{id:'background-result',sourceText:'Background source.',translatedText:'后台完成的中文译文',kind:'text',position:{pageIndex,rects:[[60,600,250,620]]}}]:[]};
-  E.manuscripts.queueTranslation=()=>{queued++;return Promise.resolve();};E.manuscripts.observeTranslation=(id,fn)=>{notify=fn;return()=>{};};
+  let notify,ready=false,queued=0,readerCalls=0;const reads=[],queueCalls=[];report.translationQueueCalls=queueCalls;
+  E.manuscripts.translationPage=(id,i)=>{reads.push(i);return cachedPage(i,i===pageIndex&&ready?[{id:'background-result',sourceText:'Background source.',translatedText:'后台完成的中文译文',kind:'text',position:{pageIndex,rects:[[60,600,250,620]]}}]:[],i===pageIndex&&ready?'complete':'pending');};
+  E.manuscripts.queueTranslation=(attachmentID,options={})=>{queued++;queueCalls.push({attachmentID:Number(attachmentID),retry:options.retry===true,priorityPages:Array.isArray(options.priorityPages)?options.priorityPages.map(Number):[],stack:new Error('Unexpected translation queue in cached-reader fixture').stack});return Promise.resolve();};E.manuscripts.observeTranslation=(id,fn)=>{notify=fn;return()=>{};};
   E.quickTranslate=async()=>{readerCalls++;throw Error('阅读页不应发起翻译请求');};E.assets.index=async()=>{readerCalls++;throw Error('阅读页不应重新提取整篇图片');};
   try{
    doc.querySelector('.easysch-translation-open').click();const panel=doc.querySelector('.easysch-page-translation');assert.exists(panel);
-   await wait(()=>queued>0&&panel.textContent.includes('后台整理'));
+   await wait(()=>new Set(reads).size===app.pdfDocument.numPages&&panel.textContent.includes('后台'));
    assert.equal(readerCalls,0,'未在阅读器中重新翻译或提取整篇图像');
-   ready=true;notify();await wait(()=>panel.querySelector(`[data-page-index="${pageIndex}"] .translation-box p`)?.textContent.includes('后台完成'));
-   assert.equal(readerCalls,0);assert.isAbove(queued,0);doc.querySelector('.easysch-translation-open').click();
-   report.native.push('受控后台增量：先显示全篇占位；缓存写入后只更新本页，阅读器没有调用翻译或整篇图片索引');
+   const before=reads.length;ready=true;notify({pageIndex});await wait(()=>panel.querySelector(`[data-page-index="${pageIndex}"] .translation-box p`)?.textContent.includes('后台完成'));
+   assert.deepEqual(reads.slice(before),[pageIndex],'已读取全篇缓存之后，只刷新通知中变化的那一页');
+   const scroller=panel.querySelector('.translation-scroller'),beforeScroll=reads.length;scroller.scrollTop=scroller.scrollHeight;
+   await Zotero.Promise.delay(100);assert.equal(reads.length,beforeScroll,'滚动访问离屏页不会重新读取或生成译文');
+   assert.equal(readerCalls,0);assert.equal(queued,0,'已预处理的阅读器不因打开译文或滚动重新排队翻译'+(queueCalls.length?'；调用栈：\n'+queueCalls.map(call=>call.stack).join('\n'):''));doc.querySelector('.easysch-translation-open').click();
+   report.native.push('受控后台缓存：打开读取全部本地页；缓存通知只更新变化页；滚动不再次读取、翻译或提取图像');
   }finally{
    doc.querySelector('.easysch-page-translation')&&doc.querySelector('.easysch-translation-open')?.click();
    E.manuscripts.translationPage=prior.page;E.manuscripts.queueTranslation=prior.queue;E.manuscripts.observeTranslation=prior.observe;E.quickTranslate=prior.translate;E.assets.index=prior.index;
   }
  });
  it('offers a retry only for a failed translation page and refreshes only the changed page',async()=>{
-  const doc=reader._iframeWindow.document,app=view._iframeWindow.PDFViewerApplication,index=(app.pdfViewer.currentPageNumber||1)-1;
-  const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation,images:E.assets.onImagesChanged};
-  let notify,reads=0,retryOptions;
-  E.manuscripts.translationPage=(id,page)=>{if(page===index)reads++;return {status:page===index?'failed':'pending',blocks:[]};};
-  E.manuscripts.queueTranslation=(id,options)=>{if(options.retry)retryOptions=options;return Promise.resolve();};
-  E.manuscripts.observeTranslation=(id,fn)=>{notify=fn;return()=>{};};E.assets.onImagesChanged=()=>()=>{};
+  const doc=reader._iframeWindow.document,app=view._iframeWindow.PDFViewerApplication,index=0;
+  const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation,layout:E.store.get('settings','readerTranslationLayout')};
+  let notify,reads=0,retryOptions;const pageReads=[],completePages=new Set();
+  E.manuscripts.translationPage=(id,page)=>{assert.equal(Number(id),pdf.id,'重试读取本测试阅读器的附件缓存');pageReads.push(page);if(page===index)reads++;return cachedPage(page,[],page===index?'failed':completePages.has(page)?'complete':'pending');};
+  E.manuscripts.queueTranslation=(id,options={})=>{assert.equal(Number(id),pdf.id,'重试只针对当前 PDF 附件');if(options.retry)retryOptions=options;return Promise.resolve();};
+  E.manuscripts.observeTranslation=(id,fn)=>{assert.equal(Number(id),pdf.id);notify=fn;return()=>{notify=null;};};
   try{
-   doc.querySelector('.easysch-translation-open').click();const panel=doc.querySelector('.easysch-page-translation'),retry=panel.querySelector('.translation-retry');
-   await wait(()=>retry.hidden===false);assert.include(panel.querySelector('.translation-status').textContent,'失败');
-   if(app.pdfDocument.numPages>1){const before=reads,other=index===0?1:0;notify({pageIndex:other});
-    await Zotero.Promise.delay(100);assert.equal(reads,before,'另一页完成不重绘当前页');}
+   // The preceding cache test scrolls to the document bottom, and opening a
+   // shared-fit comparison can change its active page. Choose the failed page
+   // explicitly, then verify the native PDF and toolbar agree after fitting.
+   win.Zotero_Tabs.select(reader.tabID);await E.store.update(s=>{s.settings.readerTranslationLayout='compare';});
+   await reader.navigate({pageIndex:index});await wait(()=>app.pdfViewer.currentPageNumber===index+1,'失败页原文定位');
+   const toolbar=doc.querySelector('.easysch-translation-open');assert.exists(toolbar,'失败页译文入口');toolbar.click();
+   const panel=doc.querySelector('.easysch-page-translation');assert.exists(panel,'失败页连续译文视图');const retry=panel.querySelector('.translation-retry'),label=panel.querySelector('header span');
+   await wait(()=>new Set(pageReads).size===app.pdfDocument.numPages&&typeof notify==='function','失败页测试完整缓存读取');
+   await reader.navigate({pageIndex:index});await wait(()=>app.pdfViewer.currentPageNumber===index+1&&label.textContent.startsWith((index+1)+' /')&&retry.hidden===false,'原文与译文同一失败页的重试入口');
+   assert.include(panel.querySelector('.translation-status').textContent,'失败');
+   if(app.pdfDocument.numPages>1){const before=reads,beforeReads=pageReads.length,other=1,failedSheet=panel.querySelector(`[data-page-index="${index}"]`);completePages.add(other);notify({pageIndex:other,status:'complete'});
+    await wait(()=>pageReads.length>beforeReads,'另一页完成通知读取');assert.deepEqual(pageReads.slice(beforeReads),[other],'缓存通知只刷新变化页');assert.equal(reads,before,'另一页完成不重绘当前页');assert.strictEqual(panel.querySelector(`[data-page-index="${index}"]`),failedSheet,'未变化的失败页保留原节点');
+    await reader.navigate({pageIndex:other});await wait(()=>app.pdfViewer.currentPageNumber===other+1&&label.textContent.startsWith((other+1)+' /'),'已完成页定位');assert.isTrue(retry.hidden,'已完成页不显示重试');
+    await reader.navigate({pageIndex:index});await wait(()=>app.pdfViewer.currentPageNumber===index+1&&label.textContent.startsWith((index+1)+' /')&&!retry.hidden,'返回失败页重试');}
    retry.click();await wait(()=>retryOptions?.retry===true);assert.deepEqual(retryOptions.priorityPages,[index]);assert.isTrue(retry.hidden);
-   doc.querySelector('.easysch-translation-open').click();report.native.push('失败页才显示页内重试；按页刷新不重绘当前阅读页；retry:true 仅重试当前页');
+   toolbar.click();report.native.push('失败页才显示页内重试；完成页无重试；通知只刷新变化页并保留当前页节点；retry:true 优先重试当前页');
   }finally{
    doc.querySelector('.easysch-page-translation')&&doc.querySelector('.easysch-translation-open')?.click();
-   E.manuscripts.translationPage=prior.page;E.manuscripts.queueTranslation=prior.queue;E.manuscripts.observeTranslation=prior.observe;E.assets.onImagesChanged=prior.images;
+   E.manuscripts.translationPage=prior.page;E.manuscripts.queueTranslation=prior.queue;E.manuscripts.observeTranslation=prior.observe;
+   await E.store.update(s=>{if(prior.layout===undefined)delete s.settings.readerTranslationLayout;else s.settings.readerTranslationLayout=prior.layout;});
   }
  });
  it('falls back to GPT-6 Luna for academic translation without a machine-translation key',async()=>{
   const previous={settings:E.settings,credential:E.credentials.get,resolve:E.resolveModel,request:E.requestProvider};
-  const phrase='Controlled academic translation '+Date.now();let called=false;
+  const checkID=Date.now(),phrase='The evaluation plan uses 3 baselines and a 0.05 significance threshold. Controlled translation check '+checkID+'.';
+  const translated='评估计划使用 3 个基线，显著性阈值为 0.05。受控翻译检查 '+checkID+'。';let called=false;
   E.settings=()=>({...previous.settings(),endpoint:'https://openai.goldgom.top/v1',model:'gpt-6-luna',youdaoAppID:''});
   E.credentials.get=async endpoint=>endpoint==='https://openai.goldgom.top/v1'?'controlled-test-credential':null;
   E.resolveModel=async config=>config;
-  E.requestProvider=async(url,options,timeout,reader)=>{called=true;assert.include(url,'/chat/completions');const body=JSON.parse(options.body);assert.equal(body.model,'gpt-6-luna');assert.isTrue(body.stream);assert.include(body.messages[0].content,'只输出译文');assert.equal(body.messages[1].content,phrase);return {text:'受控中文学术译文'};};
-  try{const before=Object.keys(E.store.get('translationCache')||{}).length,result=await E.quickTranslate(phrase,undefined,{persist:false});assert.isTrue(called);assert.equal(result.text,'受控中文学术译文');assert.include(result.provider,'GPT-6 Luna');assert.equal(Object.keys(E.store.get('translationCache')||{}).length,before,'后台按页保存时不逐段重写工作区缓存');report.native.push('无有道配置时切换 GPT-6 Luna，校验流式请求与“只翻译”提示；persist:false 不逐段写工作区；回复为受控内容');}
+  E.requestProvider=async(url,options,timeout,reader)=>{called=true;assert.include(url,'/chat/completions');const body=JSON.parse(options.body);assert.equal(body.model,'gpt-6-luna');assert.isTrue(body.stream);assert.include(body.messages[0].content,'只输出译文');assert.equal(body.messages[1].content,phrase);return {text:translated};};
+  try{const before=Object.keys(E.store.get('translationCache')||{}).length,result=await E.quickTranslate(phrase,undefined,{persist:false});assert.isTrue(called);assert.equal(result.text,translated);assert.include(result.text,'3');assert.include(result.text,'0.05');assert.include(result.text,String(checkID),'受控回复也须保留来源中的唯一数值');assert.include(result.provider,'GPT-6 Luna');assert.equal(Object.keys(E.store.get('translationCache')||{}).length,before,'后台按页保存时不逐段重写工作区缓存');report.native.push('无有道配置时切换 GPT-6 Luna，保留数量、显著性阈值与检查编号；校验流式请求与“只翻译”提示；persist:false 不逐段写工作区；回复为受控内容');}
   finally{E.settings=previous.settings;E.credentials.get=previous.credential;E.resolveModel=previous.resolve;E.requestProvider=previous.request;}
  });
  it('applies toolbar underline to a selection and converts an existing annotation',async()=>{
@@ -191,19 +259,44 @@ describe('Reader interaction repairs 2026-09-19',function(){
   const tables=inner.querySelectorAll('.primary-editor table').length;await E.insertNoteStructure(editor,'table');await wait(()=>inner.querySelectorAll('.primary-editor table').length>tables);
   report.native.push('TeX 转原生公式节点；实际 UTF-8 CSV 与图片插入原生笔记编辑器');
  });
+ it('preserves standalone display math in the native notes list preview without changing the saved note',async()=>{
+  const pane=win.ZoteroContextPane,context=pane.context._getNotesContext(pdf.libraryID),prior={paneMode:pane.context.mode,mode:context.mode,collapsed:pane.collapsed,query:context.input.value};
+  const marker='Standalone display math preview '+Date.now(),tex='E_{\\mathrm{F}} = x_i^2',note=new Zotero.Item('note');note.libraryID=pdf.libraryID;if(pdf.parentID)note.parentID=pdf.parentID;
+  note.setNote('<div data-schema-version="9"><p>'+marker+'</p><pre class="math">$$'+tex+'$$</pre></div>');await note.saveTx();const savedHTML=note.getNote();
+  try{
+   context._getCurrentEditor()?.saveSync();pane.collapsed=false;pane.context.mode='notes';context.mode='notesList';context.input.value=marker;context.affectedIDs.add(note.id);
+   await E.prepareContentStyles(win.document);await context._updateNotesList();
+   let row;await wait(()=>{row=[...context.notesList.querySelectorAll('note-row')].find(value=>value.note?.id===note.id);return row?.querySelector('.note-content .katex-display');},'原生笔记列表独立公式预览');
+   assert.equal(context.cachedNotes.find(value=>value.id===note.id).body,'$$'+tex+'$$','PRE 公式仍作为独立预览候选保留完整 TeX');
+   assert.equal(row.querySelector('.katex annotation[encoding="application/x-tex"]').textContent,tex);assert.exists(row.querySelector('.katex .msupsub'),'实际渲染上下标');
+   assert.isAbove(row.getBoundingClientRect().height,0);assert.equal(note.getNote(),savedHTML,'显示公式不改写笔记正文');report.native.push('原生笔记列表保留独立 PRE 公式，实际显示 LaTeX 上下标且正文不变');
+  }finally{
+   await note.eraseTx();context.input.value=prior.query;context.mode=prior.mode;pane.context.mode=prior.paneMode;pane.collapsed=prior.collapsed;context.cachedNotes=context.cachedNotes.filter(value=>value.id!==note.id);context.affectedIDs.delete(note.id);
+  }
+ });
+ it('loads unified native editor and math styles without rewriting an existing human note',async()=>{
+  const context=win.ZoteroContextPane.context._getNotesContext(pdf.libraryID),old=context._getCurrentEditor()?.item?.id,note=new Zotero.Item('note');note.libraryID=pdf.libraryID;if(pdf.parentID)note.parentID=pdf.parentID;
+  const tex='E_{\\mathrm{F}}=x_i^2';note.setNote('<div data-schema-version="9"><p>作者保留的公式 <span class="math">$'+tex+'$</span></p><pre class="math">$$'+tex+'$$</pre></div>');await note.saveTx();const before=note.getNote();
+  try{await E.openReaderNote(note.id,reader);await wait(()=>context._getCurrentEditor()?.item?.id===note.id);const editor=context._getCurrentEditor();await editor._initPromise;assert.isTrue(await E.prepareNoteStyles(editor));const inner=Cu.unwaiveXrays(editor.getCurrentInstance()._iframeWindow).document;assert.exists(inner.querySelector('[data-easysch-reading-style]'));assert.exists(inner.querySelector('[data-easysch-style="vendor/katex.min.css"]'));await wait(()=>inner.querySelector('.katex annotation[encoding="application/x-tex"]'));assert.include([...inner.querySelectorAll('.katex annotation[encoding="application/x-tex"]')].map(node=>node.textContent),tex);assert.equal(note.getNote(),before,'样式准备不能改作者原笔记');report.native.push('原生笔记 iframe 加载统一阅读样式和完整 KaTeX 字体，原作者正文不变');
+  }finally{if(old&&Zotero.Items.get(old))await E.openReaderNote(old,reader);await note.eraseTx();}
+ });
  it('embeds image evidence in the existing right pane and retains all bibliography rows',async()=>{
   win.ZoteroContextPane.collapsed=false;win.ZoteroContextPane.context.mode='item';
   let details,pane;await wait(()=>{pane=[...win.document.querySelectorAll('item-pane-custom-section')].find(p=>p.dataset.pane.includes('research-images')&&p.closest('item-details')?.tabID===reader.tabID);details=pane?.closest('item-details');return pane;});
   assert.strictEqual(pane.parentElement,details._paneParent,'证据栏不能进入隐藏附件笔记');
-  await wait(()=>pane.querySelector('collapsible-section .head')?.getBoundingClientRect().height>0);
-  assert.isAbove(pane.querySelector('collapsible-section .head')?.getBoundingClientRect().height||0,0,'图片证据标题可见');
-  pane.open=false;
   const icon=details.sidenav.querySelector(`[data-pane="${pane.dataset.pane}"]`);
   await details.sidenav.handleButtonClick({target:icon,button:0,detail:1});
   await wait(()=>pane.querySelector('#easysch-asset-panel')?.dataset.ready==='true');
-  assert.isTrue(pane.open,'侧栏图标展开图片证据');
+  assert.equal(details.researchActivePane,pane.dataset.pane,'侧栏图标选中图片证据面板');
+  assert.equal(win.getComputedStyle(pane.querySelector('collapsible-section .head')).display,'none','选中的功能不再显示第二级折叠标题');
+  const viewport=details._paneParent.getBoundingClientRect(),rect=pane.getBoundingClientRect();
+  assert.closeTo(rect.top,viewport.top,1,'图片证据从右栏顶部开始');assert.isAtLeast(rect.height,viewport.height-1,'图片证据占满可用右栏高度');
+  for(const other of details.getPanes().filter(other=>other!==pane))assert.equal(win.getComputedStyle(other).display,'none','阅读右栏仅显示所选功能');
+  assert.isTrue(pane.open,'图片证据内容直接展开');
   const panel=await E.openImageEvidence(pdf.id);await wait(()=>panel.dataset.ready==='true');assert.isTrue(panel.classList.contains('embedded-evidence'));assert.exists(panel.closest('item-pane-custom-section'));assert.isAbove(panel.querySelectorAll('article img').length,0);
-  const refs=await E.referencesFromPDF({id:pdf.id});assert.isAbove(refs.records.length,0);const host=win.document.createElementNS('http://www.w3.org/1999/xhtml','div');win.document.documentElement.append(host);await E.renderReferencePane(host,pdf);assert.lengthOf(host.querySelectorAll('.reference-row'),refs.records.length);host.remove();
+  const refs=await E.referencesFromPDF({id:pdf.id});assert.isAbove(refs.records.length,0);const host=win.document.createElementNS('http://www.w3.org/1999/xhtml','div');win.document.documentElement.append(host);
+  const collectReferences=E.collectReferences;E.collectReferences=async(paper,{onProgress})=>{const result={references:refs.records,records:[],skipped:[]};onProgress?.({...result,done:refs.records.length,total:refs.records.length,complete:true});return result;};
+  try{await E.renderReferencePane(host,pdf);assert.lengthOf(host.querySelectorAll('.reference-row'),refs.records.length);}finally{host._referenceDispose?.();host.remove();E.collectReferences=collectReferences;}
   const position=await E.locateReference(pdf.id,refs.records[0]);assert.isNumber(position.pageIndex);report.native.push('侧栏图标实际处理路径展开图片证据；参考文献全部保留且定位本篇 PDF');
  });
  it('saves a complete extracted image and its explanation into a linked native note',async()=>{

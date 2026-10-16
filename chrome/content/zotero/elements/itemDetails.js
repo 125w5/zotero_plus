@@ -28,6 +28,9 @@
 		"chrome://zotero/content/elements/itemPaneContainerBase.mjs",
 		{ global: "current" }
 	);
+	const ResearchNavigation = ChromeUtils.importESModule(
+		"chrome://zotero/content/research/shared/reader-navigation.mjs"
+	);
 
 	class ItemDetails extends ItemPaneContainerBase {
 		content = MozXULElement.parseXULToFragment(`
@@ -117,11 +120,246 @@
 		}
 
 		get supportsPinning() {
-			return true;
+			return !this.researchPaperNavigation;
 		}
 
 		get supportsReorder() {
-			return true;
+			return !this.researchPaperNavigation;
+		}
+
+		get researchPaperNavigation() {
+			return !!this.item && (this.item.isRegularItem() || this.item.isPDFAttachment())
+				&& !!this.getCustomPanes().find(pane => ResearchNavigation.researchPaneKind(pane.dataset.pane) === 'overview');
+		}
+
+		get researchActivePane() {
+			if (!this.researchPaperNavigation) return null;
+			if (this.sidenav?._contextNotesPaneVisible) return 'context-notes';
+			return ResearchNavigation.resolvePaperPaneID(
+				this.getPanes().map(pane => pane.dataset.pane), this._researchActivePane || 'info'
+			);
+		}
+
+		_isResearchPaneSelected(pane) {
+			return !this.researchPaperNavigation || pane.classList.contains('paper-metadata-editor')
+				|| pane.dataset.pane === this.researchActivePane;
+		}
+
+		_syncResearchPaneSelection() {
+			const paper = this.researchPaperNavigation;
+			let active = this.researchActivePane;
+			if (paper && active !== 'context-notes' && !this.getEnabledPane(active)) {
+				this._researchActivePane = ResearchNavigation.resolvePaperPaneID(
+					this.getPanes().map(pane => pane.dataset.pane), 'info'
+				);
+				active = this.researchActivePane;
+			}
+			for (const pane of this.getPanes()) {
+				const section = pane._section || pane.querySelector('collapsible-section');
+				if (!paper) {
+					delete pane.dataset.easyschSelected;
+					if (section && pane._researchSectionState) {
+						const prior = pane._researchSectionState;
+						if (prior.noCollapse === null) section.removeAttribute('no-collapse');
+						else section.setAttribute('no-collapse', prior.noCollapse);
+						section.toggleAttribute('open', prior.open);
+						section.style.setProperty('--open-height', 'auto');
+						pane._researchSectionState = null;
+					}
+					continue;
+				}
+				pane.dataset.easyschSelected = String(pane.dataset.pane === active);
+				if (section && pane.dataset.easyschSelected === 'true') {
+					pane._researchSectionState ||= { noCollapse: section.getAttribute('no-collapse'), open: section.hasAttribute('open') };
+					// Opening a feature is transient display state, not an accordion
+					// preference. Leave native preferences and source nodes intact.
+					section.setAttribute('no-collapse', 'true');
+					section.toggleAttribute('open', true);
+					section.style.setProperty('--open-height', 'auto');
+				}
+			}
+			if (paper) {
+				this.dataset.easyschActivePane = active || '';
+				if (ResearchNavigation.researchPaneKind(active) !== 'workstation') this.classList.remove('academic-focus');
+				this._paneParent.style.paddingBottom = '';
+				this._minScrollHeight = 0;
+			}
+			else delete this.dataset.easyschActivePane;
+		}
+
+		async selectResearchPane(id, { focus = false } = {}) {
+			if (!this.researchPaperNavigation) return super.scrollToPane(id, 'instant');
+			this._closeResearchMetadataEditor?.();
+			if (id === 'context-notes' && this.sidenav?.contextNotesPaneEnabled && this.sidenav.contextNotesPane) {
+				this.dispatchEvent(new CustomEvent('easysch-research-pane-changing', {
+					bubbles: true, detail: { paneID: 'context-notes' }
+				}));
+				this.sidenav._contextNotesPaneVisible = true;
+				this._syncResearchPaneSelection();
+				return this.sidenav.contextNotesPane;
+			}
+			const paneID = ResearchNavigation.resolvePaperPaneID(this.getPanes().map(pane => pane.dataset.pane), id);
+			const pane = paneID && this.getEnabledPane(paneID);
+			if (!pane || !this.isPaneInSidenav(paneID) && ResearchNavigation.researchPaneKind(paneID) !== 'overview') return null;
+			// Scoped features restore borrowed native UI before the new pane is
+			// selected or rendered, including programmatic navigation.
+			this.dispatchEvent(new CustomEvent('easysch-research-pane-changing', {
+				bubbles: true, detail: { paneID }
+			}));
+			const request = this._researchPaneRequest = (this._researchPaneRequest || 0) + 1;
+			this._researchActivePane = paneID;
+			if (this.sidenav?._contextNotesPaneVisible) this.sidenav._contextNotesPaneVisible = false;
+			this._collapsed = false;
+			this._syncResearchPaneSelection();
+			this._paneParent.scrollTo(0, 0);
+			this.sidenav?.render();
+			pane.render?.();
+			if (pane.asyncRender) await pane.asyncRender();
+			if (request !== this._researchPaneRequest || this.researchActivePane !== paneID) return null;
+			this._syncResearchPaneSelection();
+			if (ResearchNavigation.researchPaneKind(paneID) === 'workstation') pane.querySelector('.academic-chat')?._expand?.();
+			this._paneParent.scrollTo(0, 0);
+			if (focus) pane.focus();
+			return pane;
+		}
+
+		async scrollToPane(id, behavior = 'smooth') {
+			if (this.researchPaperNavigation) return !!await this.selectResearchPane(id);
+			return super.scrollToPane(id, behavior);
+		}
+
+		getEnabledPane(id) {
+			const pane = super.getEnabledPane(id);
+			return pane?.dataset.easyschMetadata === 'hidden' ? null : pane;
+		}
+
+		getEnabledPanes() {
+			return super.getEnabledPanes().filter(pane => pane.dataset.easyschMetadata !== 'hidden');
+		}
+
+		isPaneInSidenav(id) {
+			return !this.researchPaperNavigation || ResearchNavigation.paperRailPaneVisible(
+				id, !!this.sidenav?.contextNotesPane && this.sidenav.contextNotesPaneEnabled
+			);
+		}
+
+		_syncResearchNavigation() {
+			const paper = this.researchPaperNavigation;
+			if (!paper || this._researchMetadataItem !== this.item?.id) {
+				this._closeResearchMetadataEditor?.({ sync: false, restoreFocus: false });
+			}
+			if (paper) this.dataset.easyschNavigation = 'paper';
+			else delete this.dataset.easyschNavigation;
+			if (this._researchMetadataItem !== this.item?.id) {
+				this._researchMetadataItem = this.item?.id;
+				this._researchMetadataPane = null;
+			}
+			for (const id of [...ResearchNavigation.metadataPaneIDs, 'info', ...ResearchNavigation.paperHiddenPaneIDs]) {
+				const pane = this.getPane(id);
+				if (!pane) continue;
+				if (paper) pane.dataset.easyschMetadata = this._researchMetadataPane === id ? 'shown' : 'hidden';
+				else delete pane.dataset.easyschMetadata;
+			}
+			this._syncResearchPaneSelection();
+			const info = this.getPane('info');
+			let advanced = info?.querySelector('.research-metadata-details');
+			if (!paper) {
+				const edit = advanced?.querySelector('.research-fields-toggle');
+				if (edit) info.querySelector('collapsible-section > .head')?.append(edit);
+				advanced?.remove();
+				return;
+			}
+			if (!advanced && info) {
+				const ns = 'http://www.w3.org/1999/xhtml';
+				advanced = document.createElementNS(ns, 'details');
+				advanced.className = 'research-metadata-details section-custom-button';
+				const summary = document.createElementNS(ns, 'summary');
+				summary.textContent = '⋯';
+				summary.title = '更多信息';
+				summary.setAttribute('aria-label', '更多信息');
+				const menu = document.createElementNS(ns, 'div');
+				menu.className = 'research-metadata-menu';
+				const edit = info.querySelector('.research-fields-toggle');
+				if (edit) {
+					edit.addEventListener('click', () => { advanced.open = false; });
+					menu.append(edit);
+				}
+				for (const [id, label] of [['libraries-collections', '文库归属'], ['tags', '标签'], ['related', '关联文献']]) {
+					const button = document.createElementNS(ns, 'button');
+					button.type = 'button';
+					button.textContent = label;
+					button.dataset.metadataPane = id;
+					button.addEventListener('click', async () => {
+						advanced.open = false;
+						await this.showResearchPaperMetadata(id);
+					});
+					menu.append(button);
+				}
+				advanced.append(summary, menu);
+				advanced.addEventListener('focusout', event => {
+					if (event.relatedTarget && !advanced.contains(event.relatedTarget)) advanced.open = false;
+				});
+				advanced.addEventListener('keydown', event => {
+					if (event.key === 'Escape' && !event.isComposing) {
+						advanced.open = false;
+						summary.focus();
+						event.preventDefault();
+					}
+					if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+						advanced.open = true;
+						const buttons = [...menu.querySelectorAll('button:not([disabled])')];
+						const at = buttons.indexOf(document.activeElement);
+						buttons[(at + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
+						event.preventDefault();
+					}
+				});
+				// Keep the title's native collapse handler from consuming this menu.
+				for (const type of ['mousedown', 'click', 'keydown']) advanced.addEventListener(type, event => event.stopPropagation());
+				info.querySelector('collapsible-section > .head')?.append(advanced);
+			}
+			for (const button of advanced?.querySelectorAll('[data-metadata-pane]') || []) {
+				button.disabled = !this.getPane(button.dataset.metadataPane) || !!this.getPane(button.dataset.metadataPane).hidden;
+			}
+		}
+
+		async showResearchPaperMetadata(id = 'info') {
+			if (!this.researchPaperNavigation) return;
+			if (id === 'attachments') return;
+			this._closeResearchMetadataEditor?.({ sync: false, restoreFocus: false });
+			this._researchMetadataPane = id;
+			this._syncResearchNavigation();
+			const pane = this.getEnabledPane(id);
+			if (!pane) return;
+			pane.open = true;
+			await pane.render?.();
+			const doc = this.ownerDocument, win = doc.defaultView;
+			const backdrop = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+			backdrop.className = 'paper-metadata-backdrop';
+			const closeButton = doc.createElementNS('http://www.w3.org/1999/xhtml', 'button');
+			closeButton.type = 'button'; closeButton.className = 'paper-metadata-close'; closeButton.textContent = '×';
+			closeButton.title = '关闭信息编辑'; closeButton.setAttribute('aria-label', closeButton.title);
+			const prior = { role: pane.getAttribute('role'), modal: pane.getAttribute('aria-modal'), label: pane.getAttribute('aria-label') };
+			const returnFocus = doc.activeElement;
+			pane.classList.add('paper-metadata-editor'); pane.setAttribute('role', 'dialog'); pane.setAttribute('aria-modal', 'true');
+			pane.setAttribute('aria-label', id === 'info' ? '编辑论文信息' : '编辑来源信息');
+			pane.append(closeButton); doc.documentElement.append(backdrop);
+			const keydown = event => { if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); close(); } };
+			const close = ({ sync = true, restoreFocus = true } = {}) => {
+				if (this._closeResearchMetadataEditor !== close) return;
+				this._closeResearchMetadataEditor = null;
+				if (pane.contains(doc.activeElement)) doc.activeElement.blur?.();
+				win.removeEventListener('keydown', keydown, true); backdrop.remove(); closeButton.remove();
+				pane.classList.remove('paper-metadata-editor');
+				for (const [attribute, value] of [['role', prior.role], ['aria-modal', prior.modal], ['aria-label', prior.label]]) {
+					if (value === null) pane.removeAttribute(attribute); else pane.setAttribute(attribute, value);
+				}
+				this._researchMetadataPane = null;
+				if (sync && this.isConnected) this._syncResearchNavigation();
+				if (restoreFocus && returnFocus?.isConnected) returnFocus.focus?.();
+			};
+			this._closeResearchMetadataEditor = close;
+			backdrop.onclick = () => close(); closeButton.onclick = () => close(); win.addEventListener('keydown', keydown, true);
+			closeButton.focus();
 		}
 
 		get pinnedPane() {
@@ -204,6 +442,7 @@
 		}
 
 		destroy() {
+			this._closeResearchMetadataEditor?.({ sync: false, restoreFocus: false });
 			this._container.removeEventListener("keydown", this._handleKeydown);
 			this._paneParent.removeEventListener('scroll', this._handleContainerScroll);
 
@@ -235,25 +474,10 @@
 			}
 
 			this.renderCustomSections();
-			// Keep the paper's first page and abstract together in library and Reader.
-			const overview = this.getCustomPanes().find(p => p.dataset.pane.includes('research-overview'));
-			if (overview) {
-				const abstract = this.querySelector('abstract-box');
-				if (overview !== this._paneParent.firstElementChild) this._paneParent.prepend(overview);
-				if (abstract && overview.nextElementSibling !== abstract) overview.after(abstract);
-			}
-			// Use the former related-items area for reader evidence, keeping the
-			// stored Zotero relationships intact.
-			// Attachment note editors also contain a related-box. Only reorder
-			// direct item panes, or evidence ends up inside a hidden note editor.
-			const related = this.getPane('related');
-			const evidence = this.getCustomPanes().filter(p => /research-(images|references)/.test(p.dataset.pane))
-				.sort((a, b) => Number(a.dataset.pane.includes('references')) - Number(b.dataset.pane.includes('references')));
-			let evidenceAnchor = related;
-			if (evidenceAnchor) for (const pane of evidence) {
-				if (evidenceAnchor.nextElementSibling !== pane) evidenceAnchor.after(pane);
-				evidenceAnchor = pane;
-			}
+			this._syncResearchNavigation();
+			// A single policy controls both the content and the rail. Re-applying a
+			// stale native preference after a click must not move evidence sections.
+			this.initPaneOrder(this.sidenav?.getPersistedOrder() || []);
 			this._restorePinnedPane();
 
 			let panes = this.getPanes();
@@ -269,7 +493,6 @@
 				box.tabID = this.tabID;
 				box.tabType = this.tabType;
 				box.item = item;
-				if (box === related && evidence.length) box.hidden = true;
 				box.extraItems = this.extraItems;
 				box.collectionTreeRows = this.collectionTreeRows;
 				if (this.extraItems.length > 0) {
@@ -281,10 +504,12 @@
 					box.discard();
 				}
 				// Execute sync render immediately
-				if (!collapsed && !box.hidden && box.render) {
+				if (!collapsed && !box.hidden && box.dataset.easyschMetadata !== 'hidden' && this._isResearchPaneSelected(box) && box.render) {
 					box.render();
 				}
 			}
+			this._syncResearchNavigation();
+			this.sidenav?.render();
 
 			if (!collapsed) {
 				let scrollPaneElem = this.getEnabledPane(this._lastScrollPaneID);
@@ -435,6 +660,7 @@
 		isPaneVisible(paneID) {
 			let paneElem = this.getEnabledPane(paneID);
 			if (!paneElem) return false;
+			if (!this._isResearchPaneSelected(paneElem)) return false;
 			let paneRect = paneElem.getBoundingClientRect();
 			let containerRect = this._paneParent.getBoundingClientRect();
 			if (paneRect.top >= containerRect.bottom || paneRect.bottom <= containerRect.top) {
@@ -450,8 +676,7 @@
 		initPaneOrder(order) {
 			let panes = this.getPanes();
 			let paneIDs = panes.map(elem => elem.dataset.pane);
-			const overviewID = paneIDs.find(id => id.includes('research-overview'));
-			if (overviewID) order = [overviewID, 'abstract', ...order.filter(id => id !== overviewID && id !== 'abstract')];
+			if (this.researchPaperNavigation) order = ResearchNavigation.paperPaneOrder(paneIDs);
 
 			// Compare the order of paneIDs with the given order
 			let isOrderDifferent = false;
@@ -491,6 +716,7 @@
 		 * @param {boolean} options.render - Whether to rerender panes after reordering
 		 */
 		async changePaneOrder(paneID, newIdx, options = {}) {
+			if (!this.supportsReorder) return;
 			let panes = this.getPanes();
 			let paneIDs = panes.map(elem => elem.dataset.pane);
 			let currentIndex = paneIDs.indexOf(paneID);
@@ -558,7 +784,10 @@
 		_toggleIntersectionObserver(enabled) {
 			let panes = this.getPanes();
 			if (enabled) {
-				panes.forEach(elem => this._intersectionOb.observe(elem));
+				panes.forEach(elem => {
+					if (this._isResearchPaneSelected(elem)) this._intersectionOb.observe(elem);
+					else this._intersectionOb.unobserve(elem);
+				});
 			}
 			else {
 				panes.forEach(elem => this._intersectionOb.unobserve(elem));
@@ -636,6 +865,7 @@
 			let needsDiscard = [];
 			entries.forEach((entry) => {
 				let targetPaneElem = entry.target;
+				if (!this._isResearchPaneSelected(targetPaneElem)) return;
 				if (entry.isIntersecting
 						&& (targetPaneElem.render || targetPaneElem.asyncRender)) {
 					needsRefresh.push(targetPaneElem);
@@ -695,6 +925,7 @@
 		}
 
 		_restorePinnedPane() {
+			if (this.researchPaperNavigation) return;
 			if (this.tabType !== 'library') {
 				return;
 			}

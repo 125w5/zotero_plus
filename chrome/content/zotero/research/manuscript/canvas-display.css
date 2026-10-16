@@ -1,0 +1,24 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+#canvas-display-mode {display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--assembly-border,#d1d6dc);border-radius:9px;background:var(--assembly-bar,#f8f9fa);box-shadow:inset 0 1px 2px var(--assembly-shadow,#1c293514);}
+#canvas-display-select{display:none;max-width:100%;min-width:0}
+html[data-appearance] #canvas-display-mode button {min-height:28px;padding:5px 12px;border:0;border-radius:6px;background:transparent;color:var(--muted,#78828c);font-size:12px;white-space:nowrap;transition:background .15s,color .15s,box-shadow .15s;}
+html[data-appearance] #canvas-display-mode button[aria-pressed=true] {background:var(--assembly-control,#fff);color:var(--text,#29313a);box-shadow:0 1px 3px var(--assembly-shadow,#1c293514);}
+@container writing-ribbon (max-width:540px){html[data-appearance] #canvas-display-mode{padding:0;border:0;background:transparent;box-shadow:none}html[data-appearance] #canvas-display-mode button{display:none}html[data-appearance] #canvas-display-select{display:block;width:100px;height:30px;min-height:30px;padding:4px 7px;border:1px solid var(--assembly-border);border-radius:7px;background:var(--assembly-control);color:var(--text);font:12px/1.4 var(--ui-font,system-ui);box-shadow:0 1px 3px var(--assembly-shadow)}}
+html[data-appearance] #canvas {padding:14px 18px 54px;}
+html[data-appearance] .paper {--canvas-page-height:1050px;min-height:var(--canvas-page-height);padding:42px 40px 52px;}
+/* Shared surface styles set a fixed paper width. Keep this canvas readable
+   when the material and detail rails leave less room for the document. */
+html[data-appearance] #canvas > .paper {box-sizing:border-box;width:min(794px,100%);max-width:100%;min-width:0;}
+html[data-appearance] .paper h2 {margin-bottom:22px;}
+html[data-appearance] .paper[data-continued=true]::after {content:attr(data-page) " · 续页";}
+html[data-appearance] .paper .material-frame {padding:12px 14px!important;margin-bottom:12px;border-radius:9px;background:linear-gradient(145deg,var(--assembly-control,#fff),var(--assembly-bar,#f8f9fa))!important;box-shadow:0 2px 5px var(--assembly-shadow,#1c293514),inset 0 1px var(--assembly-highlight,#fff);}
+html[data-appearance] .paper .material-caption {font:600 12px/1.6 system-ui,"Microsoft YaHei",sans-serif;white-space:normal;display:flex;flex-wrap:wrap;gap:4px 12px;margin:0 0 5px;}
+html[data-appearance] .paper .material-caption button {text-align:left;white-space:normal;line-height:1.6;}
+html[data-appearance] .paper .material-description {height:auto;max-height:none;overflow:visible;visibility:visible;opacity:1;margin:0 0 10px;color:var(--muted,#697582);font:12px/1.65 system-ui,"Microsoft YaHei",sans-serif;}
+html[data-appearance] .paper .material-description :is(p,ul,ol) {margin-block:4px;}
+html[data-appearance] .paper .material-description .katex {font-size:1.05em;}
+html[data-appearance] .paper .material-frame .editable {border-top:1px solid color-mix(in srgb,var(--assembly-border,#d1d6dc) 55%,transparent);padding-top:8px;}
+.canvas-display-changing .paper {animation:canvas-display-reveal .18s ease-out;}
+@keyframes canvas-display-reveal {from{opacity:.72}to{opacity:1}}
+@media(max-width:1100px) {html[data-appearance] #canvas {padding-inline:12px;}html[data-appearance] .paper {padding:34px 30px 48px;}}
+@media(prefers-reduced-motion:reduce) {.canvas-display-changing .paper {animation:none;}#canvas-display-mode button {transition:none;}}

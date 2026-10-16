@@ -2,6 +2,19 @@
 (function (R) {
 	let nextRequest = 0, queue = Promise.resolve();
  const imports=new Map(),Screen=ChromeUtils.importESModule('chrome://zotero/content/research/shared/paper-screening.mjs');
+ R.resolveAcademicTarget=async function(options={}){
+  const pane=Zotero.getActiveZoteroPane(),explicit=Object.hasOwn(options,'collectionID'),chosen=explicit?options.collectionID:pane.getSelectedCollections?.()[0]?.id;
+  let collection=null;if(chosen!=null&&chosen!==false){const id=Number(chosen);if(!Number.isInteger(id)||id<=0)throw Error('请选择有效的论文文件夹');collection=await Zotero.Collections.getAsync(id);if(!collection||collection.deleted)throw Error('论文文件夹已删除或不可用，请重新选择');}
+  const libraryID=Number(options.libraryID||collection?.libraryID||pane.getSelectedLibraryIDs()[0]||Zotero.Libraries.userLibraryID),library=Zotero.Libraries.get(libraryID);
+  if(!library?.editable)throw Error('目标文库只读');if(collection&&collection.libraryID!==libraryID)throw Error('论文文件夹与目标文库不一致');
+  return{libraryID,collectionID:collection?.id||null,collectionName:collection?.name||''};
+ };
+ const collectionInfo=collection=>{const names=[collection.name],seen=new Set([collection.id]);let parent=collection.parentID&&Zotero.Collections.get(collection.parentID);while(parent&&!seen.has(parent.id)){seen.add(parent.id);names.unshift(parent.name);parent=parent.parentID&&Zotero.Collections.get(parent.parentID);}return{id:collection.id,name:collection.name,libraryID:collection.libraryID,parentID:collection.parentID||null,path:names.join(' / ')};};
+ R.discoveryCollections=async function({libraryID=Zotero.Libraries.userLibraryID}={}){const library=Zotero.Libraries.get(libraryID);if(!library?.editable)throw Error('目标文库只读');return{libraryID,collections:Zotero.Collections.getByLibrary(libraryID,true,false).map(collectionInfo)};};
+ R.createDiscoveryCollection=async function(name,{parentID=null,libraryID=Zotero.Libraries.userLibraryID}={}){
+  name=String(name||'').trim();if(!name||name.length>200)throw Error('文件夹名称需要为 1–200 个字符');const target=await R.resolveAcademicTarget({libraryID,collectionID:parentID}),collection=new Zotero.Collection();collection.libraryID=target.libraryID;collection.name=name;if(target.collectionID)collection.parentID=target.collectionID;await collection.saveTx();return collectionInfo(collection);
+ };
+ R.placeAcademicInCollection=async function(itemID,options={}){const target=await R.resolveAcademicTarget(options);if(!target.collectionID)return target;let item=await Zotero.Items.getAsync(itemID);if(item?.parentID)item=await Zotero.Items.getAsync(item.parentID);if(!item||item.deleted||item.libraryID!==target.libraryID)throw Error('论文与目标文件夹不在同一个文库');if(!item.getCollections().includes(target.collectionID)){item.addToCollection(target.collectionID);await item.saveTx({skipSelect:true});}return target;};
  R.screenPaper=Screen.screenPaper;
  R.duplicatePaperSuggestions=async()=>{const groups=new Map(),items=await Zotero.Items.getAll(Zotero.Libraries.userLibraryID,true,false);for(const item of items){if(!item.isRegularItem()||item.deleted)continue;const key=Screen.paperIdentity({doi:item.getField('DOI'),url:item.getField('url')});if(!key)continue;const identity=key.replace(/^(arxiv:.*)v\d+$/,'$1');if(!groups.has(identity))groups.set(identity,[]);groups.get(identity).push({id:item.id,title:item.getField('title')});}return [...groups.entries()].filter(([,items])=>items.length>1).map(([identity,items])=>({identity,items}));};
 	const cached = new Map();
@@ -61,20 +74,20 @@
 		if (!attachment) throw new Error('PDF 下载失败；题录已保留，可点击原址下载');
 		await Zotero.Reader.open(attachment.id);
 	};
-	async function importRecord(record, { select = true } = {}) {
-		let pane = Zotero.getActiveZoteroPane(), libraryID = pane.getSelectedLibraryIDs()[0] || Zotero.Libraries.userLibraryID;
-		if (!Zotero.Libraries.get(libraryID).editable) throw new Error('目标文库只读');
+	async function importRecord(record, options = {}) {
+		const {select=true}=options,target=await R.resolveAcademicTarget(options);let pane=Zotero.getActiveZoteroPane(),libraryID=target.libraryID;
+		const reuse=async found=>{await R.placeAcademicInCollection(found.id,{libraryID,collectionID:target.collectionID});if(select)await pane.selectItem(found.id,{noTabSwitch:true});return{id:found.id,existing:true,...target};};
 		let search = new Zotero.Search(); search.libraryID = libraryID;
-        const identity=Screen.paperIdentity(record);if(identity?.startsWith('arxiv:')){const base=identity.slice(6).replace(/v\d+$/,'');const byURL=new Zotero.Search();byURL.libraryID=libraryID;byURL.addCondition('url','contains','arxiv.org/abs/'+base);const matches=await Zotero.Items.getAsync(await byURL.search());const found=matches.find(x=>x.isRegularItem()&&Screen.paperIdentity({url:x.getField('url')})?.replace(/v\d+$/,'')==='arxiv:'+base);if(found){if(select)await pane.selectItem(found.id,{noTabSwitch:true});return {id:found.id,existing:true};}}
+        const identity=Screen.paperIdentity(record);if(identity?.startsWith('arxiv:')){const base=identity.slice(6).replace(/v\d+$/,'');const byURL=new Zotero.Search();byURL.libraryID=libraryID;byURL.addCondition('url','contains','arxiv.org/abs/'+base);const matches=await Zotero.Items.getAsync(await byURL.search());const found=matches.find(x=>x.isRegularItem()&&!x.deleted&&Screen.paperIdentity({url:x.getField('url')})?.replace(/v\d+$/,'')==='arxiv:'+base);if(found)return reuse(found);}
 		const doi=Screen.doiKey(record.doi);if(!doi&&!record.url)throw Error('缺少 DOI 或可核验来源网址，无法判重入库');search.addCondition(doi ? 'DOI' : 'url', 'is', doi || record.url);
-		let existing = await search.search(); if (existing.length) { if(select) await pane.selectItem(existing[0], { noTabSwitch: true }); return { id: existing[0], existing: true }; }
+		let existing=await Zotero.Items.getAsync(await search.search()),found=existing.find(item=>item.isRegularItem()&&!item.deleted);if(found)return reuse(found);
 		let item = new Zotero.Item(record.source === 'arXiv' ? 'preprint' : 'journalArticle'); item.libraryID = libraryID;
 		for (let [field, value] of Object.entries({ title: record.title, abstractNote: record.abstract, date: record.date, DOI: record.doi, url: record.url })) if (value) item.setField(field, value);
 		if (record.source !== 'arXiv') { if (record.journal) item.setField('publicationTitle', record.journal); if (record.issn) item.setField('ISSN', record.issn); if(record.source==='PubMed')item.setField('extra', 'PMID: ' + record.id); }
 		else { item.setField('repository', 'arXiv'); item.setField('archiveID', record.id); }
-		item.setCreators(record.authors.map(a => ({ ...a, creatorType: 'author' })));
-		let collection = pane.getSelectedCollections()[0]; if (collection) item.setCollections([collection.id]);
-		await item.saveTx({skipSelect:!select}); if(select) await pane.selectItem(item.id, { noTabSwitch: true }); return { id: item.id, existing: false };
+		item.setCreators((record.authors||[]).map(a => ({ ...a, creatorType: 'author' })));
+		if(target.collectionID)item.setCollections([target.collectionID]);
+		await item.saveTx({skipSelect:!select});if(select)await pane.selectItem(item.id,{noTabSwitch:true});return{id:item.id,existing:false,...target};
 	};
- R.importAcademic=async function(record,options={}){const libraryID=Zotero.getActiveZoteroPane().getSelectedLibraryIDs()[0]||Zotero.Libraries.userLibraryID,key=libraryID+':'+Screen.paperIdentity(record);if(imports.has(key))return imports.get(key);const task=importRecord(record,options);imports.set(key,task);try{return await task;}finally{imports.delete(key);}};
+ R.importAcademic=async function(record,options={}){const target=await R.resolveAcademicTarget(options),key=target.libraryID+':'+Screen.paperIdentity(record);let task=imports.get(key);if(!task){task=importRecord(record,{...options,...target});imports.set(key,task);task.finally(()=>imports.delete(key)).catch(()=>{});}const result=await task;await R.placeAcademicInCollection(result.id,target);return{...result,...target};};
 })(Zotero.Research);

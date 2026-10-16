@@ -13,20 +13,23 @@ describe('Compact research surfaces', function () {
   if(!pdf)this.skip();win.Zotero_Tabs.select('zotero-pane');await win.ZoteroPane.selectItem(pdf.parentID||pdf.id);
   await wait(()=>win.document.querySelector('item-details:not([hidden]) .paper-cover')?.complete);
   const image=win.document.querySelector('item-details:not([hidden]) .paper-cover');assert.isAbove(image.naturalWidth,0);
-  const details=image.closest('item-details'),panes=details.getPanes();assert.include(panes[0].dataset.pane,'research-overview');assert.equal(panes[1].dataset.pane,'abstract');
-  assert.exists(details.querySelector('info-box .head .research-fields-toggle'));
-  assert.include(image.parentElement.textContent,'图片证据');const tabs=win.Zotero_Tabs.getState().length;
-  await E.renderPaperOverview(image.parentElement.parentElement,pdf.parentItem||pdf);assert.equal(win.Zotero_Tabs.getState().length,tabs);
+  const details=image.closest('item-details'),panes=details.getPanes();assert.include(panes[0].dataset.pane,'research-overview');assert.equal(details.getPane('abstract').dataset.easyschMetadata,'hidden');
+  const overview=image.closest('.paper-overview');assert.exists(overview.querySelector('.paper-overview-info .overview-edit'));
+  const tabs=win.Zotero_Tabs.getState().length;await E.renderPaperOverview(overview.parentElement,pdf.parentItem||pdf);assert.equal(win.Zotero_Tabs.getState().length,tabs);
+  const imagePane=panes.find(pane=>pane.dataset.pane.includes('research-images'));assert.exists(imagePane);assert.isFalse(details.sidenav.querySelector(`[data-pane="${imagePane.dataset.pane}"]`).parentElement.hidden);
   const panel=await E.openImageEvidence(pdf.id);assert.exists(panel);assert.equal(panel.getAttribute('aria-label'),'图片证据链');panel.closePanel();
   results.push('真实 PDF 首页可见；首页、摘要顺序；信息编辑位于标题行；预览不新开标签；首次加载阅读器后图片证据面板展开');
  });
  it('uses one calendar with task state and a bottom settings entry on both surfaces',async()=>{
   const M=ChromeUtils.importESModule('chrome://zotero/content/research/shared/compact-ui.mjs'),due=M.dateKey(new Date());
   await E.store.update(s=>{s.tasks=(s.tasks||[]).filter(t=>t.id!=='compact-calendar-fixture');s.tasks.push({id:'compact-calendar-fixture',title:'界面验收待办',due:due+'T18:00',done:false});});
-  const native=win.document.querySelector('#easysch-library-bottom .compact-calendar>button');assert.include(native.textContent,'项待办');native.click();
-  assert.include(win.document.querySelector('.calendar-tasks').textContent,'界面验收待办');const check=[...win.document.querySelectorAll('.calendar-tasks label')].find(n=>n.textContent==='界面验收待办').querySelector('input');check.click();await wait(()=>E.store.get('tasks').find(t=>t.id==='compact-calendar-fixture').done);
+  const calendar=win.document.querySelector('#easysch-library-bottom .calendar-inline');assert.exists(calendar,'常开日历位于原生文库左下角');assert.include(calendar.querySelector('.calendar-today').textContent,'项待办');
+  const native=calendar.querySelector(`[data-date="${due}"]`),selectedTab=win.Zotero_Tabs.selectedID;assert.exists(native);assert.equal(native.dataset.tone,'pending','当天未完成日程具有颜色状态');assert.isTrue(calendar.querySelector('.calendar-drawer').hidden);native.click();
+  assert.isFalse(calendar.querySelector('.calendar-drawer').hidden);assert.equal(win.Zotero_Tabs.selectedID,selectedTab,'单击日期在下方展开日程，不跳转工作台');
+  assert.include(calendar.querySelector('.calendar-tasks').textContent,'界面验收待办');const check=[...calendar.querySelectorAll('.calendar-tasks label')].find(n=>n.textContent==='界面验收待办').querySelector('input');check.click();await wait(()=>E.store.get('tasks').find(t=>t.id==='compact-calendar-fixture').done);
+  await wait(()=>[...calendar.querySelectorAll('.calendar-tasks label')].find(node=>node.textContent==='界面验收待办')?.querySelector('input')?.checked);const currentTasks=M.calendarTasks({projects:E.store.get('projects'),tasks:E.store.get('tasks')}).filter(task=>task.due?.slice(0,10)===due);assert.equal(calendar.querySelector(`[data-date="${due}"]`).dataset.tone,currentTasks.every(task=>task.done)?'complete':'pending','完成日程颜色与实际待办状态一致');
   assert.exists(ui.$('view-title').ownerDocument.querySelector('.rail-bottom [data-tab=settings]'));
-  assert.equal(win.getComputedStyle(win.document.getElementById('zotero-tag-selector-container')).display,'none');native.click();results.push('日历真实读取任务，完成状态同步保存；标签区替换为日历，设置固定底部');
+  assert.equal(win.getComputedStyle(win.document.getElementById('zotero-tag-selector-container')).display,'none');calendar.querySelector('.calendar-drawer .calendar-heading button').click();assert.isTrue(calendar.querySelector('.calendar-drawer').hidden);results.push('常开日历真实读取任务，日期点击从下方展开；完成状态与颜色同步保存；标签区替换为日历，设置固定底部');
  });
  it('creates directly into assembly without calling the feasibility model',async()=>{
   project=await E.notebook.beginProject({title:'界面验收 · 直接装配',skipAssessment:true});

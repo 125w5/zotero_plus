@@ -3,6 +3,17 @@ describe('Writing interaction acceptance',function(){
  const wait=async fn=>{for(let i=0;i<1600;i++){if(await fn())return;await Zotero.Promise.delay(100);}throw Error('等待前台超时');};
  const key=(node,value,extra={})=>node.dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown',{key:value,bubbles:true,cancelable:true,...extra}));
  const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent===text);
+ const activateComposer=input=>{input.dispatchEvent(new frame.contentWindow.PointerEvent('pointerdown',{bubbles:true}));input.focus();};
+ function assertCollapsedComposer(input,form){
+  const footer=doc.querySelector('body > footer'),ai=doc.getElementById('ai');
+  assert.isFalse(U.p.ui.aiOpen);assert.isTrue(ai.inert);assert.equal(ai.getAttribute('aria-hidden'),'true');assert.equal(ai.getBoundingClientRect().height,0,'收起对话不占据第二行');
+  assert.equal(form.parentElement,footer,'收起输入框与状态共享底栏');assert.equal(doc.getElementById('ai-prompt'),input,'保留同一输入节点');
+  assert.lengthOf(doc.querySelectorAll('#ai-form'),1);assert.lengthOf(doc.querySelectorAll('#ai-prompt'),1);
+  assert.isAtMost(footer.getBoundingClientRect().height,60,'整个底栏只有一行');
+  const inputRect=input.getBoundingClientRect(),toggleRect=doc.getElementById('toggle-ai').getBoundingClientRect();
+  assert.isAbove(inputRect.width,100);assert.closeTo((inputRect.top+inputRect.bottom)/2,(toggleRect.top+toggleRect.bottom)/2,3,'共创名称与输入同行');
+  assert.equal(frame.contentWindow.getComputedStyle(form.querySelector('.ai-collapsed-name')).display,'none','底栏不重复显示共创名称');
+ }
  async function shot(name){const image=await win.browsingContext.currentWindowGlobal.drawSnapshot(null,1,'white'),canvas=win.document.createElementNS('http://www.w3.org/1999/xhtml','canvas');canvas.width=image.width;canvas.height=image.height;canvas.getContext('2d').drawImage(image,0,0);const blob=await new Promise(r=>canvas.toBlob(r));await IOUtils.write(PathUtils.join(folder,name),new Uint8Array(await blob.arrayBuffer()));image.close();}
  before(async()=>{win=await loadZoteroPane();win.Zotero_Tabs.closeAll();await R.attachWindow(win);win.resizeTo(1560,1020);folder=PathUtils.join(Zotero.DataDirectory.dir,'writing-interaction');await IOUtils.makeDirectory(folder,{ignoreExisting:true});ui=await R.openWorkflow('writing');await R.preparePassageSearch();});
  after(async()=>{await R.store.flush();await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));win?.close();});
@@ -13,6 +24,13 @@ describe('Writing interaction acceptance',function(){
   const nav=doc.getElementById('left-tabs');nav.children[1].click();assert.equal(nav.querySelector('[aria-selected=true]').textContent,'☷ 论文结构');assert.lengthOf(nav.querySelectorAll('.active'),1);nav.children[0].click();assert.isAbove(doc.querySelectorAll('#material-results .material').length,0);assert.isAtLeast(parseInt(doc.getElementById('left').style.width),380);assert.notMatch(doc.getElementById('material-results').textContent,/无期刊 IF|年份未标明/);const card=doc.querySelector('.material');assert.include(card.title,R.manuscripts.summaryFor(R.notebook.materials(p.id).find(m=>m.id===card.dataset.material)));
   await R.notebook.update(p.id,{query:'实验设置'});await wait(()=>doc.querySelector('.fulltext-matches'));assert.isFalse(doc.querySelector('.fulltext-matches').open);button(doc,'清除筛选').click();await wait(()=>!R.notebook.query(p.id));assert.isAbove(doc.querySelectorAll('#material-results .material').length,0);await shot('02-material-library.png');report.dom.push('既有真实素材、分类状态、悬停说明、清除查询、折叠全文');
  });
+ it('starts with one bottom composer row and no idle guidance or status strip',async()=>{
+  if(U.p.ui.aiOpen)doc.getElementById('toggle-ai').click();await wait(()=>doc.getElementById('ai').hidden);
+  const input=doc.getElementById('ai-prompt'),form=doc.getElementById('ai-form');assertCollapsedComposer(input,form);
+  const recommendation=doc.getElementById('recommendation');assert.isTrue(recommendation.hidden);assert.isEmpty(recommendation.textContent);assert.equal(recommendation.getBoundingClientRect().height,0);
+  await wait(()=>doc.getElementById('status').hidden,'闲置状态自动隐藏');assert.isTrue(doc.getElementById('ai-notice').hidden);
+  report.dom.push('收起共创与输入合为一行；无占位引导语或常驻闲置状态栏');
+ });
  it('formats selected prose with Ctrl+B, undoes it and guards IME',async()=>{
   const b=U.p.blocks[0];b.text='基线比较需要使用相同的数据划分。';b.emptyStarter=false;U.selectBlock(b.id);U.renderEditor();let node=doc.querySelector(`[data-id="${b.id}"] .editable`);node.focus();const range=doc.createRange();range.selectNodeContents(node);const selection=frame.contentWindow.getSelection();selection.removeAllRanges();selection.addRange(range);key(node,'b',{ctrlKey:true});assert.isTrue(U.p.blocks[0].runs.some(r=>r.bold));key(node,'z',{ctrlKey:true});assert.isFalse(U.p.blocks[0].runs?.some(r=>r.bold)||false);node=doc.querySelector(`[data-id="${b.id}"] .editable`);const count=U.p.blocks.length;key(node,'Enter',{ctrlKey:true,isComposing:true});assert.equal(U.p.blocks.length,count);report.dom.push('实际 Gecko 编辑选区 Ctrl+B/撤销；受控组合输入事件');
  });
@@ -20,21 +38,52 @@ describe('Writing interaction acceptance',function(){
   const paper=doc.querySelector('.paper'),r=paper.getBoundingClientRect(),count=U.p.blocks.length;paper.dispatchEvent(new frame.contentWindow.MouseEvent('dblclick',{bubbles:true,clientX:r.left+100,clientY:r.top+330}));assert.equal(U.p.blocks.length,count+1);let b=U.p.blocks.find(b=>b.id===U.p.ui.blockID);assert.isAtLeast(b.spaceBefore,14);let node=doc.querySelector(`[data-id="${b.id}"] .editable`);node.focus();key(node,'Enter',{ctrlKey:true});assert.isTrue(U.p.blocks.some(b=>b.pageBreakBefore));assert.isAbove(doc.querySelectorAll('.paper').length,U.p.sections.length);doc.getElementById('canvas').dispatchEvent(new frame.contentWindow.WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:100}));assert.equal(U.p.ui.paperZoom,.95);assert.equal(doc.getElementById('paper-zoom').textContent,'95%');report.dom.push('空白处双击、光标分页、Ctrl+滚轮局部缩放');
  });
  it('keeps one composer row collapsed, restores draft and shows formula/table previews',async()=>{
-  if(U.p.ui.aiOpen)doc.getElementById('toggle-ai').click();assert.isTrue(doc.getElementById('ai-history').hidden);assert.isFalse(doc.getElementById('ai').hidden);const input=doc.getElementById('ai-prompt');input.focus();input.dispatchEvent(new frame.contentWindow.FocusEvent('focus'));assert.isTrue(U.p.ui.aiOpen);input.value='核对当前实验设计的可证伪性';input.dispatchEvent(new frame.contentWindow.Event('input',{bubbles:true}));await U.persist();assert.equal(R.manuscripts.get(p.id).ui.aiDraft,input.value);await U.insertBlock('formula',{text:'E=mc^2'});assert.exists(doc.querySelector('#details .katex-display'));button(doc.getElementById('insert-tools'),'表格').click();doc.querySelector('#grid button[data-row="3"][data-col="3"]').click();assert.exists(doc.querySelector('#details .object-preview table'));await shot('03-editor-chat-preview.png');report.dom.push('固定底部输入、收起/聚焦展开、草稿持久化、公式表格实际预览');
+  if(U.p.ui.aiOpen)doc.getElementById('toggle-ai').click();await wait(()=>doc.getElementById('ai').hidden);const input=doc.getElementById('ai-prompt'),form=doc.getElementById('ai-form');assertCollapsedComposer(input,form);activateComposer(input);assert.isTrue(U.p.ui.aiOpen);assert.isFalse(doc.getElementById('ai').hidden);assert.equal(form.parentElement,doc.querySelector('body > footer'),'展开后仍使用最底部的同一输入框');assert.equal(doc.activeElement,input,'展开后焦点仍在同一输入框');input.value='核对当前实验设计的可证伪性';input.dispatchEvent(new frame.contentWindow.Event('input',{bubbles:true}));await U.persist();assert.equal(R.manuscripts.get(p.id).ui.aiDraft,input.value);await U.insertBlock('formula',{text:'E=mc^2'});assert.exists(doc.querySelector('#details .katex-display'));button(doc.getElementById('insert-tools'),'表格').click();doc.querySelector('#grid button[data-row="3"][data-col="3"]').click();assert.exists(doc.querySelector('#details .object-preview table'));await shot('03-editor-chat-preview.png');report.dom.push('单行底部输入、同一节点聚焦展开、输入焦点与草稿保留、公式表格实际预览');
  });
  it('keeps the coauthor composer aligned, supports newlines and preserves draft while choosing templates',async()=>{
   const input=doc.getElementById('ai-prompt'),form=doc.getElementById('ai-form'),history=doc.getElementById('ai-history');
   input.focus();assert.equal(input.localName,'textarea');
   const formRect=form.getBoundingClientRect(),historyRect=history.getBoundingClientRect();
-  assert.closeTo(formRect.width,historyRect.width,2);assert.isAtMost(formRect.width,1020);
+  assert.equal(form.parentElement,doc.querySelector('body > footer'));assert.isAbove(formRect.width,100);assert.isAtMost(formRect.right,frame.contentWindow.innerWidth);
   assert.isBelow(historyRect.bottom,formRect.bottom);
   let submissions=0;const intercept=e=>{e.preventDefault();e.stopImmediatePropagation();submissions++;};form.addEventListener('submit',intercept,true);
   try{key(input,'Enter',{shiftKey:true});key(input,'Enter',{isComposing:true});assert.equal(submissions,0);key(input,'Enter');assert.equal(submissions,1);}finally{form.removeEventListener('submit',intercept,true);}
   key(input,'Tab');assert.equal(doc.activeElement.dataset.template,'search');
   key(doc.activeElement,'Escape');assert.equal(doc.activeElement,input);assert.isTrue(form.querySelector('.prompt-templates').hidden);
-  const draft=input.value;doc.getElementById('collapse-chat').click();assert.isTrue(history.hidden);assert.isAtMost(doc.getElementById('ai').getBoundingClientRect().height,66);assert.equal(input.value,draft);
-  input.dispatchEvent(new frame.contentWindow.PointerEvent('pointerdown'));input.focus();assert.isFalse(history.hidden);assert.equal(input.value,draft);
-  await shot('06-coauthor-dock.png');report.dom.push('共创输入与消息同宽、Enter 发送/Shift+Enter 换行/组词保护、Tab 模板、Esc 收起、草稿保留');
+  const draft=input.value;doc.getElementById('collapse-chat').click();await wait(()=>doc.getElementById('ai').hidden);assertCollapsedComposer(input,form);assert.equal(input.value,draft);
+  activateComposer(input);assert.isFalse(doc.getElementById('ai').inert);assert.equal(doc.activeElement,input);assert.equal(doc.getElementById('ai-prompt'),input);assert.equal(input.value,draft);
+  input.value=draft+'\n请再核对控制变量。';input.dispatchEvent(new frame.contentWindow.Event('input',{bubbles:true}));await U.persist();assert.equal(R.manuscripts.get(p.id).ui.aiDraft,input.value,'重新展开后仍能继续编辑并保存');
+  await shot('06-coauthor-dock.png');report.dom.push('底栏输入不移位、对话向上展开、Enter 发送/Shift+Enter 换行/组词保护、Tab 模板、Esc 收起、草稿保留');
+ });
+ it('keeps a focused composer, caret and input handlers when collapsing into the footer',async()=>{
+  const input=doc.getElementById('ai-prompt'),form=doc.getElementById('ai-form');activateComposer(input);
+  const previous=input.value,draft='检查采集批次\n以及训练、验证、测试划分';
+  try{
+   input.value=draft;input.dispatchEvent(new frame.contentWindow.Event('input',{bubbles:true}));input.setSelectionRange(2,6,'backward');
+   doc.getElementById('collapse-chat').click();await wait(()=>doc.getElementById('ai').hidden);assertCollapsedComposer(input,form);
+   assert.equal(doc.activeElement,input,'收起时不丢失正在输入的焦点');
+   assert.equal(input.value,draft);assert.equal(input.selectionStart,2);assert.equal(input.selectionEnd,6);assert.equal(input.selectionDirection,'backward');
+   await Zotero.Promise.delay(50);assert.isFalse(U.p.ui.aiOpen,'保留输入节点的焦点事件不能把对话重新展开');
+   input.value=draft+'\n补充独立随机种子。';input.dispatchEvent(new frame.contentWindow.Event('input',{bubbles:true}));await U.persist();
+   assert.isFalse(U.p.ui.aiOpen,'只编辑收起的输入栏，不自动扩大面板');assertCollapsedComposer(input,form);
+   assert.equal(R.manuscripts.get(p.id).ui.aiDraft,input.value,'展开收起后输入和保存监听仍然工作');
+   activateComposer(input);assert.isTrue(U.p.ui.aiOpen);assert.equal(doc.activeElement,input);assert.equal(doc.getElementById('ai-form'),form);
+   report.dom.push('实际DOM同一输入节点：收起保留焦点、草稿与选区，不自行重新展开；输入监听及显式重新展开继续有效');
+  }finally{input.value=previous;input.dispatchEvent(new frame.contentWindow.Event('input',{bubbles:true}));await U.persist();}
+ });
+ it('keeps the collapsed input and status controls inside one row at a narrower window width',async()=>{
+  const input=doc.getElementById('ai-prompt'),form=doc.getElementById('ai-form'),wasOpen=U.p.ui.aiOpen;
+  try{
+   if(wasOpen)doc.getElementById('collapse-chat').click();win.resizeTo(1100,1020);await wait(()=>doc.getElementById('ai').hidden);await Zotero.Promise.delay(250);assertCollapsedComposer(input,form);
+   const footer=doc.querySelector('body > footer'),bounds=footer.getBoundingClientRect();
+   for(const id of ['toggle-ai','ai-form','ask-ai','check','save-status','paper-zoom']){
+    const node=doc.getElementById(id),rect=node.getBoundingClientRect();assert.isAbove(rect.width,0,id+'保持可见');
+    assert.isAtLeast(rect.left,bounds.left-1,id+'不越过左边界');assert.isAtMost(rect.right,bounds.right+1,id+'不越过右边界');
+    assert.isAtLeast(rect.top,bounds.top-1,id+'不增加上方第二行');assert.isAtMost(rect.bottom,bounds.bottom+1,id+'不增加下方第二行');
+   }
+   assert.isAtMost(footer.scrollWidth,footer.clientWidth+1,'窄窗底栏不横向溢出');
+   report.dom.push('1100px窗口：底栏输入、发送、核验、保存和缩放同排且没有横向溢出');
+  }finally{win.resizeTo(1560,1020);await Zotero.Promise.delay(100);if(wasOpen)activateComposer(input);}
  });
  it('keeps the branded heading and input fixed while conversation scrolls in both themes',async()=>{
   const fw=frame.contentWindow,appearance=fw.ResearchAppearance,previous=doc.getElementById('writing-appearance').value;

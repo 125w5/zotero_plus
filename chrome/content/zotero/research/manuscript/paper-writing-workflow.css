@@ -1,0 +1,38 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.paper-writing-workflow{margin:22px 0 30px;border:1px solid var(--border,#dce3eb);border-radius:16px;background:var(--surface,#f8fafc);font:13px/1.65 system-ui;color:var(--text,#273346);box-shadow:0 3px 12px #152c4210}
+.paper-writing-workflow>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;cursor:pointer;font-weight:600;list-style:none;border-radius:16px}
+.paper-writing-workflow>summary::after{content:'⌄';font-size:17px;color:var(--muted,#68778b)}
+.paper-writing-workflow[open]>summary::after{transform:rotate(180deg)}
+.paper-writing-workflow>summary:focus-visible{outline:2px solid #a6bfd6;outline-offset:2px}
+.paper-writing-workflow>summary small{margin-left:auto;font-size:11px;color:var(--muted,#68778b);font-weight:400}
+.paper-workflow-content{padding:0 20px 20px}
+.paper-workflow-global>summary,.paper-workflow-source-settings>summary{cursor:pointer;padding:12px 0;color:var(--text,#273346);font-weight:600}
+.paper-workflow-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px 20px;margin:8px 0 20px}
+.paper-workflow-field{display:flex;flex-direction:column;gap:7px;min-width:0;font-weight:500}
+.paper-workflow-field textarea{box-sizing:border-box;width:100%;min-height:82px;resize:vertical;padding:10px 12px;border:1px solid var(--border,#dce3eb);border-radius:10px;background:var(--surface-raised,#fff);color:inherit;font:400 13px/1.7 system-ui;transition:border-color .15s,box-shadow .15s}
+.paper-workflow-field textarea:focus{outline:none;border-color:#8aaac5;box-shadow:0 0 0 3px #7fa9d41b}
+.paper-workflow-field textarea::placeholder{color:var(--muted,#788596);font-size:12px}
+.paper-workflow-chapter{border-top:1px solid var(--border,#dce3eb);padding-top:17px}
+.paper-workflow-chapter-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.paper-workflow-chapter-heading h3{margin:0;font:600 15px/1.6 system-ui}
+.paper-workflow-chapter-heading select{max-width:60%;padding:6px 9px;border:1px solid var(--border,#dce3eb);border-radius:8px;background:var(--surface-raised,#fff);color:inherit}
+.paper-workflow-purpose{margin:10px 0 15px;color:var(--muted,#68778b);font-size:12px}
+.paper-workflow-source-map{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px}
+.paper-workflow-source-map th{font-weight:500;color:var(--muted,#68778b)}
+.paper-workflow-source-map th:first-child{width:52%;text-align:left}
+.paper-workflow-source-map th,.paper-workflow-source-map td{padding:8px 4px;border-bottom:1px solid var(--border,#e3e8ee);text-align:center}
+.paper-workflow-source-map td:first-child{text-align:left}
+.paper-workflow-source-map input,.paper-workflow-figures input{width:17px;height:17px;accent-color:#6488a6;cursor:pointer}
+.paper-workflow-material{display:block;max-width:100%;padding:3px 0!important;border:0!important;background:transparent!important;color:inherit;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:none!important}
+.paper-workflow-figures{display:grid;gap:7px;margin:16px 0}
+.paper-workflow-figures label{display:flex;gap:8px;align-items:center;min-width:0}
+.paper-workflow-figures span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.paper-workflow-actions,.paper-workflow-check{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:16px}
+.paper-workflow-actions button,.paper-workflow-check button{min-height:34px;padding:6px 12px;border:1px solid var(--border,#dce3eb);border-radius:9px;background:var(--surface-raised,#fff);color:inherit;cursor:pointer}
+.paper-workflow-actions button:first-child{background:#e9f1fa;border-color:#d3e1f1;color:#35546c}
+.paper-workflow-check small{color:var(--muted,#68778b);font-size:11px}
+.paper-workflow-issues{margin-top:12px;font-size:12px;color:var(--muted,#68778b)}
+.paper-workflow-issues ul{margin:0;padding-left:20px;display:grid;gap:5px}
+.paper-workflow-issues p{margin:0}
+@media(max-width:1100px){.paper-workflow-grid{grid-template-columns:1fr}.paper-writing-workflow>summary small{display:none}}
+@media(prefers-reduced-motion:reduce){.paper-workflow-field textarea{transition:none}}

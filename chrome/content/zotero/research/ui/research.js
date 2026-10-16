@@ -19,11 +19,8 @@ Object.assign(EasySchUI, {
 			this.current.tags = [...new Set([...this.current.tags, ...this.record.result.keywords])];
 			this.status('关键词已加入 Zotero 标签');
 		});
-		this.bind('to-draft', async () => {
-			if (!this.record) throw new Error('请先选择分析记录');
-			this.$('draft').value += '\n\n' + this.E.core.resultMarkdown(this.record);
-			this.dirty = true; await this.saveDraft(); this.show('writing');
-		});
+		// AI analysis belongs in research notes; the writing editor remains manual.
+		this.$('to-draft')?.remove();
 		this.bind('clear-memory', async () => {
 			if (!this.current) return;
 			if (!window.confirm('清除此篇论文的本地 AI 历史？原生笔记与论文不会删除。')) return;
@@ -101,6 +98,13 @@ Object.assign(EasySchUI, {
 		}
 	},
 	async run(mode) {
+		if (mode === 'ask' && this.openAgentWorkbench) {
+			const prompt = this.$('prompt').value.trim(); if (!prompt) throw Error('请输入研究问题');
+			this.openAgentWorkbench(prompt);
+			this.agentMode.value = 'auto'; this.agentData.mode = 'auto';
+			if (this.current) await this.previewAgentSource({ ...this.current, kind: 'paper', stableID: 'paper:' + this.current.id, ...(this.selection ? { selection: this.selection } : {}) });
+			return this.runAgentTask();
+		}
 		if (this.busy) throw new Error('已有分析进行中，请等待或取消');
 		if (!this.current) throw new Error('请先读取选中文献');
 		if (mode === 'translate' && !this.selection) throw new Error('请先在 PDF 阅读器中选择文字');
@@ -121,7 +125,7 @@ Object.assign(EasySchUI, {
 			let record = await this.E.ai.run({ mode, papers, prompt, selection: this.selection,
 				onStatus: s => this.status(s) });
 			this.renderHistory(); this.record = record; this.renderResult();
-			this.status('分析已保存。请逐项核对原文证据；可追加到写作草稿后导出。');
+			this.status('分析已保存。请核对原文证据；可保存为研究笔记。');
 		}
 		finally { this.busy = false; this.$('cancel').hidden = true; for (let id of actions) this.$(id).disabled = false; }
 	},

@@ -213,7 +213,8 @@ const getAnchorOffset = (anchorEl, popoverEl, padding = 5) => {
 		}
 
 		hide() {
-			this.panel.hidePopup();
+			// The containing window may remove the popup before Reader teardown.
+			this.panel?.hidePopup();
 		}
 
 		_initNavButton(dir, nextID) {

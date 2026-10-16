@@ -2,11 +2,23 @@
 (function(E){
  const clone=x=>JSON.parse(JSON.stringify(x));
  const Geometry=ChromeUtils.importESModule('chrome://zotero/content/research/shared/annotation-geometry.mjs');
+ const Reading=ChromeUtils.importESModule('chrome://zotero/content/research/shared/reader-rapid-reading.mjs');
+ Reading.installRapidReading(E,{Zotero});
+ const ActiveReader=ChromeUtils.importESModule('chrome://zotero/content/research/shared/active-reader.mjs');
+ E.readerForAttachment=id=>ActiveReader.activeReaderForAttachment(Zotero.Reader._readers,id,Zotero.getMainWindow());
+ E.readerWriteIssue=(reader,attachment)=>{
+  if(!attachment?.isPDFAttachment?.())return '来源 PDF 已不可用';
+  if(reader&&reader.itemID!==attachment.id)return '阅读器来源已切换，请重新选择原文';
+  if(attachment.deleted||attachment.parentItem?.deleted)return '来源 PDF 或所属论文已移入回收站';
+  if(reader?._internalReader?._state?.readOnly||!attachment.isEditable()||!Zotero.Libraries.get(attachment.libraryID)?.editable)return '当前 PDF 只读，无法保存批注或笔记';
+  return '';
+ };
+ E.assertReaderWritable=(reader,attachment)=>{const issue=E.readerWriteIssue(reader,attachment);if(issue)throw Error(issue);return attachment;};
  E.openReaderReady=async attachmentID=>{
-  let reader=await Zotero.Reader.open(attachmentID);
+  let reader=E.readerForAttachment(attachmentID)||await Zotero.Reader.open(attachmentID);
   // Selecting an unloaded/restored Zotero tab deliberately returns undefined.
   // Wait for that tab's reader instead of opening a duplicate.
-  for(let i=0;!reader&&i<200;i++){await Zotero.Promise.delay(50);reader=Zotero.Reader._readers.find(r=>r.itemID===attachmentID&&!r._isTabClosed);}
+  for(let i=0;!reader&&i<200;i++){await Zotero.Promise.delay(50);reader=E.readerForAttachment(attachmentID);}
   if(!reader)throw Error('PDF 阅读器未能加载，请重试已有标签');await reader._initPromise;return reader;
  };
  E.readerSelection=reader=>{
@@ -20,7 +32,7 @@
  };
  E.annotateSelection=(reader,selection,type='highlight')=>{
   if(!selection?.position?.rects?.length)throw Error('请先选择 PDF 文字');
-  const core=reader._internalReader;if(core._state.readOnly)throw Error('当前文库只读');
+  const core=reader._internalReader;E.assertReaderWritable(reader,Zotero.Items.get(selection.attachmentID));
   const positions=type==='strikeout'?Geometry.strikePositions(selection.position):[clone(selection.position)];
   const created=[];
   for(const position of positions){
@@ -44,11 +56,11 @@
   await E.store.update(s=>{s.readerNoteLinks||={};s.readerNoteLinks[note.id+':'+annotation.key]=link;});return link;
  };
  E.discoverNoteLinks=async note=>{
-  if(!note?.isNote())return;
+  if(!note?.isNote?.())return;
   const html=note.getNote(),parser=new (Zotero.getMainWindow().DOMParser)(),doc=parser.parseFromString(html,'text/html'),keys=new Set();
   for(const a of doc.querySelectorAll('a[href*="annotation="]')){const k=a.getAttribute('href').match(/[?&]annotation=([A-Z0-9]{8})/);if(k)keys.add(k[1]);}
   for(const a of doc.querySelectorAll('[data-annotation]'))try{const d=JSON.parse(decodeURIComponent(a.dataset.annotation));if(d.annotationKey)keys.add(d.annotationKey);}catch(_){}
-  for(const key of keys){const annotation=Zotero.Items.getByLibraryAndKey(note.libraryID,key);if(!annotation?.isAnnotation())continue;const exists=Object.values(E.store.get('readerNoteLinks')||{}).some(x=>x.noteID===note.id&&x.annotationKey===key);if(!exists)await E.rememberNoteLink(annotation,note,{legacy:true});}
+  for(const key of keys){const annotation=await Zotero.Items.getByLibraryAndKeyAsync(note.libraryID,key);if(!annotation?.isAnnotation?.())continue;const exists=Object.values(E.store.get('readerNoteLinks')||{}).some(x=>x.noteID===note.id&&x.annotationKey===key);if(!exists)await E.rememberNoteLink(annotation,note,{legacy:true});}
  };
  E.notePage=note=>{
   const links=Object.values(E.store.get('readerNoteLinks')||{}).filter(x=>x.noteID===note.id);if(links.length)return Math.min(...links.map(x=>x.pageIndex));
@@ -72,13 +84,14 @@
   for(let i=0;!annotation&&i<60;i++){await Zotero.Promise.delay(100);annotation=Zotero.Items.getByLibraryAndKey(attachment.libraryID,key);}
   if(!annotation)throw Error('批注尚未保存，请稍候重试');
   const existing=E.noteLinkForAnnotation(reader.itemID,key);if(existing){await E.openReaderNote(existing.noteID,reader);return existing;}
+  E.assertReaderWritable(reader,attachment);
   const note=await Zotero.EditorInstance.createNoteFromAnnotations([annotation],{parentID:attachment.parentID||undefined,collectionID:!attachment.parentID?attachment.getCollections()[0]:undefined});
   const link=await E.rememberNoteLink(annotation,note);await E.openReaderNote(note.id,reader);return link;
  };
- E.saveAssetNote=async asset=>{
+ E.saveAssetNote=async(asset,{reader:sourceReader}={})=>{
   if(!asset?.attachmentID||!asset?.id)throw Error('图片没有可定位的 PDF 来源，无法保存为关联笔记');
   const attachment=await Zotero.Items.getAsync(asset.attachmentID);if(!attachment||attachment.deleted)throw Error('来源 PDF 不存在或已移入回收站');
-  const open=async(noteID,annotationID,reused,warning)=>{let reader;try{reader=await E.openReaderReady(attachment.id);await E.openReaderNote(noteID,reader);}catch(error){throw Error('图片笔记已保存，但未能在右侧打开：'+error.message+'。再次点击可重试打开');}return {noteID,annotationID,reused,warning};};
+  const open=async(noteID,annotationID,reused,warning)=>{let reader;try{reader=sourceReader?.itemID===attachment.id&&sourceReader._window&&!sourceReader._isTabClosed&&!sourceReader._isUninitialized?sourceReader:await E.openReaderReady(attachment.id);await reader._initPromise;await E.openReaderNote(noteID,reader);}catch(error){throw Error('图片笔记已保存，但未能在右侧打开：'+error.message+'。再次点击可重试打开');}return {noteID,annotationID,reused,warning};};
   const position=E.assets.position(asset),links=Object.values(E.store.get('readerNoteLinks')||{}).filter(link=>link.attachmentID===attachment.id);
   for(const link of links){const linkedNote=await Zotero.Items.getAsync(link.noteID);if(!linkedNote||linkedNote.deleted)continue;
    if(link.assetID===asset.id)return open(link.noteID,link.annotationID,true);
@@ -88,6 +101,7 @@
    let prior;try{prior=JSON.parse(old.annotationPosition);}catch{continue;}if(prior.pageIndex!==position.pageIndex||JSON.stringify(prior.rects)!==JSON.stringify(position.rects))continue;
    await E.store.update(state=>{for(const entry of Object.values(state.readerNoteLinks||{}))if(entry.noteID===link.noteID&&entry.annotationID===link.annotationID)entry.assetID=asset.id;});return open(link.noteID,link.annotationID,true);
   }
+  E.assertReaderWritable(sourceReader||E.readerForAttachment(attachment.id),attachment);
   const annotation=new Zotero.Item('annotation');annotation.libraryID=attachment.libraryID;annotation.parentID=attachment.id;annotation.annotationType='image';annotation.annotationColor='#a28ae5';annotation.annotationPosition=JSON.stringify(position);annotation.annotationPageLabel=String(asset.pageIndex+1);annotation.annotationSortIndex=String(asset.pageIndex).padStart(5,'0')+'|000000|00000';annotation.annotationComment=asset.label+' · 原图笔记';await annotation.saveTx();
   let note;try{note=await Zotero.EditorInstance.createNoteFromAnnotations([annotation],{parentID:attachment.parentID||undefined,collectionID:!attachment.parentID?attachment.getCollections()[0]:undefined});}catch(error){try{await Zotero.Items.trashTx(annotation.id);}catch(cleanupError){Zotero.logError(cleanupError);}throw Error('图片笔记创建失败：'+error.message);}
   await E.rememberNoteLink(annotation,note,{assetID:asset.id});let warning;
@@ -96,17 +110,18 @@
  };
  E.selectionImageNote=async(reader,selection)=>{
   if(!selection)throw Error('先框选图片，或选择图内文字');
+  E.assertReaderWritable(reader,Zotero.Items.get(selection.attachmentID));
   const indexed=await E.assets.index(reader.itemID,()=>{}),rects=selection.position.rects;
   const union=[Math.min(...rects.map(r=>r[0])),Math.min(...rects.map(r=>r[1])),Math.max(...rects.map(r=>r[2])),Math.max(...rects.map(r=>r[3]))];
   const candidates=indexed.assets.filter(a=>a.pageIndex===selection.pageIndex&&a.kind!=='formula').map(a=>({a,r:E.assets.position(a).rects[0]})).filter(({r})=>Math.min(r[2],union[2])>Math.max(r[0],union[0])&&Math.min(r[3],union[3])>Math.max(r[1],union[1]));
   const position=candidates.length===1?E.assets.position(candidates[0].a):{pageIndex:selection.pageIndex,rects:[union]};
-  const attachment=Zotero.Items.get(reader.itemID),annotation=new Zotero.Item('annotation');annotation.libraryID=attachment.libraryID;annotation.parentID=attachment.id;annotation.annotationType='image';annotation.annotationColor='#2ea8e5';annotation.annotationComment=candidates.length===1?(E.assets.materialFor(candidates[0].a)?.summary||candidates[0].a.caption||'图片批注'):'图片区域批注 · 请核对边界';annotation.annotationPosition=JSON.stringify(position);annotation.annotationPageLabel=String(position.pageIndex+1);annotation.annotationSortIndex=selection.sortIndex||String(position.pageIndex).padStart(5,'0')+'|000000|00000';await annotation.saveTx();await reader.setAnnotations([annotation]);return E.noteFromAnnotation(reader,annotation.key);
+  const attachment=E.assertReaderWritable(reader,Zotero.Items.get(reader.itemID)),annotation=new Zotero.Item('annotation');annotation.libraryID=attachment.libraryID;annotation.parentID=attachment.id;annotation.annotationType='image';annotation.annotationColor='#2ea8e5';annotation.annotationComment=candidates.length===1?(E.assets.materialFor(candidates[0].a)?.summary||candidates[0].a.caption||'图片批注'):'图片区域批注 · 请核对边界';annotation.annotationPosition=JSON.stringify(position);annotation.annotationPageLabel=String(position.pageIndex+1);annotation.annotationSortIndex=selection.sortIndex||String(position.pageIndex).padStart(5,'0')+'|000000|00000';await annotation.saveTx();await reader.setAnnotations([annotation]);return E.noteFromAnnotation(reader,annotation.key);
  };
  E.installReaderTools=()=>{
   const toolbar=({reader,doc,append})=>{
    if(reader.type!=='pdf')return;
-   const b=doc.createElement('button');b.textContent='划掉';b.title='删除线批注 · 先选中文字，再按 Delete';b.style.cssText='width:auto;color:#8d4650;font:inherit;padding:3px 7px';b.onclick=()=>{try{E.annotateSelection(reader,E.readerSelection(reader),'strikeout');}catch(e){b.title=e.message;}};append(b);
-   reader._initPromise.then(()=>E.attachReaderInteractions(reader)).catch(e=>Zotero.logError(e));
+   const b=doc.createElement('button');b.className='toolbar-button easysch-rapid-open';b.type='button';b.textContent='速读';b.title='依据当前论文阅读问题、方法、结果与原始图表';b.setAttribute('aria-label','切换速读');b.setAttribute('aria-pressed',E.isReaderRapidReadingOpen(reader)?'true':'false');b.style.cssText='width:auto;padding:4px 9px;font:inherit;color:inherit;border-radius:6px;-moz-window-dragging:no-drag';b.onclick=()=>E.toggleReaderRapidReading(reader).catch(Zotero.logError);append(b);
+   reader._initPromise.then(()=>{E.queueReaderRapidReading?.(reader.itemID,{origin:'open'});return E.attachReaderInteractions(reader);}).catch(e=>Zotero.logError(e));
   };
   const context=({reader,params,append})=>{
    const ids=params.ids||[];for(const id of ids.slice(0,1)){append({label:'打开或保存为笔记',onCommand:()=>E.noteFromAnnotation(reader,id).catch(e=>Zotero.logError(e))});}
@@ -121,10 +136,18 @@
    E.setTimeout(()=>{queue=queue.then(()=>E.syncNoteLinks(noteIDs)).catch(e=>Zotero.logError(e));},0);
   }},['item'],'easysch-note-links');
  };
+ E.prepareNoteStyles=async editor=>{
+  const instance=editor.getCurrentInstance();if(!instance)return false;await instance._initPromise;
+  if(editor.getCurrentInstance()!==instance||!editor.isConnected)return false;
+  const noteDoc=Cu.unwaiveXrays(instance._iframeWindow||editor._iframe?.contentWindow)?.document;if(!noteDoc)return false;
+  await Promise.all([Reading.readingStyle(noteDoc,{Zotero}),E.prepareContentStyles(noteDoc)]);
+  return editor.getCurrentInstance()===instance&&editor.isConnected;
+ };
  E.installNoteTools=editor=>{
   const doc=editor.ownerDocument,head=editor.querySelector('.custom-head');if(!head||editor.mode!=='edit')return;
+  E.prepareNoteStyles(editor).catch(Zotero.logError);
   head.querySelector('.easysch-note-insert')?.remove();head.classList.remove('empty');
-  const bar=doc.createElementNS('http://www.w3.org/1999/xhtml','div'),add=doc.createElementNS('http://www.w3.org/1999/xhtml','button'),status=doc.createElementNS('http://www.w3.org/1999/xhtml','small');bar.className='easysch-note-insert';bar.style.cssText='display:flex;align-items:center;gap:8px;padding:3px 8px';add.textContent='＋ 插入';add.title='图片、Excel / CSV 表格或公式';add.style.cssText='font:inherit;color:inherit;border:1px solid #8885;border-radius:6px;padding:3px 8px;background:transparent';status.style.cssText='color:GrayText;overflow-wrap:anywhere';bar.append(add,status);head.append(bar);
+  const bar=doc.createElementNS('http://www.w3.org/1999/xhtml','div'),add=doc.createElementNS('http://www.w3.org/1999/xhtml','button'),status=doc.createElementNS('http://www.w3.org/1999/xhtml','small');bar.className='easysch-note-insert';bar.style.cssText='display:flex;align-items:center;gap:8px;padding:5px 8px;min-height:32px;box-sizing:border-box;font:13px/1.5 var(--ui-font,system-ui);border-bottom:1px solid var(--ui-border,#dfe4e9);background:var(--ui-tray,#f3f5f7)';add.type='button';add.textContent='＋ 插入';add.title='图片、Excel / CSV 表格或公式';add.style.cssText='font:inherit;color:inherit;border:1px solid var(--ui-border,#dfe4e9);border-radius:7px;min-height:28px;padding:3px 9px;background:var(--ui-card,#fff);box-shadow:0 1px 3px #1725360a;cursor:pointer';status.setAttribute('role','status');status.style.cssText='color:GrayText;overflow-wrap:anywhere;font:12px/1.5 var(--ui-font,system-ui)';bar.append(add,status);head.append(bar);
   add.onclick=()=>{
    const menu=doc.createXULElement('menupopup');editor.querySelector('popupset').append(menu);
    for(const [label,kind]of [['图片…','image'],['导入 Excel / CSV…','data'],['创建表格','table'],['公式','math']]){
@@ -162,7 +185,9 @@
   const view=reader._internalReader?._primaryView;if(!view)return;await view.initializedPromise;
   const win=Cu.unwaiveXrays(view._iframeWindow),doc=win?.document;if(!doc||doc._easyschInteractions)return;doc._easyschInteractions=true;
   const parent=Zotero.Items.get(reader.itemID)?.parentItem;E._noteMigrationJobs||=new Map();if(parent&&!E._noteMigrationJobs.has(parent.id))E._noteMigrationJobs.set(parent.id,(async()=>{for(const note of Zotero.Items.get(parent.getNotes()))await E.discoverNoteLinks(note);})().catch(e=>{E._noteMigrationJobs.delete(parent.id);Zotero.logError(e);}));
-  let timer,hideTimer,currentID;const outer=reader._iframeWindow.document,tip=outer.createElement('div');tip.className='easysch-annotation-hover';tip.hidden=true;tip.style.cssText='position:fixed;z-index:11000;width:300px;max-width:70vw;max-height:240px;overflow:auto;padding:12px;background:Canvas;color:CanvasText;border:1px solid #a8adb4;border-radius:10px;box-shadow:0 5px 20px #0002;line-height:1.6;font:13px/1.6 system-ui;user-select:text';outer.body.append(tip);
+  const Margin=ChromeUtils.importESModule('chrome://zotero/content/research/shared/reader-margin-comments.mjs');await Margin.installMarginComments(E,reader,view,{Zotero,Cu});
+  let timer,hideTimer,currentID;const outer=reader._iframeWindow.document;const tip=outer.createElement('div');tip.className='easysch-annotation-hover';tip.hidden=true;outer.body.append(tip);
+  const hideNow=()=>{E.clearTimeout(timer);E.clearTimeout(hideTimer);tip.hidden=true;currentID=null;};
   const hide=()=>{E.clearTimeout(timer);E.clearTimeout(hideTimer);hideTimer=E.setTimeout(()=>{tip.hidden=true;currentID=null;},250);};tip.onpointerenter=()=>E.clearTimeout(hideTimer);tip.onpointerleave=hide;
   const hit=e=>{const p=view.pointerEventToPosition(e);return p&&view.getSelectableAnnotations(p)?.find(a=>a.comment||a.text||E.noteLinkForAnnotation(reader.itemID,a.id));};
   doc.addEventListener('pointermove',e=>{if(e.buttons||view._selectionRanges?.some(r=>!r.collapsed)){hide();return;}const a=hit(e);if(!a){hide();return;}E.clearTimeout(hideTimer);if(currentID===a.id&&!tip.hidden)return;E.clearTimeout(timer);const x=e.clientX,y=e.clientY;timer=E.setTimeout(()=>{
@@ -175,13 +200,16 @@
     const note=Zotero.Items.get(link.noteID),preview=outer.createElement('div');preview.style.cssText='max-height:140px;overflow:auto;font-size:12px;color:GrayText';
     // Sanitize the current note excerpt; hover never loads external images.
     const parsed=new outer.defaultView.DOMParser().parseFromString(note.getNote(),'text/html');
-    for(const math of parsed.querySelectorAll('pre.math')){const p=parsed.createElement('p');p.textContent=math.textContent;math.replaceWith(p);}
+    // Only the note schema's explicit math nodes identify TeX. Render a copy;
+    // never reinterpret PDF OCR or change an existing author's saved note.
+    for(const math of parsed.querySelectorAll('pre.math,span.math')){const display=math.localName==='pre',text=math.textContent.trim(),p=parsed.createElement(display?'p':'span');p.textContent=display?(text.startsWith('$$')&&text.endsWith('$$')?text:'$$'+text+'$$'):(text.startsWith('$')&&text.endsWith('$')?text:'$'+text+'$');math.replaceWith(p);}
     E.renderContent(preview,parsed.body.innerHTML);tip.append(preview);
     const b=outer.createElement('button');b.textContent='打开笔记';b.onclick=()=>{tip.hidden=true;E.openReaderNote(link.noteID,reader);};tip.append(b);
    }
    const r=view._iframe.getBoundingClientRect?.()||{left:0,top:40};tip.style.left=Math.max(8,Math.min(r.left+x+14,outer.defaultView.innerWidth-320))+'px';tip.style.top=Math.max(45,Math.min(r.top+y+18,outer.defaultView.innerHeight-250))+'px';tip.hidden=false;
   },260);},{passive:true});
   doc.addEventListener('dblclick',e=>{const a=hit(e),link=a&&E.noteLinkForAnnotation(reader.itemID,a.id);if(link){e.preventDefault();E.openReaderNote(link.noteID,reader).catch(e=>Zotero.logError(e));}},true);
-  win.addEventListener('unload',()=>{E.clearTimeout(timer);E.clearTimeout(hideTimer);tip.remove();},{once:true});
+  doc.addEventListener('scroll',hideNow,true);doc.addEventListener('pointerdown',hideNow,true);doc.addEventListener('pointerleave',hideNow);win.addEventListener('blur',hideNow);outer.defaultView.addEventListener('easysch-reader-layoutchange',hideNow);
+  win.addEventListener('unload',()=>{E.clearTimeout(timer);E.clearTimeout(hideTimer);outer.defaultView.removeEventListener('easysch-reader-layoutchange',hideNow);tip.remove();},{once:true});
  };
 })(Zotero.Research);
