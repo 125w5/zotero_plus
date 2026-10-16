@@ -3,17 +3,27 @@
  * Copyright (c) 2025-2026 Lucas Couto. See ../vendor/CLUI-CC-LICENSE.txt.
  */
 [data-clui-native]{--clui-container-bg:color-mix(in srgb,var(--ui-card,#fff) 94%,transparent);--clui-container-border:var(--ui-border,#dce2e9);--clui-card-shadow:0 2px 8px #0000000f;--clui-text-tertiary:var(--ui-secondary,#657386);--clui-text-primary:var(--ui-text,#253141);--clui-btn-hover-bg:var(--ui-selection,#e8f1ff);--clui-btn-hover-color:var(--ui-text,#253141);--clui-btn-disabled:#a9b2bc;--clui-transition:.26s cubic-bezier(.4,0,.1,1);position:relative;width:min(700px,100%);color:var(--clui-text-primary);transition:width var(--clui-transition);isolation:isolate}
+[data-clui-native].clui-native-surface[data-clui-size=detail]{width:min(980px,100%)}
 [data-clui-native] .clui-native-glass{background:var(--clui-container-bg);border:1px solid var(--clui-container-border);box-shadow:var(--clui-card-shadow);backdrop-filter:blur(28px) saturate(1.15)}
 [data-clui-native] .clui-native-shell{display:flex;flex-direction:column;width:calc(100% - 30px);margin:0 15px -14px;border-radius:20px;position:relative;z-index:10;overflow:hidden;transition:width var(--clui-transition),margin var(--clui-transition),box-shadow var(--clui-transition),background var(--clui-transition)}
 [data-clui-native][data-expanded=true] .clui-native-shell{width:100%;margin:0 0 10px;z-index:20;box-shadow:0 6px 28px #1b2b3b14,0 1px 6px #1b2b3b08}
 [data-clui-native] .clui-native-tab-strip{display:flex;align-items:center;gap:7px;min-height:37px;padding:0 10px 9px;flex:none}
 [data-clui-native][data-expanded=true] .clui-native-tab-strip{padding-block:4px;border-bottom:1px solid color-mix(in srgb,var(--clui-container-border) 65%,transparent)}
-[data-clui-native] .clui-native-body{display:grid;grid-template-rows:0fr;opacity:0;overflow:hidden;transition:grid-template-rows var(--clui-transition),opacity var(--clui-transition)}
+[data-clui-native] .clui-native-body{display:grid;grid-template-rows:0fr;min-height:0;opacity:0;overflow:hidden;transition:grid-template-rows var(--clui-transition),height var(--clui-transition),opacity var(--clui-transition)}
 [data-clui-native][data-expanded=true] .clui-native-body{grid-template-rows:1fr;opacity:1}
 [data-clui-native] .clui-native-conversation{overflow:auto;min-height:0;max-height:min(460px,52vh);padding:0 16px;scrollbar-width:thin;overscroll-behavior:contain;user-select:text;scroll-padding-block:16px;mask-image:linear-gradient(0deg,transparent,#000 16px,#000 calc(100% - 8px),transparent)}
 [data-clui-native][data-expanded=true] .clui-native-conversation{padding-block:10px 24px}
 [data-clui-native][data-clui-size=conversation] .clui-native-conversation{max-height:min(336px,42vh)}
-[data-clui-native][data-clui-size=detail] .clui-native-conversation{max-height:min(520px,62vh)}
+[data-clui-native][data-clui-size=detail] .clui-native-body{height:var(--clui-detail-height,min(720px,62vh));max-height:var(--clui-detail-max-height,calc(100vh - 180px));grid-template-rows:minmax(0,1fr)}
+[data-clui-native][data-clui-size=detail] .clui-native-conversation{height:100%;min-height:0;max-height:100%;box-sizing:border-box}
+/* A full-width hit area above the tabs lets a bottom-anchored card grow up.
+   The small visible ridge stays quiet; the actual drag target is 16px tall. */
+[data-clui-native] .clui-native-height-grip{display:none;flex:none;align-items:center;justify-content:center;height:16px;min-height:16px;box-sizing:border-box;cursor:ns-resize;touch-action:none;user-select:none;outline-offset:-3px;border-radius:20px 20px 0 0}
+[data-clui-native][data-expanded=true] .clui-native-height-grip{display:flex}
+[data-clui-native] .clui-native-height-grip:before{content:'';display:block;width:42px;height:4px;border-radius:4px;background:color-mix(in srgb,var(--clui-text-tertiary) 30%,transparent);transition:width .15s,background .15s}
+[data-clui-native] .clui-native-height-grip:is(:hover,:focus-visible):before{width:60px;background:color-mix(in srgb,var(--clui-text-tertiary) 65%,transparent)}
+[data-clui-native] .clui-native-height-grip:focus-visible{outline:2px solid color-mix(in srgb,var(--ui-accent,#527ead) 70%,transparent)}
+[data-clui-native][data-clui-resizing=true] :is(.clui-native-shell,.clui-native-body,.clui-native-conversation){transition:none!important}
 /* Dimming an ancestor's opacity/filter creates a backdrop root and prevents
    its glass children from blurring the document behind them in Gecko. Keep
    the glass opaque enough to read; dim only the foreground content. */

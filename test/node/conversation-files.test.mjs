@@ -3,12 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import {mountConversationFileDetail,receiveConversationDrop} from '../../chrome/content/zotero/research/shared/conversation-files.mjs';
+import {mountConversationFiles,mountConversationFileDetail,receiveConversationDrop} from '../../chrome/content/zotero/research/shared/conversation-files.mjs';
 import {RESEARCH_MESSAGE_MIME} from '../../chrome/content/zotero/research/shared/message-transfer.mjs';
 import {CHAT_ATTACHMENT_MIME} from '../../chrome/content/zotero/research/shared/chat-attachments.mjs';
 
 class Node extends EventTarget{
- constructor(doc,tag){super();this.ownerDocument=doc;this.tagName=tag;this.children=[];this.dataset={};this.attributes={};this._text='';this.className='';}
+ constructor(doc,tag){super();this.ownerDocument=doc;this.tagName=tag;this.children=[];this.dataset={};this.attributes={};this._text='';this.className='';this.value='';}
  get isConnected(){return this.root||!!this.parentElement?.isConnected;}
  get textContent(){return this._text+this.children.map(child=>child.textContent).join('');}set textContent(value){this.replaceChildren();this._text=String(value??'');}
  get classList(){return {add:(...names)=>{this.className=[...new Set([...this.className.split(' '),...names])].filter(Boolean).join(' ');},remove:(...names)=>{this.className=this.className.split(' ').filter(name=>!names.includes(name)).join(' ');}};}
@@ -26,6 +26,22 @@ function fixture(){
  return {doc,host,E,file,view,errors,setSession(id){sessionID=id;for(const fn of [...listeners])fn();}};
 }
 const flush=async()=>{for(let index=0;index<15;index++)await Promise.resolve();};
+
+test('unchanged source rails retain their DOM and custom file adapters keep selection scope',async()=>{
+ const f=fixture();f.view.destroy();const refs=[{id:'virtual:8',kind:'pdf',title:'范文',selected:true}],updates=[],drags=[],rail=mountConversationFiles({host:f.host,E:f.E,getSessionID:()=> 's1',getFiles:()=>refs,getSessions:()=>[{id:'s1',title:'当前讨论'}],onFileState:async(...args)=>{updates.push(args);refs[0].selected=false;},onFileDrag:(...args)=>drags.push(args)});
+ const first=rail.root.querySelector('.conversation-file');rail.render();assert.strictEqual(rail.root.querySelector('.conversation-file'),first,'unrelated updates must not replace focused controls');
+ const check=first.querySelector('input');check.checked=false;check.onchange();await flush();assert.equal(updates[0][2],'s1');assert.deepEqual(updates[0][1],{selected:false});
+ const grip=rail.root.querySelector('.conversation-file-grip');grip.ondragstart({stopPropagation(){}});assert.equal(drags[0][1].id,'virtual:8');rail.destroy();
+});
+
+test('history updates retain file controls and file selection retains history without redundant selection writes',async()=>{
+ const f=fixture();f.view.destroy();const refs=[{id:'attachment:8',kind:'pdf',title:'研究论文',selected:true}],sessions=[{id:'s1',title:'当前讨论'}];let selections=0;
+ const rail=mountConversationFiles({host:f.host,E:f.E,getSessionID:()=> 's1',getFiles:()=>refs,getSessions:()=>sessions,onSession:()=>selections++});
+ const file=rail.root.querySelector('.conversation-file');const history=rail.root.querySelector('.conversation-files-history');history.scrollTop=80;
+ sessions[0].title='更新讨论名称';rail.render();assert.strictEqual(rail.root.querySelector('.conversation-file'),file,'renaming a conversation must not interrupt a file control');assert.equal(history.scrollTop,80);
+ const current=history.children[0];refs[0].selected=false;rail.render();assert.strictEqual(history.children[0],current,'changing source scope must not replace conversation controls');assert.equal(rail.root.querySelector('.conversation-file-check').checked,false);
+ current.onclick();await flush();assert.equal(selections,0,'clicking the active conversation must not persist an identical selection');rail.destroy();
+});
 
 test('dragging a retained answer copies its question and evidence to the intended conversation without running a task',async()=>{
  const sessions=new Map([['from',{id:'from',messages:[{id:'q',role:'user',text:'实验怎样划分？'},{id:'a',role:'assistant',text:'按设备划分。',sources:[{stableID:'paper:7',attachmentID:8}]}]}],['to',{id:'to',messages:[]}]]),appended=[];

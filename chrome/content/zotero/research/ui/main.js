@@ -89,6 +89,7 @@ var EasySchUI = {
 		else { await this.refresh(); this.openAgentWorkbench(); }
 	},
 	async initialize() {
+		if(window.frameElement?.researchLibraryMode){document.body.classList.add('library-discovery','library-embedded');document.body.dataset.libraryView=window.frameElement.researchLibraryView||'discovery';}
 		for (let button of document.querySelectorAll('[data-tab]')) button.addEventListener('click', () => {
 			const tab = button.dataset.tab;
 			if (['writing', 'ppt'].includes(tab) && !window.frameElement?.researchOverlayMode) {

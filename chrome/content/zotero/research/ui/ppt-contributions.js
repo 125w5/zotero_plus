@@ -1,22 +1,41 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 Object.assign(EasySchUI,{
  pptContributions(body){
-  const d=this.pptDraft;body.append(this.el('h2','加入我的理解与实验（可跳过）'));
-  body.append(this.el('p','自己的理解、质疑、实验和失败分析单独标识，不会变成论文原文。'));
-  const kind=this.pptField('内容类型','',body,{tag:'select'});for(const [v,label] of [['my_interpretation','我的理解 / 质疑 / 假设'],['my_experiment','我的实验 / 复现 / 失败分析'],['unverified','下一步计划 / 待验证观点']]){const o=this.el('option',label);o.value=v;kind.append(o);}
-  const title=this.pptField('页面标题','我的理解与实验',body),text=this.pptField('我的内容','',body,{tag:'textarea',rows:6});text.id='ppt-user-text';text.maxLength=1300;text.placeholder='可以写实验设置、观察结果、与论文的差异、自己的解释和希望导师讨论的问题。';
-  const notes=this.pptField('讲者备注 / 代码运行记录（可选）','',body,{tag:'textarea'});
-  const after=this.pptField('插入位置','',body,{tag:'select'});const end=this.el('option','集中放在汇报末尾');end.value='';after.append(end);for(const s of d.slides){const o=this.el('option','在“'+s.title+'”之后');o.value=s.id;after.append(o);}
-  const data=this.pptField('使用我的数据（可选）','',body,{tag:'select'});let no=this.el('option','不放数据图');no.value='';data.append(no);for(const v of d.datasets){const o=this.el('option',v.id+' · '+v.provenance);o.value=v.id;data.append(o);}
-  const image=this.pptField('使用我的实验图片（可选）','',body,{tag:'select'});no=this.el('option','不放实验图片');no.value='';image.append(no);for(const a of d.assets.filter(a=>a.kind==='user_image')){const o=this.el('option',a.label);o.value=a.id;image.append(o);}
-  const chartType=this.pptField('数据图形式','bar',body,{tag:'select'});for(const [id,label] of [['bar','类别比较（柱状图）'],['line','时间变化（折线图）'],['scatter','两变量关系（散点图）'],['heatmap','多指标矩阵（热力图）']]){const o=this.el('option',label);o.value=id;chartType.append(o);}
-  const form={kind,title,text,notes,after,data,image,chartType};for(const [key,field] of Object.entries(form)){if(d.contributionForm?.[key]!==undefined)field.value=d.contributionForm[key];field.oninput=field.onchange=()=>this.pptPatch(x=>x.contributionForm=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,v.value])));}
-  this.pptButton('导入 CSV / XLSX',()=>this.pptTask(async()=>{const file=await this.E.pick(window,'选择我的实验数据 CSV / XLSX','file');if(!file)return;const values=await this.E.readChartData(file);await this.pptPatch(x=>{for(const v of values){v.id='user-'+Date.now()+'-'+v.id;x.datasets.push(v);}});}),body);
-  this.pptButton('导入实验图片',()=>this.pptTask(async(status,signal)=>{const file=await this.E.pick(window,'选择实验 PNG / JPG','file');if(!file)return;const a=await this.E.runArtifactEngine({operation:'assets-user-image',file},status,signal);await this.pptPatch(x=>{if(!x.assets.some(v=>v.id===a.id))x.assets.push(a);});}),body);
-  const paste=this.el('details');paste.append(this.el('summary','粘贴表格（第一行列名，第一列类别）'));const table=this.pptField('从 Excel 复制后粘贴','',paste,{tag:'textarea',rows:4});
-  this.pptButton('读取粘贴的真实数据',async()=>{const rows=table.value.trim().split(/\r?\n/).map(row=>row.split('\t'));if(rows.length<2||rows.length>31||rows[0].length<2||rows[0].length>6)throw Error('需要表头和 1–30 行数据、2–6 列');const width=rows[0].length;if(rows.some(r=>r.length!==width)||rows.slice(1).some(r=>r.slice(1).some(v=>!v.trim()||!Number.isFinite(Number(v)))))throw Error('表格有空值或非数值，请核对');const value={id:'pasted-'+Date.now(),provenance:'用户从表格粘贴的实验数据',labels:rows.slice(1).map(r=>r[0]),series:rows[0].slice(1).map((name,i)=>({name,values:rows.slice(1).map(r=>Number(r[i+1]))}))};await this.pptPatch(x=>x.datasets.push(value));this.renderPPT();},paste);body.append(paste);
-  const add=this.pptButton('插入我的内容页',async()=>{if(!text.value.trim())throw Error('请填写自己的理解或实验说明');this.pptDraft=await this.E.studio.addContribution(d.id,{title:title.value,text:text.value,kind:kind.value,notes:notes.value,datasetID:data.value||undefined,assetID:image.value||undefined,chartType:chartType.value},after.value);await this.pptPatch(x=>x.contributionForm={});this.status('已插入，来源标为“我的内容”');this.renderPPT();},body,'primary');add.id='ppt-add-contribution';
-  for(const c of d.contributions)body.append(this.el('p','已加入：'+c.title));
-  this.pptNext(body,'进入逐页编辑与导出',async()=>{await this.pptPatch(x=>x.step=5);this.renderPPT();});
+  const d=this.pptDraft,heading=this.el('div',undefined,'ppt-stage-heading ppt-contribution-width');
+  heading.append(this.el('small','我的内容 · 可跳过'),this.el('h2','补充自己的理解与实验'),this.el('p','把发现、数据与讨论问题组织成一页，论文证据与自己的观点分别保留。','muted'));body.append(heading);
+  const panel=this.el('section',undefined,'ppt-contribution-card ppt-contribution-width');body.append(panel);
+  const writing=this.el('div',undefined,'ppt-contribution-writing'),resources=this.el('aside',undefined,'ppt-contribution-resources');panel.append(writing,resources);writing.append(this.el('h3','要讲的内容'));
+  const title=this.pptField('页面标题','我的理解与实验',writing);title.placeholder='给这页起一个简短的标题';
+  const text=this.pptField('想在组会上讲什么？','',writing,{tag:'textarea',rows:8});text.id='ppt-user-text';text.maxLength=1300;text.placeholder='例如：复现实验发现了什么？与论文有何差异？希望讨论哪个问题？';
+  const media=this.el('section',undefined,'ppt-setting-section');media.append(this.el('h3','数据与图片'));resources.append(media);const mediaBody=this.el('div',undefined,'ppt-setting-body');media.append(mediaBody);
+  const imports=this.el('div',undefined,'ppt-inline-actions');mediaBody.append(imports);
+  this.pptButton('导入表格',()=>this.pptTask(async()=>{
+   const file=await this.E.pick(window,'选择我的实验数据 CSV / XLSX','file');if(!file)return;
+   const values=await this.E.readChartData(file);await this.pptPatch(x=>{for(const v of values){v.id='user-'+Date.now()+'-'+v.id;x.datasets.push(v);}if(values.length){x.contributionForm||={};x.contributionForm.data=values[0].id;}});
+  }),imports).title='支持 CSV / XLSX';
+  this.pptButton('导入图片',()=>this.pptTask(async(status,signal)=>{
+   const file=await this.E.pick(window,'选择实验 PNG / JPG','file');if(!file)return;
+   const a=await this.E.runArtifactEngine({operation:'assets-user-image',file},status,signal);await this.pptPatch(x=>{if(!x.assets.some(v=>v.id===a.id))x.assets.push(a);x.contributionForm||={};x.contributionForm.image=a.id;});
+  }),imports);
+  const data=this.pptField('实验数据','',mediaBody,{tag:'select'}),emptyData=this.el('option','不添加数据图');emptyData.value='';data.append(emptyData);
+  for(const v of d.datasets){const o=this.el('option',v.provenance||'实验数据');o.value=v.id;data.append(o);}data.parentElement.hidden=!d.datasets.length;
+  const chartType=this.pptField('图表形式','bar',mediaBody,{tag:'select'});for(const [id,label] of [['bar','柱状图'],['line','折线图'],['scatter','散点图'],['heatmap','热力图']]){const o=this.el('option',label);o.value=id;chartType.append(o);}
+  const image=this.pptField('实验图片','',mediaBody,{tag:'select'}),emptyImage=this.el('option','不添加图片');emptyImage.value='';image.append(emptyImage);
+  const images=d.assets.filter(a=>a.kind==='user_image');for(const a of images){const o=this.el('option',a.label);o.value=a.id;image.append(o);}image.parentElement.hidden=!images.length;
+  const paste=this.el('section',undefined,'ppt-paste-data');const table=this.pptField('粘贴表格数据','',paste,{tag:'textarea',rows:3});table.placeholder='从 Excel 复制，首行为列名，首列为类别';
+  this.pptButton('使用这份数据',async()=>{
+   const rows=table.value.trim().split(/\r?\n/).map(row=>row.split('\t'));if(rows.length<2||rows.length>31||rows[0].length<2||rows[0].length>6)throw Error('需要表头和 1–30 行数据、2–6 列');const width=rows[0].length;if(rows.some(r=>r.length!==width)||rows.slice(1).some(r=>r.slice(1).some(v=>!v.trim()||!Number.isFinite(Number(v)))))throw Error('表格有空值或非数值，请核对');
+   const value={id:'pasted-'+Date.now(),provenance:'粘贴的实验数据',labels:rows.slice(1).map(r=>r[0]),series:rows[0].slice(1).map((name,i)=>({name,values:rows.slice(1).map(r=>Number(r[i+1]))}))};await this.pptPatch(x=>{x.datasets.push(value);x.contributionForm||={};x.contributionForm.data=value.id;});this.renderPPT();
+  },paste);mediaBody.append(paste);
+  const notes=this.pptField('讲者备注','',writing,{tag:'textarea'});notes.placeholder='补充讲述思路、运行记录或待讨论的问题';
+  const options=this.el('section',undefined,'ppt-setting-section');options.append(this.el('h3','放入汇报'));resources.append(options);const settings=this.el('div',undefined,'ppt-field-pair');options.append(settings);
+  const kind=this.pptField('内容类型','',settings,{tag:'select'});for(const [v,label] of [['my_interpretation','我的理解与质疑'],['my_experiment','实验与复现'],['unverified','计划与待验证观点']]){const o=this.el('option',label);o.value=v;kind.append(o);}
+  const after=this.pptField('插入位置','',settings,{tag:'select'}),end=this.el('option','汇报末尾');end.value='';after.append(end);for(const s of d.slides){const o=this.el('option','在“'+s.title+'”之后');o.value=s.id;after.append(o);}
+  const form={kind,title,text,notes,after,data,image,chartType},visibility=()=>{chartType.parentElement.hidden=!data.value;};
+  for(const [key,field] of Object.entries(form)){if(d.contributionForm?.[key]!==undefined)field.value=d.contributionForm[key];field.oninput=field.onchange=()=>{visibility();return this.pptPatch(x=>x.contributionForm=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,v.value])));};}visibility();
+  const footer=this.el('div',undefined,'ppt-contribution-footer');panel.append(footer);footer.append(this.el('small','作为“我的内容”保留，与论文原文区分。','muted'));
+  const add=this.pptButton('加入汇报',async()=>{if(!text.value.trim()){text.focus();throw Error('先写下要讨论的内容');}this.pptDraft=await this.E.studio.addContribution(d.id,{title:title.value,text:text.value,kind:kind.value,notes:notes.value,datasetID:data.value||undefined,assetID:image.value||undefined,chartType:chartType.value},after.value);await this.pptPatch(x=>x.contributionForm={});this.status('已加入汇报');this.renderPPT();},footer,'primary');add.id='ppt-add-contribution';
+  if(d.contributions.length){const added=this.el('div',undefined,'ppt-contribution-added ppt-contribution-width');added.append(this.el('small','已加入 '+d.contributions.length+' 项'));for(const c of d.contributions)added.append(this.el('span',c.title||'我的理解与实验'));body.append(added);}
+  const next=this.pptNext(footer,d.contributions.length?'继续编辑':'跳过这步',async()=>{await this.pptPatch(x=>x.step=5);this.renderPPT();});next.classList.remove('primary');
  }
 });

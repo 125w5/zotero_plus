@@ -41,9 +41,21 @@ describe('Pi application tools in native Zotero', function () {
 		assert.include(result.text, '采集批次'); assert.equal(result.sources[0].stableID, 'material:M1'); assert.include(stages, '检索已有素材');
 		assert.equal(JSON.stringify(E.manuscripts.get(project.id)), before, '不写入或改动论文正文');
 	});
-	it('blocks manuscript and image generation before any request and leaves future images disabled', async () => {
-		for (const prompt of ['帮我写论文引言', '生成一张流程图']) { let error; try { await E.runWorkbenchTask({ prompt }); } catch (e) { error = e; } assert.match(error?.code || '', /^AI_/); }
-		assert.equal(requests, 0); assert.isFalse(E.piExtensions().find(row => row.id === 'images').enabled);
+	it('blocks direct manuscript writing while exposing explicitly authorized image generation', async () => {
+		let error; try { await E.runWorkbenchTask({ prompt:'帮我写论文引言' }); } catch (e) { error = e; } assert.match(error?.code || '', /^AI_/);
+		assert.equal(requests, 0); assert.isTrue(E.piExtensions().find(row => row.id === 'images').enabled);
+	});
+	it('an explicit image request reaches the configured generator once through the real Pi tool loop',async()=>{
+		const generate=E.generateResearchImage;let generated=0;
+		E.generateResearchImage=async(prompt)=>{generated++;assert.equal(prompt,'数据处理流程说明图');return {path:PathUtils.join(folder,'controlled-generated.png'),model:'controlled-image'};};
+		E.requestProvider=async(_url,options,_timeout,readResponse)=>{
+			requests++;const payload=JSON.parse(options.body);transcripts.push(payload);
+			if(requests===1){assert.deepEqual(payload.tool_choice,{type:'function',function:{name:'generate_research_image'}});assert.exists(payload.tools.find(tool=>tool.function.name==='generate_research_image'));}
+			const delta=requests===1?{tool_calls:[{index:0,id:'controlled-image',type:'function',function:{name:'generate_research_image',arguments:JSON.stringify({prompt:'数据处理流程说明图'})}}]}:{content:'图片已生成并保存在本地，作为 AI 生成的构想素材。'};
+			const data=new win.TextEncoder().encode(sse(delta,requests===1?'tool_calls':'stop'));let read=false;return readResponse({body:{getReader:()=>({async read(){if(read)return {done:true};read=true;return {value:data,done:false};},releaseLock(){}})}});
+		};
+		try{const result=await E.runWorkbenchTask({prompt:'生成一张数据处理流程图',modelID:'selected-controlled-model'});assert.equal(generated,1);assert.equal(requests,2);assert.lengthOf(result.generatedImages,1);assert.equal(result.generatedImages[0].sourceType,'ai-illustration');assert.equal(result.generatedImages[0].model,'controlled-image');assert.isTrue(transcripts.every(row=>row.model==='selected-controlled-model'));}
+		finally{E.generateResearchImage=generate;}
 	});
 	it('routes an ordinary material recommendation through Pi and strips only the current context echo', async () => {
 		const request = E.requestProvider, source = {id: 'M1', kind: 'material', title: '跨域调制识别'};

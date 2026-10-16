@@ -11,8 +11,8 @@ const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9
 const notebookSource=await readFile(new URL('../../../chrome/content/zotero/xpcom/research/notebook.js',import.meta.url),'utf8');
 const workflowSource=await readFile(new URL('../../../chrome/content/zotero/xpcom/research/workflow.js',import.meta.url),'utf8');
 
-test('image request creation is disabled, while existing image bytes remain readable',()=>{
- assert.throws(()=>imageAPI.imageRequest('跨域适配流程'),/AI 不生成/);
+test('explicit image request uses one configured image model while existing image bytes remain readable',()=>{
+ assert.equal(imageAPI.imageRequest('跨域适配流程',{model:'gpt-image-1'}).model,'gpt-image-1');
  assert.equal(imageAPI.generatedImageBytes({data:[{b64_json:png}]}).extension,'png');
  assert.throws(()=>imageAPI.generatedImageBytes({data:[{url:'https://example.org/fake.png'}]}),/有效的图片数据/);
  assert.throws(()=>imageAPI.generatedImageBytes({data:[{b64_json:Buffer.from('<html>error</html>').toString('base64')}]}),/不是可读取的图片/);
@@ -46,12 +46,19 @@ function installRealImageImport(fixture,{copy}={}){
  return path.join('/library','writing-images','image-hash.png');
 }
 
-test('old generation API never resolves credentials, sends requests or creates a research asset',async()=>{
- const {E,records,project,requests,files}=notebookFixture();let credentials=0;
- E.credentials.get=async()=>{credentials++;return 'controlled-only';};
- await assert.rejects(E.notebook.generateIllustration('project-1','跨域适配流程'),/AI 不生成/);
- assert.equal(credentials,0);assert.equal(requests.length,0);assert.equal(files.size,0);
- assert.equal(Object.keys(records.researchMaterials).length,0);assert.equal(project.materials.length,0);
+test('requested image becomes a labeled project material and cannot masquerade as a paper excerpt',async()=>{
+ const {E,records,project}=notebookFixture();let finished=0;
+ E.generateResearchImage=async(prompt,options)=>{assert.equal(prompt,'跨域适配流程');assert.equal(options.retainImport,true);return {path:'/library/generated.png',fingerprint:'image-hash',width:1024,height:1024,model:'controlled-image',prompt,generatedAt:'controlled-date',finishImport:()=>finished++};};
+ E.notebook.project=()=>project;E.notebook.catalog=async(_id,mutate)=>mutate(project);E.notebook.select=async()=>{};
+ const saved=await E.notebook.generateIllustration('project-1','跨域适配流程');
+ assert.equal(saved.cards[0].sourceType,'ai-illustration');assert.equal(saved.cards[0].sourceText,'');assert.equal(saved.cards[0].generationModel,'controlled-image');
+ assert.equal(saved.cards[0].verification,'unverified');assert.equal(project.materials.length,1);assert.equal(Object.keys(records.researchMaterials).length,1);assert.equal(finished,1);
+});
+test('a current source-question image request uses the same actual generator without inventing source evidence',async()=>{
+ const {E,project}=notebookFixture();let messages=[],invoked=0;
+ E.notebook.state=()=>({messages});E.notebook.update=async(_id,value)=>{messages=value.messages;};
+ E.notebook.generateIllustration=async(id,prompt)=>{invoked++;assert.equal(id,project.id);assert.equal(prompt,'生成一张流程图');return {cards:[{id:'generated-image',generationModel:'gpt-image-2.5-flare',sourceType:'ai-illustration',imagePath:'/library/generated.png'}]};};
+ const result=await E.notebook.ask(project.id,'生成一张流程图',()=>{});assert.equal(invoked,1);assert.equal(result.generatedImages[0].sourceType,'ai-illustration');assert.equal(result.model,'gpt-image-2.5-flare');assert.equal(result.sources.length,0);assert.equal(result.evidence.length,0);assert.equal(messages.length,2);
 });
 
 test('manual image import still rolls back an uncommitted newly copied file and index',async()=>{

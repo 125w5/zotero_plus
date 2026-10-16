@@ -6,7 +6,7 @@ Object.assign(EasySchUI, {
 		[this.agentTools,this.agentCatalog,this.agentAttachmentTools,this.agentPaging,this.agentEvidence,this.agentMessageTransfer,this.agentMaterialSource,this.agentInteractionTools,this.agentDiscoveryTools,this.agentDiscoveryMedia,this.agentDiscoveryPresentation]=await Promise.all([
 			import('../shared/agent-workbench.mjs'),import('../shared/material-catalog.mjs'),import('../shared/chat-attachments.mjs'),import('../shared/infinite-scroll.mjs'),import('../shared/chat-evidence.mjs'),import('../shared/message-transfer.mjs'),import('../shared/material-source-view.mjs'),import('../shared/conversation-interactions.mjs'),import('../shared/discovery-feed.mjs'),import('../shared/media-preview.mjs'),import('../shared/discovery-presentation.mjs')
 		]);
-		this.agentData = this.E.workbenchConversations?.snapshot() || this.agentTools.workbenchSessions(this.E.store.get('researchWorkbench'));
+		this.agentData = this.E.workbenchConversations?.snapshot({summary:true,sessionID:this.agentData?.activeSessionID}) || this.agentTools.workbenchSessions(this.E.store.get('researchWorkbench'));
 		this.restoreAgentSession(this.agentData.activeSessionID);
 		if (this.agentData.projectID && !this.E.manuscripts.get(this.agentData.projectID)) this.agentData.projectID = '';
 		this.agentSources = [];
@@ -41,7 +41,7 @@ Object.assign(EasySchUI, {
 		const navigation=this.el('div',undefined,'workbench-discovery-navigation');this.agentPersonalizeButton=this.agentButton('＋ 个性化设置',()=>this.toggleDiscoveryPersonalization(),'workbench-personalize');this.agentPersonalizeButton.setAttribute('aria-expanded','false');navigation.append(this.agentDiscoveryTabs,this.agentPersonalizeButton);
 		this.agentPersonalization=this.el('section',undefined,'workbench-personalization');this.agentPersonalization.hidden=true;
 		this.agentSubscriptionList=this.el('div',undefined,'workbench-subscription-list');
-		this.agentDiscoveryFilters=this.agentDiscoveryPresentation.discoveryFilters(this.E.store.get().settings.discoveryFilters);this.agentHomeYears.value=this.agentDiscoveryFilters.years;this.agentJournalFilter=this.el('select');this.agentJournalFilter.setAttribute('aria-label','期刊类别');for(const [id,label]of [['','全部文献'],['journal','仅期刊论文'],['top','已核验顶刊']])this.agentJournalFilter.append(this.agentOption(id,label));this.agentJournalFilter.value=this.agentDiscoveryFilters.topOnly?'top':this.agentDiscoveryFilters.journalOnly?'journal':'';
+		this.agentDiscoveryFilters=this.agentDiscoveryPresentation.discoveryFilters(this.E.store.get('settings').discoveryFilters);this.agentHomeYears.value=this.agentDiscoveryFilters.years;this.agentJournalFilter=this.el('select');this.agentJournalFilter.setAttribute('aria-label','期刊类别');for(const [id,label]of [['','全部文献'],['journal','仅期刊论文'],['top','已核验顶刊']])this.agentJournalFilter.append(this.agentOption(id,label));this.agentJournalFilter.value=this.agentDiscoveryFilters.topOnly?'top':this.agentDiscoveryFilters.journalOnly?'journal':'';
 		this.agentJournalSource=this.el('select');this.agentJournalSource.setAttribute('aria-label','筛选指定期刊');this.agentJournalSource.append(this.agentOption('','全部期刊'));this.agentDiscoverySort=this.el('select');this.agentDiscoverySort.setAttribute('aria-label','论文排序');for(const [id,label]of [['citations','引用量'],['date','发表日期'],['impact','影响因子']])this.agentDiscoverySort.append(this.agentOption(id,label));this.agentDiscoverySort.value=this.agentDiscoveryFilters.sort;
 		const filterbar=this.el('div',undefined,'discovery-feed-filters');filterbar.append(this.agentJournalFilter,this.agentJournalSource,this.agentDiscoverySort,this.agentHomeYears);for(const field of [this.agentJournalFilter,this.agentJournalSource,this.agentDiscoverySort,this.agentHomeYears])field.onchange=()=>this.applyDiscoveryFilters().catch(error=>this.agentHomeStatus.textContent=error.message);
 		this.agentHomeDestination=this.createDiscoveryDestination('下载文件夹');home.append(homeHeading,homeSearch,navigation,this.agentPersonalization,this.agentSubscriptionList,filterbar,this.agentHomeDestination.root,this.agentHomeStatus,this.agentHomeList);
@@ -104,7 +104,7 @@ Object.assign(EasySchUI, {
 		this.agentModel = this.el('select'); this.agentModel.setAttribute('aria-label', '研究模型'); this.agentModel.title = '使用已配置的模型';
 		// The configured model works before an optional remote /models response.
 		// Fetching that list must not keep every native workflow behind a blank host.
-		const configured=this.E.settings?.().model||this.E.store.get().settings?.model;
+		const configured=this.E.settings?.().model||this.E.store.get('settings')?.model;
 		this.fillAgentModels([...new Set([this.agentData.modelID,configured].filter(Boolean))].map(id=>({id,label:id})));
 		this.agentModel.onchange = () => { this.agentData.modelID = this.agentModel.value; this.saveAgentState().catch(error => this.status(error.message, true)); };
 		this.agentThinking = this.el('select'); this.agentThinking.setAttribute('aria-label', '思考强度'); this.agentThinking.title = '按模型实际能力设置思考强度'; for (const [id, label] of [['off', '标准'], ['low', '轻量思考'], ['medium', '深入思考'], ['high', '充分思考']]) this.agentThinking.append(this.agentOption(id, label)); this.agentThinking.value = this.agentData.thinkingLevel || 'off'; this.agentThinking.hidden = this.agentModel.hidden;
@@ -115,7 +115,7 @@ Object.assign(EasySchUI, {
 		this.agentDirection=this.agentButton('研究选择',()=>this.chooseAgentDirection(),'agent-direction');this.agentDirection.title='选择方向、资料取舍或下一步';this.agentAttach.after(this.agentDirection);
 		const settings=this.el('details',undefined,'agent-composer-options'),summary=this.el('summary','设置'),settingsBody=this.el('div',undefined,'agent-composer-options-body');summary.title='模型、思考与操作权限';settings.dataset.cluiIgnoreExpand='';settings.append(summary,settingsBody);for(const [label,control]of [['操作权限',this.agentExecution],['模型',this.agentModel],['思考',this.agentThinking]]){const field=this.el('label',label);field.append(control);settingsBody.append(field);}this.agentMode.after(settings);
 		const actionStack=this.el('div',undefined,'agent-action-stack clui-native-btn-stack');this.agentAttach.classList.add('clui-native-stack-btn','clui-native-stack-btn-1','clui-native-glass');this.agentDirection.textContent='◇';this.agentDirection.setAttribute('aria-label',this.agentDirection.title);this.agentDirection.classList.add('clui-native-stack-btn','clui-native-stack-btn-2','clui-native-glass');settings.classList.add('clui-native-stack-btn','clui-native-stack-btn-3','clui-native-glass');summary.textContent='⋯';summary.setAttribute('aria-label',summary.title);actionStack.append(this.agentAttach,this.agentDirection,settings);logo.after(actionStack);
-		const dropOver=event=>{if(this.agentAttachmentTools.chatAttachmentDropPayload(event.dataTransfer)){event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='copy';conversation.dataset.attachmentDrop='true';this.agentRunStatus.textContent='松开：作为本次对话资料';}},dropLeave=event=>{if(!conversation.contains(event.relatedTarget)){delete conversation.dataset.attachmentDrop;if(this.agentRunStatus.textContent==='松开：作为本次对话资料')this.agentRunStatus.textContent='';}},drop=event=>{const payload=this.agentAttachmentTools.chatAttachmentDropPayload(event.dataTransfer);delete conversation.dataset.attachmentDrop;if(!payload)return;event.preventDefault();event.stopPropagation();this.attachAgentFiles(payload,{source:'drop'});};
+		const dropOver=event=>{if(this.acceptsAgentConversationDrop(event.dataTransfer)){event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='copy';conversation.dataset.attachmentDrop='true';this.agentRunStatus.textContent='松开：作为本次对话资料';}},dropLeave=event=>{if(!conversation.contains(event.relatedTarget)){delete conversation.dataset.attachmentDrop;if(this.agentRunStatus.textContent==='松开：作为本次对话资料')this.agentRunStatus.textContent='';}},drop=event=>{delete conversation.dataset.attachmentDrop;if(!this.acceptsAgentConversationDrop(event.dataTransfer))return;event.preventDefault();event.stopPropagation();this.receiveAgentConversationDrop(event.dataTransfer);};
 		conversation.addEventListener('dragover',dropOver);conversation.addEventListener('dragleave',dropLeave);conversation.addEventListener('drop',drop);
 		composer.onsubmit = event => { event.preventDefault(); if (this.agentRunning) this.stopAgentTask(); else this.runAgentTask().catch(error => { this.agentRunStatus.textContent = error.message; this.agentRunStatus.title = error.message; }); };
 		this.agentInput.onkeydown = event => {
@@ -163,10 +163,9 @@ Object.assign(EasySchUI, {
 		window.addEventListener('keydown', this.agentEscapeHandler);
 		window.addEventListener('resize', () => this.queueAgentInputSize());
 		window.addEventListener('beforeunload', () => this.flushAgentDraft());
-		let sourceTimer;
-		this.agentStoreOff = this.E.store.subscribe(() => { this.refreshAgentProjects(); if (this.activeView === 'agent') { clearTimeout(sourceTimer); sourceTimer = setTimeout(() => this.renderAgentSources(), 120); } });
-		this.agentConversationsOff = this.E.workbenchConversations?.subscribe(value => this.receiveSharedAgentState(value));
-		window.addEventListener('unload', () => { this.agentDisposed = true; this.agentInteractions?.destroy();this.agentController?.abort(); this.agentPageController?.abort(); this.agentHomeController?.abort(); this.agentDiscoveryObserver?.disconnect();this.agentDiscoveryJobs=[];for(const off of this.agentDiscoveryPreviewOffs||[])off();this.agentDiscoveryPreviewOffs=[]; clearTimeout(this.agentDiscoveryRetryTimer); this.agentStoreOff?.(); this.agentConversationsOff?.(); this.resetAgentPreview(); clearTimeout(searchTimer); clearTimeout(homeTimer); clearTimeout(sourceTimer); clearTimeout(this.agentDraftTimer); cancelAnimationFrame(this.agentSizeFrame); this.agentInputMeasure.remove(); });
+		this.agentStoreOff = this.E.store.subscribe(change => this.receiveAgentStoreChange(change));
+		this.agentConversationsOff = this.E.workbenchConversations?.subscribe(value => this.receiveSharedAgentState(value),{summary:true,sessionID:()=>this.agentData.activeSessionID});
+		window.addEventListener('unload', () => { this.agentDisposed = true; this.agentSwitchController?.abort();this.clearAgentTranscriptCache();this.agentInteractions?.destroy();this.agentController?.abort(); this.agentPageController?.abort(); this.agentHomeController?.abort(); this.agentDiscoveryObserver?.disconnect();this.agentDiscoveryJobs=[];for(const off of this.agentDiscoveryPreviewOffs||[])off();this.agentDiscoveryPreviewOffs=[]; clearTimeout(this.agentDiscoveryRetryTimer); this.agentStoreOff?.(); this.agentConversationsOff?.(); this.resetAgentPreview(); clearTimeout(searchTimer); clearTimeout(homeTimer); clearTimeout(this.agentSourceRefreshTimer); clearTimeout(this.agentDraftTimer); cancelAnimationFrame(this.agentSizeFrame); this.agentInputMeasure.remove(); });
 		this.renderAgentMessages(); this.renderAgentSources();
 		this.agentLoadingModels=Promise.resolve().then(()=>this.E.workbenchModels?.()||[]).then(models=>{if(!this.agentDisposed)this.fillAgentModels(models);}).catch(error=>{if(!this.agentDisposed)console.error('模型列表未能更新，保留已选模型',error);});
 		// Opening the workbench must not wait for a serial filesystem scan of the
@@ -182,7 +181,7 @@ Object.assign(EasySchUI, {
 		const files=this.agentFilesTools,E=this.E,getSessionID=()=>this.agentData.activeSessionID;
 		const onError=error=>{this.agentRunStatus.textContent=error.message;};
 		this.agentFileRails=[];this.agentFileDetails=[];
-		const options={E,getSessionID,getSessions:()=>this.agentData.sessions.filter(session=>!session.pptDraftID&&!session.isDraft),getContext:()=>{const target=E.store.get().settings.discoveryDestination||{},project=E.manuscripts.get(this.agentData.projectID||target.projectID);return {project:project?.title,folder:this.discoveryCollectionRows?.find(row=>String(row.id)===String(project?.paperCollectionID||target.collectionID))?.path};},onSession:id=>this.switchAgentSession(id),onNew:()=>this.createAgentSession(),onChange:()=>this.renderAgentAttachments(),onError};
+		const options={E,getSessionID,getSessions:()=>this.agentData.sessions.filter(session=>!session.pptDraftID&&!session.isDraft),getContext:()=>this.agentWorkspaceContext(),onSession:id=>this.switchAgentSession(id),onNew:()=>this.createAgentSession(),onChange:()=>this.renderAgentAttachments(),onError};
 		// The conversation owns its files. The wider library remains an explicit
 		// expandable area, rather than appearing to be implicit model context.
 		const library=this.el('details',undefined,'agent-library-browser');library.append(this.el('summary','文库与素材'));for(const child of [...sources.children])library.append(child);sources.append(library);this.agentSessionList.hidden=true;
@@ -195,6 +194,15 @@ Object.assign(EasySchUI, {
 			const discuss=this.agentButton('讨论这些资料',()=>this.openAgentWorkbench(),'conversation-files-discuss');side.root.append(discuss);
 		}
 		window.addEventListener('unload',()=>{for(const rail of this.agentFileRails)rail.destroy();for(const detail of this.agentFileDetails)detail.destroy();this.agentAttachmentDetail?.destroy();},{once:true});
+	},
+	agentWorkspaceContext() {
+		const target=this.E.store.get('settings')?.discoveryDestination||{},id=this.agentData.projectID||target.projectID,revision=this.E.store.branchRevision?.('manuscripts'),key=JSON.stringify([id,revision]);
+		if(revision===undefined||key!==this.agentWorkspaceProjectKey){const project=id&&this.E.manuscripts.get(id);this.agentWorkspaceProject={title:project?.title,collectionID:project?.paperCollectionID};this.agentWorkspaceProjectKey=key;}
+		const project=this.agentWorkspaceProject;return {project:project?.title,folder:this.discoveryCollectionRows?.find(row=>String(row.id)===String(project?.collectionID||target.collectionID))?.path};
+	},
+	receiveAgentStoreChange(change) {
+		if(this.agentDisposed||change?.changedBranches?.every(key=>key==='researchWorkbench'))return;
+		this.refreshAgentProjects();if(this.activeView==='agent'){clearTimeout(this.agentSourceRefreshTimer);this.agentSourceRefreshTimer=setTimeout(()=>{if(!this.agentDisposed)this.renderAgentSources();},120);}
 	},
 	async previewAgentAttachment(file) {
 		const sessionID=this.agentData.activeSessionID,generation=this.resetAgentPreview();this.agentSelected={...file,kind:'attached',stableID:'file:'+file.id};this.agentData.selectedID=this.agentSelected.stableID;
@@ -251,11 +259,23 @@ Object.assign(EasySchUI, {
 	},
 	flushAgentDraft() {
 		clearTimeout(this.agentDraftTimer);
+		if(this.agentDraftWrite)return this.agentDraftWrite;
 		if (!this.agentDraftDirty || this.agentInputComposing) return;
 		this.agentDraftDirty = false;
-		return this.saveAgentState().catch(error => { this.agentDraftDirty = true; if (!this.agentDisposed) this.status(error.message, true); });
+		const write=this.saveAgentState().catch(error => { this.agentDraftDirty = true; if (!this.agentDisposed) this.status(error.message, true); });this.agentDraftWrite=write;
+		return write.finally(()=>{if(this.agentDraftWrite===write)this.agentDraftWrite=null;});
 	},
 	agentButton(label, action, className = '') { const button = this.el('button', label, className); button.type = 'button'; button.onclick = () => Promise.resolve().then(action).catch(error => { if (this.activeView === 'agent' && this.agentRunStatus) { this.agentRunStatus.textContent = error.message; this.agentRunStatus.title = error.message; } else this.status(error.message, true); }); return button; },
+	acceptsAgentConversationDrop(dataTransfer) {
+		return !!this.agentAttachmentTools.chatAttachmentDropPayload(dataTransfer)||Array.from(dataTransfer?.types||[]).some(type=>type==='application/x-easysch-discovery-paper'||type===(this.agentMessageTransfer.RESEARCH_MESSAGE_MIME||'application/x-easysch-research-message'));
+	},
+	async receiveAgentConversationDrop(dataTransfer) {
+		if(this.agentAttaching)return;const owner=this.agentData.activeSessionID,current=()=>!this.agentDisposed&&owner===this.agentData.activeSessionID;this.agentAttaching=true;if(this.agentAttach)this.agentAttach.disabled=true;
+		const progress=text=>{if(current())this.agentRunStatus.textContent=String(text||'');};progress('正在关联本次对话资料…');
+		try{const message=await this.agentFilesTools.receiveConversationDrop({dataTransfer,E:this.E,sessionID:owner,onProgress:progress});if(current()){this.renderAgentMessages();this.renderAgentAttachments();this.renderAgentSources();progress(message||'已加入本次资料；可在左侧挑选和精选');}}
+		catch(error){if(current()){progress(error.message);this.agentRunStatus.title=error.message;}}
+		finally{this.agentAttaching=false;if(this.agentAttach)this.agentAttach.disabled=false;}
+	},
 	async attachAgentFiles(payload = {},options = {}) {
 		if (!this.E.chatAttachments || this.agentAttaching) return;
 		const id=this.agentData.activeSessionID;this.agentAttaching=true;if(this.agentAttach)this.agentAttach.disabled=true;
@@ -264,14 +284,17 @@ Object.assign(EasySchUI, {
 		finally{this.agentAttaching=false;if(this.agentAttach)this.agentAttach.disabled=false;}
 	},
 	renderAgentAttachments() {
-		if(!this.agentAttachments)return;const items=this.E.chatAttachments?.get(this.agentData.activeSessionID)||this.agentData.attachments||[];this.agentData.attachments=items;this.agentAttachments.replaceChildren();this.agentAttachments.hidden=!items.length;
+		if(!this.agentAttachments)return;const items=this.E.chatAttachments?.get(this.agentData.activeSessionID)||this.agentData.attachments||[];this.agentData.attachments=items;
 		for(const rail of this.agentFileRails||[])rail.render();
+		const signature=JSON.stringify([this.agentData.activeSessionID,items]);if(signature===this.agentAttachmentRenderSignature)return;this.agentAttachmentRenderSignature=signature;this.agentAttachments.replaceChildren();this.agentAttachments.hidden=!items.length;
 		for(const item of items.filter(value=>value.selected!==false)){const chip=this.el('span',undefined,'agent-attachment');chip.draggable=true;chip.title=item.title;const name=this.agentButton(item.title,()=>this.previewAgentAttachment(item),'agent-attachment-name');chip.append(name);const remove=this.agentButton('×',()=>this.E.chatAttachments.remove(this.agentData.activeSessionID,item.id),'agent-attachment-remove');remove.title='从本次对话移除，源文件保留';remove.setAttribute('aria-label',remove.title);chip.append(remove);chip.ondragstart=event=>{if(event.target.closest('button')){event.preventDefault();return;}this.E.chatAttachments.setDragData(event,item,this.agentData.activeSessionID);};this.agentAttachments.append(chip);}
 	},
 	agentOption(value, label) { const option = this.el('option', label); option.value = value; return option; },
 	refreshAgentProjects() {
 		if (!this.agentProjectSelect) return;
-		const choices = [['', '全部资料'], ...Object.values(this.E.manuscripts.all()).map(project => [project.id, project.title])], signature = JSON.stringify(choices);
+		const revision=this.E.store.branchRevision?.('manuscripts');let choices=this.agentProjectChoices;
+		if(!choices||revision===undefined||revision!==this.agentProjectChoiceRevision){choices=this.agentProjectChoices=[['', '全部资料'], ...Object.values(this.E.manuscripts.all()).map(project => [project.id, project.title])];this.agentProjectChoiceRevision=revision;}
+		const signature = JSON.stringify(choices);
 		if (signature !== this.agentProjectSignature) {
 			// Keep the select element (and its keyboard focus); only its actual
 			// project choices change. Source/query/preview state is independent.
@@ -283,6 +306,7 @@ Object.assign(EasySchUI, {
 	},
 	restoreAgentSession(id) {
 		const session = this.agentData.sessions.find(item => item.id === id) || this.agentData.sessions[0];
+		this.agentSavedMessageSignatures||=new Map();this.agentSavedMessageSignatures.set(session.id,JSON.stringify(session.messages||[]));this.agentSavedHomeSignature=JSON.stringify(this.agentData.home||{});
 		this.agentData.activeSessionID = session.id;
 		for (const key of ['mode', 'projectID', 'selectedID', 'draft', 'messages', 'attachments', 'modelID', 'thinkingLevel','executionMode']) this.agentData[key] = session[key] ?? (['messages','attachments'].includes(key) ? [] : ['mode','executionMode'].includes(key) ? 'auto' : key === 'thinkingLevel' ? 'off' : '');
 		this.agentInteractions?.setSession(session.id);if(this.agentExecution)this.agentExecution.value=this.agentData.executionMode;
@@ -301,16 +325,17 @@ Object.assign(EasySchUI, {
 		}
 	},
 	async switchAgentSession(id) {
-		if (id === this.agentData.activeSessionID) return;
+		const previous=this.agentSwitchController;previous?.abort();const revision=this.agentSwitchRevision=(this.agentSwitchRevision||0)+1;
+		if (id === this.agentData.activeSessionID&&!previous) return;
 		if (this.agentRunning) { this.agentRunStatus.textContent = '请先停止当前任务，再切换对话'; return; }
-		await this.flushAgentDraft(); await this.saveAgentState(); this.agentPageController?.abort();
-		if (this.E.workbenchConversations) {const row=this.agentSelected,paperID=row?.paperItemID||row?.anchor?.paperItemID||(row?.kind==='paper'?row.id:0);this.agentData = await this.E.workbenchConversations.select(id,paperID?{scope:{paperID}}:{});}
-		this.restoreAgentSession(id);
-		const previousSearch = [...this.agentData.messages].reverse().find(message => message.searchState); this.agentWebSources = previousSearch?.sources || []; this.agentWebSearch = previousSearch?.searchState;
-		this.agentInput.value = this.agentData.draft; this.agentMode.value = this.agentData.mode; this.agentModel.value = this.agentData.modelID || this.agentModel.options[0]?.value || ''; this.agentThinking.value = this.agentData.thinkingLevel || 'off'; this.agentQuery = ''; this.agentSearch.value = ''; this.agentSelected = null; this.resetAgentPreview(); this.refreshAgentProjects();
-		await this.saveAgentState(); this.renderAgentSessions(); this.renderAgentMessages(); this.renderAgentSources();
-		await this.restoreAgentPreview();
-		this.queueAgentInputSize(); this.agentInput.focus();
+		const controller=new AbortController(),current=()=>!controller.signal.aborted&&revision===this.agentSwitchRevision&&!this.agentDisposed;this.agentSwitchController=controller;
+		const controls=[this.agentInput,this.agentSend].filter(Boolean);this.agentSwitchDisabled||=controls.map(control=>control.disabled===true);for(const control of controls)control.disabled=true;
+		try{
+			await this.flushAgentDraft();if(!current())return;await this.saveAgentState();if(!current())return;this.agentPageController?.abort();
+			if(this.E.workbenchConversations){const row=this.agentSelected,paperID=row?.paperItemID||row?.anchor?.paperItemID||(row?.kind==='paper'?row.id:0),selected=await this.E.workbenchConversations.select(id,{...(paperID?{scope:{paperID}}:{}),signal:controller.signal,summary:true});if(!current())return;if(this.agentData.activeSessionID!==id)this.receiveSharedAgentState(selected);}
+			else{this.restoreAgentSession(id);const previousSearch=[...this.agentData.messages].reverse().find(message=>message.searchState);this.agentWebSources=previousSearch?.sources||[];this.agentWebSearch=previousSearch?.searchState;this.agentInput.value=this.agentData.draft;this.agentMode.value=this.agentData.mode;this.agentModel.value=this.agentData.modelID||this.agentModel.options[0]?.value||'';this.agentThinking.value=this.agentData.thinkingLevel||'off';this.agentQuery='';this.agentSearch.value='';this.agentSelected=null;this.resetAgentPreview();this.refreshAgentProjects();await this.saveAgentState();if(!current())return;this.renderAgentSessions();this.renderAgentMessages();this.renderAgentSources();Promise.resolve(this.restoreAgentPreview()).catch(error=>{if(current())this.agentRunStatus.textContent=error.message;});}
+			this.queueAgentInputSize();
+		}finally{if(this.agentSwitchController===controller){this.agentSwitchController=null;for(const [index,control]of controls.entries())control.disabled=this.agentSwitchDisabled[index];this.agentSwitchDisabled=null;if(current())this.agentInput.focus();}}
 	},
 	async createAgentSession() {
 		if (this.agentRunning || this.agentCreatingSession) return;
@@ -320,7 +345,7 @@ Object.assign(EasySchUI, {
 		for(const control of controls){control.disabled=true;control.setAttribute('aria-busy','true');}
 		try{
 			await this.flushAgentDraft(); await this.saveAgentState();
-			if (this.E.workbenchConversations) { const session=await this.E.workbenchConversations.create({title:'新研究对话',origin:'workbench',projectID,...preferences}); this.receiveSharedAgentState(this.E.workbenchConversations.snapshot());return session; }
+			if (this.E.workbenchConversations) { const session=await this.E.workbenchConversations.create({title:'新研究对话',origin:'workbench',projectID,...preferences}); this.receiveSharedAgentState(this.E.workbenchConversations.snapshot({summary:true,sessionID:this.agentData?.activeSessionID}));return session; }
 			const session = { id: 'conversation-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), title: '新研究对话', ...preferences, projectID, selectedID: '', draft: '', messages: [], createdAt: new Date().toISOString() };
 			this.agentData.sessions.push(session); await this.switchAgentSession(session.id);return session;
 		}finally{this.agentCreatingSession=false;for(const [index,control]of controls.entries()){control.disabled=disabled[index]===true;control.removeAttribute('aria-busy');}this.renderAgentSessions();this.agentInput.focus();}
@@ -332,11 +357,13 @@ Object.assign(EasySchUI, {
 			// choosing its model. Replay only preferences changed in this UI, so an
 			// unchanged default cannot erase the newer shared choice.
 			const defaults={mode:'auto',executionMode:'auto',thinkingLevel:'off'},fields=['mode','projectID','selectedID','draft','modelID','thinkingLevel','executionMode'].filter(key=>(data[key]??defaults[key]??'')!==(session[key]??defaults[key]??''));
-			const patch = JSON.parse(JSON.stringify({...Object.fromEntries(fields.map(key=>[key,data[key]])),messages:data.messages}));
+			const messageSignature=JSON.stringify(data.messages||[]),messagesChanged=messageSignature!==this.agentSavedMessageSignatures?.get(session.id),homeSignature=JSON.stringify(data.home||{}),homeChanged=homeSignature!==this.agentSavedHomeSignature;
+			if(!fields.length&&!messagesChanged&&!homeChanged)return;
+			const patch = JSON.parse(JSON.stringify({...Object.fromEntries(fields.map(key=>[key,data[key]])),...(messagesChanged?{messages:data.messages}:{})}));
 			const sequence=this.agentStateWriteSequence=(this.agentStateWriteSequence||0)+1;this.agentPendingState={sessionID:session.id,sequence,patch};
 			const home=JSON.parse(JSON.stringify(data.home||{}));
-			try {await this.E.workbenchConversations.update(session.id,patch,{origin:'workbench'});await this.E.workbenchConversations.updateHome(home);this.renderAgentSessions();}
-			finally {if(this.agentPendingState?.sequence===sequence){this.agentPendingState=null;if(!this.agentDisposed)this.receiveSharedAgentState(this.E.workbenchConversations.snapshot());}}return;
+			try {if(fields.length||messagesChanged)await this.E.workbenchConversations.update(session.id,patch,{origin:'workbench'});if(homeChanged)await this.E.workbenchConversations.updateHome(home);this.renderAgentSessions();}
+			finally {if(this.agentPendingState?.sequence===sequence){this.agentPendingState=null;if(!this.agentDisposed)this.receiveSharedAgentState(this.E.workbenchConversations.snapshot({summary:true,sessionID:this.agentData?.activeSessionID}));}}return;
 		}
 		if (session) { for (const key of ['mode', 'projectID', 'selectedID', 'draft', 'messages', 'modelID', 'thinkingLevel','executionMode']) session[key] = data[key]; session.updatedAt = new Date().toISOString(); if (session.messages?.length && ['研究对话', '新研究对话'].includes(session.title)) session.title = session.messages.find(message => message.role === 'user')?.text?.replace(/\s+/g, ' ').slice(0, 28) || session.title; }
 		const value = JSON.parse(JSON.stringify(session ? { version: 2, activeSessionID: data.activeSessionID, sessions: data.sessions, home: data.home } : data));
@@ -349,7 +376,7 @@ Object.assign(EasySchUI, {
 			if(value.activeSessionID!==id){this.agentInteractions?.cancel();this.agentController?.abort();}
 			this.agentData.sessions=value.sessions;this.agentData.home=value.home;
 			const current=value.sessions.find(session=>session.id===id);
-			if(current){const merged=new Map((current.messages||[]).map(message=>[message.id,message]));for(const message of this.agentData.messages)merged.set(message.id,message);this.agentData.messages=[...merged.values()];this.agentData.attachments=current.attachments||[];}
+			if(current){this.agentSavedMessageSignatures||=new Map();this.agentSavedMessageSignatures.set(id,JSON.stringify(current.messages||[]));this.agentSavedHomeSignature=JSON.stringify(value.home||{});const merged=new Map((current.messages||[]).map(message=>[message.id,message]));for(const message of this.agentData.messages)merged.set(message.id,message);this.agentData.messages=[...merged.values()];this.agentData.attachments=current.attachments||[];}
 			this.renderAgentSessions();this.renderAgentMessages();return;
 		}
 		const pending=this.agentPendingState;
@@ -394,7 +421,7 @@ Object.assign(EasySchUI, {
 		if(!this.agentJournalSource)return;const selected=this.agentDiscoveryFilters.sourceIDs[0]||'',choices=this.agentDiscoveryPresentation.discoveryJournalChoices(this.agentRecommendations,this.agentDiscoveryResult?.filterOptions?.journals);this.agentJournalSource.replaceChildren(this.agentOption('','全部期刊'),...choices.map(row=>this.agentOption(row.id,row.name)));if(selected&&!choices.some(row=>row.id===selected))this.agentJournalSource.append(this.agentOption(selected,'所选期刊'));this.agentJournalSource.value=selected;
 	},
 	toggleDiscoveryPersonalization() {
-		const open=this.agentPersonalization.hidden;this.agentPersonalization.hidden=!open;this.agentPersonalizeButton.setAttribute('aria-expanded',String(open));if(open){this.agentDiscoveryDraft=this.agentDiscoveryTools.discoveryPreferences(this.E.store.get().settings.libraryDiscovery);this.renderDiscoveryPersonalization();}
+		const open=this.agentPersonalization.hidden;this.agentPersonalization.hidden=!open;this.agentPersonalizeButton.setAttribute('aria-expanded',String(open));if(open){this.agentDiscoveryDraft=this.agentDiscoveryTools.discoveryPreferences(this.E.store.get('settings').libraryDiscovery);this.renderDiscoveryPersonalization();}
 	},
 	renderDiscoveryPersonalization() {
 		const host=this.agentPersonalization,draft=this.agentDiscoveryDraft;host.replaceChildren();host.append(this.el('h3','选择你的关注方向'));
@@ -410,7 +437,7 @@ Object.assign(EasySchUI, {
 		const topic=this.agentHomeSearch.value.trim();if(!topic)return;await this.E.store.update(s=>{const state=s.settings.libraryDiscovery||={topics:[]};state.topics||=[];if(!state.topics.includes(topic))state.topics.push(topic);state.activeTopic=topic;});this.agentHomeSearch.value='';this.agentDiscoveryMode='subscriptions';this.agentHomeRecommendationID='';return this.loadAgentHome();
 	},
 	async loadAgentHome({refresh=false,more=false}={}) {
-		const preferences=this.agentDiscoveryTools.discoveryPreferences(this.E.store.get().settings.libraryDiscovery),mode=this.agentDiscoveryMode||'trends',filters=this.agentDiscoveryFilters||{},query=this.agentDiscoveryQuery||'',key=JSON.stringify([mode,preferences,filters,query]);
+		const preferences=this.agentDiscoveryTools.discoveryPreferences(this.E.store.get('settings').libraryDiscovery),mode=this.agentDiscoveryMode||'trends',filters=this.agentDiscoveryFilters||{},query=this.agentDiscoveryQuery||'',key=JSON.stringify([mode,preferences,filters,query]);
 		this.agentHomeContext.textContent='筛选可获取的全文，保存到研究文件夹，再挑选论文与证据。';
 		this.agentSubscriptionList.replaceChildren();this.agentSubscriptionList.hidden=mode!=='subscriptions';
 		for(const item of preferences.topics){const chip=this.el('span',undefined,'workbench-subscription-chip'),select=this.agentButton(item,async()=>{await this.E.store.update(s=>s.settings.libraryDiscovery.activeTopic=item);this.agentHomeRecommendationID='';await this.loadAgentHome();}),remove=this.agentButton('×',async()=>{await this.E.store.update(s=>{const value=s.settings.libraryDiscovery;value.topics=value.topics.filter(t=>t!==item);if(value.activeTopic===item)value.activeTopic=value.topics[0]||'';});this.agentHomeRecommendationID='';await this.loadAgentHome();});select.setAttribute('aria-pressed',String(item===preferences.activeTopic));remove.setAttribute('aria-label','取消订阅 '+item);chip.append(select,remove);this.agentSubscriptionList.append(chip);}
@@ -466,13 +493,13 @@ Object.assign(EasySchUI, {
 			const meta=this.el('div',undefined,'discovery-paper-meta');meta.append(this.el('time',row.date||row.year||''));if(row.journal||row.sourceName)meta.append(this.el('span',row.journal||row.sourceName,'discovery-journal-badge'));const metric=this.agentDiscoveryPresentation.discoveryMetricLabel(row);if(metric){const badge=this.el('span',metric.text,'discovery-metric');badge.title=metric.title;meta.append(badge);}if(row.metrics?.top===true)meta.append(this.el('span','顶刊','discovery-top-journal'));body.append(meta);
 			const authors=typeof row.authors==='string'?row.authors:(row.authors||[]).map(author=>author.name||[author.firstName,author.lastName].filter(Boolean).join(' ')).join(', ');if(authors){const author=this.el('div',authors,'discovery-paper-authors');author.title=authors;body.append(author);}
 			const abstract=this.el('div',undefined,'recommendation-abstract');abstract.textContent=row.abstract||'来源未提供摘要，下载全文后可继续分析。';body.append(abstract);const actions=this.el('div',undefined,'workbench-paper-actions'),discuss=this.agentButton('讨论',()=>this.enterDiscoveryConversation(row),'workbench-inline-action'),expand=this.agentButton('摘要',()=>{const expanded=expand.getAttribute('aria-expanded')!=='true';expand.setAttribute('aria-expanded',String(expanded));card.classList.toggle('expanded',expanded);},'workbench-inline-action');expand.setAttribute('aria-expanded','false');const download=this.agentButton('下载 PDF',()=>this.acquireDiscoveryPDF(row),'workbench-inline-action discovery-download-primary');download.dataset.discoveryDownload=id;download.setAttribute('aria-live','polite');actions.append(download,discuss,expand);if(row.url)actions.append(this.agentButton('出版来源',()=>window.parent.Zotero.launchURL(row.url),'workbench-inline-action'));body.append(actions);
-			const thumb=this.agentButton('',()=>this.acquireDiscoveryPDF(row),'discovery-paper-preview');thumb.append(this.el('span','PDF','discovery-preview-document'));thumb.setAttribute('aria-label','下载或打开 PDF：'+row.title);card.append(thumb,body);card.onclick=event=>{if(event.target.closest('button,a,input,textarea,select,summary,details')||window.getSelection?.()?.toString())return;this.acquireDiscoveryPDF(row);};card._discoveryEnrich=()=>this.queueDiscoveryEnrichment(card,row,abstract,thumb);list.append(card);this.updateDiscoveryDownload(row,this.agentDiscoveryDownloads?.get(id));if(this.agentDiscoveryObserver)this.agentDiscoveryObserver.observe(card);else card._discoveryEnrich();
+			const thumb=this.agentButton('',()=>this.acquireDiscoveryPDF(row),'discovery-paper-preview');thumb.append(this.el('span','PDF','discovery-preview-document'));thumb.setAttribute('aria-label','下载或打开 PDF：'+row.title);const grip=this.el('span','⠿','discovery-paper-grip');grip.draggable=true;grip.title='拖到对话选用论文，或拖到文件夹下载并归档 PDF';grip.setAttribute('aria-label',grip.title);grip.dataset.cluiIgnoreExpand='true';grip.ondragstart=event=>this.agentFilesTools.setDiscoveryPaperDragData(event,row,{destination:this.E.store.get('settings').discoveryDestination});grip.onclick=event=>event.stopPropagation();card.append(thumb,body,grip);card.onclick=event=>{if(event.target.closest('button,a,input,textarea,select,summary,details,.discovery-paper-grip')||window.getSelection?.()?.toString())return;this.acquireDiscoveryPDF(row);};card._discoveryEnrich=()=>this.queueDiscoveryEnrichment(card,row,abstract,thumb);list.append(card);this.updateDiscoveryDownload(row,this.agentDiscoveryDownloads?.get(id));if(this.agentDiscoveryObserver)this.agentDiscoveryObserver.observe(card);else card._discoveryEnrich();
 		}
 		this.installAgentPaging(list,!!result?.hasMore,()=>this.loadAgentHome({more:true}),scroll);
 	},
 	async enterDiscoveryConversation(row,prompt='') {
 		const ui=window.frameElement?.researchLibraryMode?await this.E.openResearchAgent():this;
-		const destination=this.E.store.get().settings.discoveryDestination;if(destination?.projectID&&ui.E.manuscripts.get(destination.projectID)){ui.agentData.projectID=destination.projectID;ui.refreshAgentProjects();await ui.saveAgentState();}
+		const destination=this.E.store.get('settings').discoveryDestination;if(destination?.projectID&&ui.E.manuscripts.get(destination.projectID)){ui.agentData.projectID=destination.projectID;ui.refreshAgentProjects();await ui.saveAgentState();}
 		const saved=this.agentDiscoveryDownloads?.get(this.agentTools.workbenchSourceIdentity(row)),attachmentID=row.attachmentID||saved?.attachmentID||this.agentSourceDownloads?.get(this.agentSourceDownloadKey(row))?.result?.attachmentID;
 		if(attachmentID)try{await ui.linkDiscoveryConversationFile?.({attachmentID},ui.agentData.activeSessionID);}catch(error){ui.status('PDF 已保存；加入对话资料未完成：'+error.message,true);}
 		ui.openAgentWorkbench(prompt);const file=ui.E.chatAttachments?.get(ui.agentData.activeSessionID).find(file=>file.attachmentID===attachmentID);return file?ui.previewAgentAttachment(file):ui.previewAgentSource(row);
@@ -497,6 +524,8 @@ Object.assign(EasySchUI, {
 	renderAgentSources() {
 		if (!this.agentSourceList) return;
 		this.renderAgentSessions();
+		const branchRevision=this.E.store.branchRevision?.bind(this.E.store),revision=branchRevision&&['manuscripts','researchMaterials','tasks','materialDescriptions','settings'].map(branchRevision),signature=revision&&JSON.stringify([revision,this.agentData.activeSessionID,this.agentData.projectID,this.agentTab,this.agentQuery,this.agentData.selectedID,this.agentWebSources,this.agentWebSearch]);
+		if(signature&&signature===this.agentSourceRenderSignature&&this.agentSourceRenderRows===this.agentSources)return;this.agentSourceRenderSignature=signature;this.agentSourceRenderRows=this.agentSources;
 		for (const button of document.querySelectorAll('[data-source-tab]')) button.setAttribute('aria-selected', String(button.dataset.sourceTab === this.agentTab));
 		const query = this.agentQuery,project=this.agentData.projectID&&this.E.manuscripts.get(this.agentData.projectID),papers=(this.agentSources||[]).filter(paper=>!project?.paperCollectionID||(project.materialPaperIDs||[]).includes(paper.id));
 		let rows = this.agentTab === 'materials' ? this.agentCatalog.searchMaterials(this.agentMaterials(), query, { summary: this.E.manuscripts.summaryReader() }).map(hit => ({ ...hit.m, kind: 'material', stableID: 'material:' + hit.m.id, snippet: hit.snippet })) : this.agentTab === 'tasks' ? (this.E.store.get('tasks') || []).filter(task => !task.done && (!query || task.title.includes(query))).map(task => ({ ...task, kind: 'task', stableID: 'task:' + task.id })) : [...this.agentWebSources, ...papers.map(paper => ({ ...paper, kind: 'paper', stableID: 'paper:' + paper.id }))].filter(row => !query || this.agentCatalog.searchMaterials([{ id: row.stableID, title: row.title, sourceText: row.abstract, summary: row.authors }], query).length);
@@ -612,32 +641,42 @@ Object.assign(EasySchUI, {
 		body.append(this.el('p', row.kind === 'web' ? '获取公开全文后，可查看原文及其证据。' : '使用现有 PDF 阅读器查看这份来源。', 'agent-empty'));
 		body.append(row.kind === 'web' ? this.agentSourceDownloadButton(row, 'agent-text-action', true) : this.agentButton('定位到来源', () => this.openAgentSource(row), 'agent-text-action'));
 	},
+	clearAgentTranscriptCache() {
+		for(const cache of this.agentTranscriptCaches?.values()||[])for(const row of cache.rows.values())row.dispose?.();this.agentTranscriptCaches?.clear();this.agentMessageRenderSignature='';
+	},
 	renderAgentMessages() {
-		const box = this.agentMessages,sessionID=this.agentData.activeSessionID,switched=this.agentRenderedSessionID!==sessionID,nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<60,scrollBefore=box.scrollTop;this.agentRenderedSessionID=sessionID;box.replaceChildren();
+		const box = this.agentMessages,sessionID=this.agentData.activeSessionID,switched=this.agentRenderedSessionID!==sessionID,nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<60,scrollBefore=box.scrollTop;
+		this.agentTranscriptCaches||=new Map();const prior=this.agentTranscriptCaches.get(this.agentRenderedSessionID);if(prior)prior.scrollTop=scrollBefore;this.agentRenderedSessionID=sessionID;
 		this.renderAgentAttachments();
 		if(this.agentWelcome)this.agentWelcome.hidden=!!this.agentData.messages.length;
 		if(this.agentChatLabel)this.agentChatLabel.textContent=this.agentData.sessions?.find(session=>session.id===sessionID)?.title||'研究对话';
 		if(switched&&!this.agentCLUI?.pinned)this.agentCLUI?.setExpanded(false);
 		if(switched)this.agentRenderOffset=0;
 		const visible=this.agentCLUITools?.cluiVisibleMessages(this.agentData.messages,this.agentRenderOffset||0)||{messages:this.agentData.messages};
-		if(visible.hasOlder){const earlier=this.agentButton('查看更早的对话',()=>{this.agentRenderOffset=(this.agentRenderOffset||0)+1;this.renderAgentMessages();},'agent-message-earlier');earlier.dataset.cluiIgnoreExpand='';box.append(earlier);}
+		const signature=JSON.stringify([sessionID,this.agentRenderOffset||0,visible.messages]);if(!switched&&signature===this.agentMessageRenderSignature)return;this.agentMessageRenderSignature=signature;
+		const cache=this.agentTranscriptCaches.get(sessionID)||{rows:new Map()};this.agentTranscriptCaches.delete(sessionID);this.agentTranscriptCaches.set(sessionID,cache);
+		while(this.agentTranscriptCaches.size>4){const oldest=this.agentTranscriptCaches.keys().next().value;for(const row of this.agentTranscriptCaches.get(oldest).rows.values())row.dispose?.();this.agentTranscriptCaches.delete(oldest);}
+		const visibleIDs=new Set(visible.messages.map(message=>message.id));for(const [id,row]of cache.rows)if(!visibleIDs.has(id)){row.dispose?.();cache.rows.delete(id);}
+		const nodes=[];if(visible.hasOlder){const earlier=this.agentButton('查看更早的对话',()=>{this.agentRenderOffset=(this.agentRenderOffset||0)+1;this.renderAgentMessages();},'agent-message-earlier');earlier.dataset.cluiIgnoreExpand='';nodes.push(earlier);}
 		for (const message of visible.messages) {
+			const messageSignature=JSON.stringify(message),cached=cache.rows.get(message.id);if(cached?.signature===messageSignature){nodes.push(cached.node);continue;}cached?.dispose?.();const disposers=[];let disposed=false;const dispose=()=>{disposed=true;for(const off of disposers)off();};
 			const article = this.el('article', undefined, 'agent-message ' + message.role); article.dataset.messageID = message.id;
 			if (message.steps?.length) { const details = this.el('details', undefined, 'agent-execution'); details.append(this.el('summary', '已完成 ' + message.steps.length + ' 个步骤')); for (const step of message.steps) details.append(this.el('div', step, 'agent-execution-step')); article.append(details); }
 			const openSource=source=>this.previewAgentSource(source),text = this.el('div', undefined, 'agent-message-text'); if (message.role === 'user') text.textContent = message.text; else this.E.renderContent(text, message.text,{sources:message.sources||[],onSource:openSource}); article.append(text);
+			if(message.generatedImages?.length){const gallery=this.el('div',undefined,'agent-generated-images');for(const generated of message.generatedImages.filter(image=>image.imagePath)){const figure=this.el('figure',undefined,'agent-generated-image'),image=this.el('img',undefined,'agent-generated-thumbnail'),caption=this.el('figcaption',(generated.title||'研究示意图')+' · AI 构想 · 非原文证据','agent-generated-caption');image.alt=generated.title||'AI 生成的研究示意图';image.loading='lazy';image.decoding='async';figure.append(image,caption);gallery.append(figure);Promise.resolve().then(()=>this.E.previewImage(generated.imagePath)).then(src=>{if(disposed)return;image.src=src;const off=this.agentDiscoveryMedia?.installMediaPreview(image,{src,alt:image.alt+' · AI 构想，非原文证据',onError:error=>{if(!disposed)this.agentRunStatus.textContent=error.message;}});if(off)disposers.push(off);}).catch(error=>{if(!disposed){caption.textContent='图片预览未完成：'+error.message;}});}article.append(gallery);}
 			const citations=this.agentEvidence.citedSources(message),visibleSources=message.searchState?message.sources||[]:citations,groups=this.agentEvidence.sourceGroups(visibleSources);
 			if(groups.length){const details=this.el('details',undefined,'agent-message-sources');details.append(this.el('summary',groups.length+' 份来源'+(citations.length?' · '+citations.length+' 处依据':'')));article.append(details);for(const group of groups){const chip=this.agentButton(group.title,()=>openSource(group.sources[0]),'agent-citation');chip.title=group.sources[0].coverage||'查看实际来源';details.append(chip);}}
 			if(message.role==='assistant'){
 				const saving=this.agentEvidence.answerWithQuestion(this.agentData.messages,message),actions=this.el('div',undefined,'agent-message-actions'),grip=this.agentButton('⠿',()=>{},'agent-message-grip');grip.title='拖动回答到论文或装配，左键批注，右键笔记';actions.append(grip);
-				this.agentMessageTransfer.installMessageDrag({card:article,grip,textRoots:[text],sessionID,messageID:message.id});
+				disposers.push(this.agentMessageTransfer.installMessageDrag({card:article,grip,textRoots:[text],sessionID,messageID:message.id}));
 				if(this.E.saveResearchMessageNote){const save=this.agentButton('保存笔记',async()=>{save.disabled=true;try{await this.E.saveResearchMessageNote(saving,{sessionID,projectID:this.agentData.projectID||''});this.agentRunStatus.textContent='研究笔记已保存';}catch(error){this.status(error.message,true);}finally{save.disabled=false;}},'agent-message-save');save.title='保存问题与回答';actions.append(save);}article.append(actions);
 			}
 			if (message.planVersionID) article.append(this.agentButton('查看实验方案', () => this.showAgentPlan(message.projectID, message.planVersionID), 'agent-artifact'));
 			if (message.topicSuggestion) article.append(this.agentButton(message.applied ? '撤销主题整理' : '应用主题整理', () => this.applyAgentTopics(message), 'agent-artifact'));
 			if (message.layoutSuggestion) article.append(this.agentButton(message.applied ? '撤销素材排序' : '应用素材顺序', () => this.applyAgentLayout(message), 'agent-artifact'));
-			box.append(article);
+			cache.rows.set(message.id,{signature:messageSignature,node:article,dispose});nodes.push(article);
 		}
-		box.scrollTop = switched||nearBottom?box.scrollHeight:scrollBefore;
+		box.replaceChildren(...nodes);box.scrollTop = switched?(cache.scrollTop??box.scrollHeight):nearBottom?box.scrollHeight:scrollBefore;
 	},
 	async showAgentPlan(projectID, versionID) { const version = this.E.notebook.state(projectID).versions.find(item => item.id === versionID); if (!version) throw Error('实验方案版本不可用'); this.resetAgentPreview(); const header = this.el('div', undefined, 'agent-preview-header'); header.append(this.el('h3', '实验方案 · 第 ' + version.number + ' 版')); this.agentPreview.append(header); const content = this.el('div', undefined, 'agent-preview-content'); this.E.renderContent(content, this.E.notebook.planMarkdown(version)); this.agentPreview.append(content); },
 	async applyAgentTopics(message) {
@@ -684,7 +723,7 @@ Object.assign(EasySchUI, {
 				const result = await this.E.runWorkbenchTask({ prompt, mode, projectID, sessionID:sendingSessionID, selectedSource: this.agentSelected?.kind==='attached'?null:this.agentSelected || null, attachments, history: this.agentData.messages.slice(),executionMode:preferences.executionMode,onToolPermission:interactions?value=>interactions.requestToolPermission({...value,sessionID:sendingSessionID}):undefined,onResearchQuestion:interactions?value=>interactions.requestResearchQuestion({...value,sessionID:sendingSessionID}):undefined, modelID: preferences.modelID, thinkingLevel: preferences.thinkingLevel, signal, onProgress: status });
 				if (typeof result.text !== 'string' || !result.text.trim()) throw Error('研究任务没有返回实际内容'); text = result.text;
 				sources = (result.sources || []).map(source => ({ ...source, title: source.title || source.label, kind: source.kind || (source.attachmentID || source.anchor?.attachmentID ? 'material' : typeof source.id === 'number' ? 'paper' : 'web'), stableID: source.stableID || (source.attachmentID ? 'evidence:' + source.id : this.agentTools.workbenchSourceIdentity(source)) })); steps.push(...(result.steps || []));
-				for (const key of ['searchState', 'planVersionID', 'projectID', 'topicSuggestion', 'layoutSuggestion','materialPlacements','cancelledTools','researchDecisions']) if (result[key] !== undefined) extra[key] = result[key];
+				for (const key of ['searchState', 'planVersionID', 'projectID', 'topicSuggestion', 'layoutSuggestion','materialPlacements','cancelledTools','researchDecisions','generatedImages']) if (result[key] !== undefined) extra[key] = result[key];
 				if (result.searchState) { this.agentWebSearch = result.searchState; this.agentWebSources = sources.filter(source => source.kind === 'web'); this.agentTab = 'sources'; this.agentQuery = ''; this.agentSearch.value = ''; this.renderAgentSources(); }
 				if (result.planVersionID && result.projectID) await this.showAgentPlan(result.projectID, result.planVersionID);
 			} else if (mode === 'search') {
@@ -725,6 +764,6 @@ Object.assign(EasySchUI, {
 			if (signal.aborted) throw Error('已停止，已完成的检索与研究记录保留');
 			this.agentData.messages.push({ id: 'workbench-answer-' + Date.now(), role: 'assistant', text, sources, steps, at: new Date().toISOString(), ...extra }); await this.saveAgentState(); this.renderAgentMessages(); this.agentRunStatus.textContent = '';
 		} catch (error) { if (!requestSaved) { this.agentData.messages = this.agentData.messages.filter(message => message.id !== user.id); this.agentInput.value = prompt; this.agentData.draft = prompt; this.queueAgentInputSize(); } this.renderAgentMessages(); this.agentRunStatus.textContent = signal.aborted ? '已停止' : error.message; this.agentRunStatus.title = this.agentRunStatus.textContent; }
-		finally { interactions?.cancel?.();this.agentRunning = false; this.agentController = null; this.agentSend.textContent = '↑'; this.agentSend.title = '发送 · Enter；Shift+Enter 换行'; this.agentSend.setAttribute('aria-label', '发送研究问题'); if(this.E.workbenchConversations)this.receiveSharedAgentState(this.E.workbenchConversations.snapshot());this.agentInput.focus(); }
+		finally { interactions?.cancel?.();this.agentRunning = false; this.agentController = null; this.agentSend.textContent = '↑'; this.agentSend.title = '发送 · Enter；Shift+Enter 换行'; this.agentSend.setAttribute('aria-label', '发送研究问题'); if(this.E.workbenchConversations)this.receiveSharedAgentState(this.E.workbenchConversations.snapshot({summary:true,sessionID:this.agentData?.activeSessionID}));this.agentInput.focus(); }
 	},
 });

@@ -37,6 +37,7 @@ Object.assign(EasySchUI, {
 			if (this.$('api-key').value && !config.endpoint) throw new Error('保存密钥前请填写接口地址');
 			const imageKey = this.$('image-key').value.trim();
 			config.imageEndpoint = this.$('image-endpoint').value.trim();
+			config.imageModel = this.$('image-model').value.trim();
 			if (config.imageEndpoint) config.imageEndpoint = this.E.core.endpoint(config.imageEndpoint);
 			if (imageKey && !config.imageEndpoint) throw new Error('保存生图密钥前请填写生图接口地址');
 			if (imageKey && !/^sk-[A-Za-z0-9_-]{20,}$/.test(imageKey)) throw new Error('生图密钥格式无效');
@@ -83,6 +84,7 @@ Object.assign(EasySchUI, {
 		let config = this.E.settings();
 		this.$('youdao-app-id').value = config.youdaoAppID || '';
 		this.$('image-endpoint').value = config.imageEndpoint || '';
+		this.$('image-model').value = config.imageModel || '';
 		for (let name of ['endpoint', 'model', 'template', 'pandoc', 'csl', 'referenceDoc', 'latexTemplate', 'documentLanguage']) this.$(name).value = config[name];
 		this.E.compatibility().then(text => { this.$('compatibility').textContent = text; }).catch(e => this.status(e.message, true));
 	},

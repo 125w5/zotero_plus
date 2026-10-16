@@ -208,7 +208,7 @@ async function sharedController(initial={}) {
 	ui.renderEmptyAgentPreview=()=>ui.resetAgentPreview();
 	ui.restoreAgentSession(ui.agentData.activeSessionID);ui.agentInput.value=ui.agentData.draft;
 	const search=[...ui.agentData.messages].reverse().find(message=>message.searchState);ui.agentWebSources=search?.sources||[];ui.agentWebSearch=search?.searchState;
-	E.workbenchConversations.subscribe(value=>ui.receiveSharedAgentState(value));
+	E.workbenchConversations.subscribe(value=>ui.receiveSharedAgentState(value),{summary:true,sessionID:()=>ui.agentData.activeSessionID});
 	return {ui,S:E.workbenchConversations,data};
 }
 test('background legacy migration keeps the current search transcript and selected session intact',async()=>{

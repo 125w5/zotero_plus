@@ -64,6 +64,11 @@ export function notebookBrowser({E,N,A,id,$,el,button,status,run}) {
  $('topic').onchange=()=>N.catalog(id,p=>{p.ui.catalog||={};p.ui.catalog.topic=$('topic').value;p.ui.catalog.categoryID=null;});
  $('sort').value=state().sort||'relevance';$('sort').onchange=()=>N.catalog(id,p=>{p.ui.catalog||={};p.ui.catalog.sort=$('sort').value;});
  $('organize').title='按研究主题归组，整理中文说明、分类与标签。保留原有素材和修改。';$('organize').onclick=()=>organize().catch(e=>status(e.message));$('import-image').onclick=()=>importImage().catch(e=>status(e.message));
+ $('generate-illustration').onclick=()=>{
+  const dialog=el('dialog');dialog.id='illustration-dialog';dialog.append(el('h2','生成说明性图片'),el('p','描述构想或想说明的关系。图片将保存在当前项目素材中，并标明 AI 生成。'));
+  const input=el('textarea');input.setAttribute('aria-label','图片描述');input.placeholder='例如：用简洁的论文配色展示数据采集、预处理和模型评估的流程';dialog.append(input);
+  const actions=el('div');actions.className='source-actions';button('取消',()=>dialog.close(),actions);const submit=button('生成图片',()=>{if(!input.value.trim()){input.focus();return;}const prompt=input.value;dialog.close();run(signal=>N.generateIllustration(id,prompt,status,signal));},actions);submit.className='primary';dialog.append(actions);dialog.addEventListener('close',()=>dialog.remove(),{once:true});document.body.append(dialog);dialog.showModal();input.focus();
+ };
  $('sources').addEventListener('keydown',e=>{if(e.isComposing||e.keyCode===229||e.target.matches('input,textarea,select'))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){e.preventDefault();e.stopPropagation();N.catalog(id,p=>{p.ui.catalog||={};p.ui.catalog.selection=materialResults().map(x=>x.m.id);}).catch(e=>status(e.message));return;}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.stopPropagation();undo().catch(e=>status(e.message));}});
  return {render,importImage,choose,undo,findOnline,organize,refreshPaperSelection};
 }

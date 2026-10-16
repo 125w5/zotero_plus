@@ -20,3 +20,12 @@ html[data-appearance] .assembly-conversation-files .assembly-file-row{min-height
 html[data-appearance] .assembly-conversation-files .assembly-file-name>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 html[data-appearance] .assembly-conversation-files .assembly-file-name{border-radius:0;background:transparent!important;padding:0!important;}
 .assembly-file-grip{display:inline-grid;place-items:center;flex:none;width:24px;height:32px;border-radius:8px;color:var(--muted,#7d8998);cursor:grab;user-select:none;touch-action:none;}.assembly-file-grip svg{width:15px;height:18px;pointer-events:none}.assembly-file-grip:hover{background:var(--selected-bg,#e9f2ff);color:var(--text,#35465a)}.assembly-file-grip:active{cursor:grabbing}.assembly-file-name,.assembly-file-name>span,.ai-attachment-name{user-select:text}.chat-context-file>.assembly-file-grip{position:absolute;right:3px;top:4px}.chat-context-file:has(.assembly-file-grip){padding-right:30px!important}.ai-attachment>.assembly-file-grip{height:26px;width:19px}
+/* The legacy #library button rule must not restyle the shared source rail. */
+html[data-appearance] #library .conversation-files button{font-size:11px;min-height:30px;border:1px solid transparent;border-radius:9px;background:transparent;box-shadow:none;color:var(--text)}
+html[data-appearance] #library .conversation-files button:hover{background:var(--soft);border-color:var(--line)}
+html[data-appearance] #library .conversation-files :is(.conversation-files-new,.conversation-files-import){padding:4px 9px;background:linear-gradient(160deg,var(--surface),var(--soft));border-color:var(--line);box-shadow:inset 0 1px #ffffff70,0 1px 3px #1830440b;white-space:nowrap}
+html[data-appearance] #library .conversation-files :is(.conversation-file-preview,.conversation-file-star){border:0;box-shadow:none;padding:0;background:transparent}
+html[data-appearance] #library .conversation-files :is(.conversation-files-session[aria-current=true],.conversation-files-filters button[aria-pressed=true]){background:var(--ui-selection,var(--soft));border-color:var(--line)}
+html[data-appearance] #library .conversation-files-filters button{min-height:27px;padding:3px 7px;font-size:10px}
+html[data-appearance] #library .conversation-file-star{font-size:18px}
+.assembly-conversation-file-detail{backdrop-filter:blur(16px)}

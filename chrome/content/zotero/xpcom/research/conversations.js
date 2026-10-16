@@ -2,27 +2,41 @@
 (function(E){
  const C=ChromeUtils.importESModule('chrome://zotero/content/research/shared/conversation-store.mjs');
  const A=ChromeUtils.importESModule('chrome://zotero/content/research/shared/chat-attachments.mjs');
- const listeners=new Set(),drafts=new Map(),baselines=new Map();let queue=Promise.resolve(),activeID='',scopeSelections={};const clone=value=>JSON.parse(JSON.stringify(value));
+ const listeners=new Map(),drafts=new Map(),baselines=new Map();let queue=Promise.resolve(),activeID='',scopeSelections={};const clone=C.cloneConversationValue;
+ let cachedRevision,cachedRawSignature,cachedSignature,cachedState,cachedSessions=new Map();
+ const storeRevision=()=>E.store.branchRevision?.('researchWorkbench')??E.store.revision;
+ // The store's public reads are detached JSON copies. Reuse our private,
+ // normalized branch until a successful store write changes its revision.
+ // Alternate/legacy stores without revisions retain a content check.
+ const persisted=()=>{
+  const revision=storeRevision();if(typeof revision==='number'&&cachedState&&revision===cachedRevision)return cachedState;
+  const raw=E.store.get('researchWorkbench')||{},signature=JSON.stringify(raw);
+  if(!cachedState||signature!==cachedRawSignature){cachedState=C.normalizeConversations(raw);cachedSessions=new Map(cachedState.sessions.map(session=>[session.id,session]));cachedSignature=JSON.stringify(cachedState);cachedRawSignature=signature;}
+  cachedRevision=revision;return cachedState;
+ };
  const createDraft=fields=>{
   const id=fields.id||'conversation-'+Zotero.Utilities.randomString(16),session={title:'新研究对话',messages:[],attachments:[],mode:'auto',selectedID:'',draft:'',projectID:'',origin:'workbench',createdAt:new Date().toISOString(),...clone(fields),id,isDraft:true};
   session.messages=C.normalizeMessages(session.messages,id);session.attachments=A.normalizeChatAttachments(session.attachments);drafts.set(id,session);baselines.set(id,new Set(session.messages.map(message=>message.id)));return session;
  };
- const snapshot=()=>{
-  const state=C.normalizeConversations(E.store.get('researchWorkbench')||{}),savedIDs=new Set(state.sessions.map(session=>session.id));state.sessions.push(...clone([...drafts.values()].filter(session=>!savedIDs.has(session.id))));state.scopeSessions={...state.scopeSessions,...scopeSelections};
+ const view=()=>{
+  const saved=persisted(),state={...saved,sessions:[...saved.sessions,...[...drafts.values()].filter(session=>!cachedSessions.has(session.id))],scopeSessions:{...saved.scopeSessions,...scopeSelections}};
   if(!state.sessions.length){const session=createDraft({});state.sessions.push(clone(session));scopeSelections.workbench=session.id;state.scopeSessions.workbench=session.id;}
   state.activeSessionID=state.sessions.some(session=>session.id===activeID)?activeID:state.sessions.some(session=>session.id===state.activeSessionID)?state.activeSessionID:state.sessions[0].id;
   return state;
  };
- const emit=(state,meta)=>{for(const listener of listeners)try{listener(clone(state),meta);}catch(error){Zotero.logError(error);}};
+ const summarize=session=>({...Object.fromEntries(['id','title','currentTask','sourceID','projectID','paperID','pptDraftID','origin','isDraft','modelID','thinkingLevel','executionMode','mode','createdAt','updatedAt','inheritedFrom'].filter(key=>session[key]!==undefined).map(key=>[key,session[key]])),messageCount:session.messages?.length||0,attachmentCount:session.attachments?.length||0});
+ const projectState=(state,{summary=false,sessionID}={})=>{if(!summary)return state;const id=typeof sessionID==='function'?sessionID():sessionID;return {...state,sessions:state.sessions.map(session=>session.id===state.activeSessionID||session.id===id?session:summarize(session))};};
+ const snapshot=(options={})=>clone(projectState(view(),options));
+ const emit=(state,meta)=>{for(const [listener,options]of listeners)try{listener(clone(projectState(state,options)),meta);}catch(error){Zotero.logError(error);}};
  const change=(mutate,meta={})=>{const next=queue.then(async()=>{
-  const state=snapshot(),before=C.normalizeConversations(E.store.get('researchWorkbench')||{}),result=mutate(state);
+  const before=persisted(),current=view(),state={...current,sessions:current.sessions.map(session=>session.id===meta.sessionID?clone(session):session),scopeSessions:{...current.scopeSessions},home:{...current.home},migrations:{...current.migrations}},result=mutate(state);
   const saved={...state,sessions:state.sessions.filter(session=>!session.isDraft).map(session=>{const value={...session};delete value.isDraft;return value;})};
   const ids=new Set(saved.sessions.map(session=>session.id));saved.scopeSessions=Object.fromEntries(Object.entries(state.scopeSessions||{}).filter(([,id])=>ids.has(id)));
   saved.activeSessionID=ids.has(state.activeSessionID)?state.activeSessionID:ids.has(before.activeSessionID)?before.activeSessionID:saved.sessions[0]?.id||'';
-  if(JSON.stringify(saved)!==JSON.stringify(before))await E.store.update(data=>{data.researchWorkbench=saved;});
+  const signature=JSON.stringify(saved);if(signature!==cachedSignature){if(E.store.replaceBranch)await E.store.replaceBranch('researchWorkbench',saved);else await E.store.update(data=>{data.researchWorkbench=saved;});cachedState=saved;cachedSessions=new Map(saved.sessions.map(session=>[session.id,session]));cachedSignature=cachedRawSignature=signature;cachedRevision=storeRevision();}
   drafts.clear();for(const session of state.sessions.filter(session=>session.isDraft))drafts.set(session.id,clone(session));
   for(const id of [...baselines.keys()])if(!drafts.has(id))baselines.delete(id);
-  activeID=state.activeSessionID;scopeSelections={...state.scopeSessions};emit(state,meta);return clone(result===undefined?state:result);
+  activeID=state.activeSessionID;scopeSelections={...state.scopeSessions};emit(state,meta);return clone(meta.returnSummary?projectState(state,{summary:true}):result===undefined?state:result);
  });queue=next.catch(()=>{});return next;};
  const sessionIn=(state,id)=>{const session=state.sessions.find(value=>value.id===id);if(!session)throw Error('研究对话不存在，请重新选择。');return session;};
  const promote=(session,messages)=>{if(session.isDraft&&messages.some(message=>message.role==='user'&&String(message.text||'').trim()&&!baselines.get(session.id)?.has(message.id)))delete session.isDraft;};
@@ -34,10 +48,11 @@
   state.sessions.push(session);if(activate)state.activeSessionID=id;state.scopeSessions[C.conversationScope(fields)]=id;return session;
  };
  const S=E.workbenchConversations={
-  snapshot,list:({includeDrafts=false}={})=>snapshot().sessions.filter(session=>includeDrafts||!session.isDraft),get:id=>snapshot().sessions.find(session=>session.id===id)||null,
-  getActive:(state=snapshot())=>state.sessions.find(session=>session.id===state.activeSessionID),
-  getForScope:(scope,state=snapshot())=>C.conversationForScope(state,scope),
-  subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},
+  snapshot,list:({includeDrafts=false,summary=false}={})=>{const rows=view().sessions.filter(session=>includeDrafts||!session.isDraft);return clone(summary?rows.map(summarize):rows);},get:id=>{persisted();return clone(cachedSessions.get(id)||drafts.get(id)||null);},
+  getAttachments:id=>{persisted();return clone((cachedSessions.get(id)||drafts.get(id))?.attachments||[]);},
+  getActive:state=>state?state.sessions.find(session=>session.id===state.activeSessionID):S.get(view().activeSessionID),
+  getForScope:(scope,state)=>state?C.conversationForScope(state,scope):clone(C.conversationForScope(view(),scope)),
+  subscribe(listener,options={}){listeners.set(listener,options);return()=>listeners.delete(listener);},
   create(fields={},options={}){return change(state=>newSession(state,fields,options),{origin:fields.origin||'workbench',action:'create-draft'});},
   open(fields={},options={}){return change(state=>{
    const scope=C.conversationScope(fields),current=!options.fresh&&C.conversationForScope(state,scope);
@@ -56,7 +71,7 @@
    row.stateVersion=(row.stateVersion||0)+1;session.attachmentRevision=(session.attachmentRevision||0)+1;session.updatedAt=new Date().toISOString();return session.attachments;
   },{sessionID:id,attachmentID,action:'attachment-state',...meta});},
   append(id,message,meta={}){const next={at:new Date().toISOString(),...clone(message),id:message.id||'message-'+Zotero.Utilities.randomString(16)};return S.update(id,{messages:[next]},meta).then(()=>next);},
-  select(id,{scope}={}){return change(state=>{const session=sessionIn(state,id);state.activeSessionID=id;state.scopeSessions[C.conversationScope(scope||session)]=id;return state;},{sessionID:id,action:'select'});},
+  select(id,{scope,signal,summary=false}={}){return change(state=>{if(signal?.aborted)return state;const session=sessionIn(state,id);state.activeSessionID=id;state.scopeSessions[C.conversationScope(scope||session)]=id;return state;},{sessionID:id,action:'select',returnSummary:summary});},
   updateHome(patch){return change(state=>{state.home={...state.home,...clone(patch)};return state;},{action:'home'});},
   remove(id){return change(state=>{state.sessions=state.sessions.filter(session=>session.id!==id);for(const [scope,selected]of Object.entries(state.scopeSessions))if(selected===id)delete state.scopeSessions[scope];if(!state.sessions.some(session=>session.id===state.activeSessionID)){if(!state.sessions.length){const draft=createDraft({});state.sessions.push(clone(draft));state.scopeSessions.workbench=draft.id;}state.activeSessionID=state.sessions[0].id;}return state;},{sessionID:id,action:'remove'});},
   importLegacy(key,messages,fields={}){return change(state=>{

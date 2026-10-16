@@ -17,7 +17,7 @@ Object.assign(EasySchUI,{
   this.pptSelected=0;this.show('ppt');this.renderPPT();
  },
  pptButton(label,action,parent,className){const b=this.el('button',label);b.type='button';b.className='ppt-control'+(className?' '+className:'');b.onclick=()=>{try{Promise.resolve(action()).catch(e=>this.status(e.message,true));}catch(e){this.status(e.message,true);}};parent.append(b);return b;},
- pptField(label,value,parent,{tag='input',rows=3,type='text'}={}){const l=this.el('label',label),input=this.el(tag);if(tag==='input')input.type=type;if(tag==='textarea')input.rows=rows;input.value=value??'';l.append(input);parent.append(l);return input;},
+ pptField(label,value,parent,{tag='input',rows=3,type='text'}={}){const l=this.el('label',label,'ppt-field'),input=this.el(tag);if(tag==='input')input.type=type;if(tag==='textarea')input.rows=rows;input.value=value??'';l.append(input);parent.append(l);return input;},
  async pptPatch(fn,history=false){this.pptDraft=await this.E.studio.patch(this.pptDraft.id,fn,{snapshot:history});return this.pptDraft;},
  async pptTask(action){
   if(this.pptAbort){this.status('当前任务正在进行，可以先取消');return;}

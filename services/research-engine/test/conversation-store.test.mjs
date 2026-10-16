@@ -6,7 +6,7 @@ import {readFile} from 'node:fs/promises';
 import * as C from '../../../chrome/content/zotero/research/shared/conversation-store.mjs';
 import * as A from '../../../chrome/content/zotero/research/shared/chat-attachments.mjs';
 const source=await readFile(new URL('../../../chrome/content/zotero/xpcom/research/conversations.js',import.meta.url),'utf8');
-function setup(initial={}){let data=structuredClone(initial),sequence=0,writes=0;const E={store:{get:key=>key?data[key]:data,async update(fn){await Promise.resolve();writes++;fn(data);}}};vm.runInNewContext(source,{Zotero:{Research:E,Utilities:{randomString:()=>String(++sequence)},logError:error=>{throw error;}},ChromeUtils:{importESModule:uri=>uri.endsWith('chat-attachments.mjs')?A:C}});return {S:E.workbenchConversations,get data(){return data;},get writes(){return writes;}};}
+function setup(initial={},withRevision=false){let data=structuredClone(initial),sequence=0,writes=0,revision=1,reads=0,normalizations=0;const tracked={...C,normalizeConversations(value){normalizations++;return C.normalizeConversations(value);}},E={store:{get revision(){return withRevision?revision:undefined;},get(key){reads++;return key?data[key]:data;},async update(fn){await Promise.resolve();writes++;fn(data);revision++;}}};vm.runInNewContext(source,{Zotero:{Research:E,Utilities:{randomString:()=>String(++sequence)},logError:error=>{throw error;}},ChromeUtils:{importESModule:uri=>uri.endsWith('chat-attachments.mjs')?A:tracked}});return {S:E.workbenchConversations,store:E.store,get data(){return data;},get writes(){return writes;},get reads(){return reads;},get normalizations(){return normalizations;}};}
 test('legacy normalization gives stable IDs while retaining Unicode, formulas, sources and model settings',()=>{
  const prior={messages:[{role:'assistant',text:'$x_i^2$ 与中文解释',sources:[{attachmentID:31,position:{rects:[[1,2,3,4]]}}]}],draft:'中文组词草稿',modelID:'configured-model',thinkingLevel:'low',executionMode:'ask'};
  const first=C.normalizeConversations(prior),second=C.normalizeConversations(prior);
@@ -82,4 +82,49 @@ test('file selection, featured state and spreadsheet ranges persist per conversa
 test('PPT drafts retain separate conversation scopes without falling through to a project conversation',async()=>{
  const {S}=setup(),a=await S.open({pptDraftID:'ppt-1',projectID:'p1',origin:'ppt'}),b=await S.open({pptDraftID:'ppt-2',projectID:'p1',origin:'ppt'}),project=await S.open({projectID:'p1'});
  assert.notEqual(a.id,b.id);assert.notEqual(a.id,project.id);assert.equal(S.getForScope({pptDraftID:'ppt-1',projectID:'p1'}).id,a.id);assert.equal(S.get(a.id).pptDraftID,'ppt-1');
+});
+
+test('revision caching avoids library-wide normalization for repeated session reads while returned values remain detached',async()=>{
+ const sessions=Array.from({length:60},(_,index)=>({id:'session-'+index,title:'Discussion '+index,messages:[{id:'message-'+index,role:'assistant',text:'完整研究上下文'.repeat(100),sources:[{anchor:{pageIndex:index}}]}],attachments:[]})),fixture=setup({researchWorkbench:{version:2,activeSessionID:sessions[0].id,sessions}},true),{S}=fixture;
+ const snapshot=S.snapshot(),reads=fixture.reads,normalizations=fixture.normalizations;snapshot.sessions[0].messages[0].sources[0].anchor.pageIndex=-1;
+ for(let index=0;index<60;index++){const row=S.get('session-'+index);row.messages[0].text='temporary local edit';}
+ assert.equal(fixture.reads,reads);assert.equal(fixture.normalizations,normalizations);assert.equal(S.get(sessions[0].id).messages[0].sources[0].anchor.pageIndex,0);assert.notEqual(S.get(sessions[1].id).messages[0].text,'temporary local edit');
+ await fixture.store.update(data=>{data.researchWorkbench={...data.researchWorkbench,sessions:data.researchWorkbench.sessions.map(session=>session.id==='session-1'?{...session,title:'Externally changed'}:session)};});assert.equal(S.get('session-1').title,'Externally changed');assert.equal(fixture.normalizations,normalizations+1);
+});
+
+test('failed persisted writes cannot mutate the cached transcript and the queued next write still succeeds',async()=>{
+ const fixture=setup({researchWorkbench:{version:2,activeSessionID:'saved',sessions:[{id:'saved',title:'Saved',messages:[{id:'original',role:'user',text:'Keep this question'}]}]}},true),{S}=fixture,write=fixture.store.update;let fail=true;
+ fixture.store.update=async fn=>{if(fail){fail=false;throw Error('Controlled persistence failure');}return write(fn);};
+ await assert.rejects(()=>S.append('saved',{id:'failed',role:'assistant',text:'Do not save this answer'}),/persistence/);assert.deepEqual(S.get('saved').messages.map(message=>message.id),['original']);
+ await S.append('saved',{id:'success',role:'assistant',text:'The next answer'});assert.deepEqual(S.get('saved').messages.map(message=>message.id),['original','success']);
+});
+
+test('a superseded queued session selection respects cancellation without changing saved paper scopes',async()=>{
+ const {S}=setup(),first=await S.open({paperID:11}),second=await S.open({paperID:22}),controller=new AbortController();const pending=S.select(first.id,{scope:{paperID:22},signal:controller.signal});controller.abort();await pending;assert.equal(S.getActive().id,second.id);assert.equal(S.getForScope({paperID:22}).id,second.id);
+});
+
+test('history summaries retain routing and counts without copying full transcripts or file content',async()=>{
+ const fixture=setup({},true),{S}=fixture,session=await S.open({id:'ppt-history',title:'组会讨论',projectID:'project-1',pptDraftID:'draft-1',origin:'ppt',modelID:'chosen-model',currentTask:'比较方法',sourceID:'paper:31'});
+ await S.attach(session.id,[{id:'attachment:31',attachmentID:31,kind:'spreadsheet',title:'实验数据.xlsx'}]);await S.append(session.id,{role:'user',text:'保留完整研究问题'.repeat(1000)});const draft=await S.open({id:'empty-draft',paperID:11});
+ const reads=fixture.reads,normalizations=fixture.normalizations,rows=S.list({summary:true});assert.equal(rows.length,1);assert.equal(rows[0].id,session.id);assert.equal(rows[0].title,'组会讨论');assert.equal(rows[0].pptDraftID,'draft-1');assert.equal(rows[0].projectID,'project-1');assert.equal(rows[0].modelID,'chosen-model');assert.equal(rows[0].messageCount,1);assert.equal(rows[0].attachmentCount,1);
+ assert.equal(rows[0].currentTask,'比较方法');assert.equal(rows[0].sourceID,'paper:31');for(const key of ['messages','attachments','draft','detachedAttachments'])assert.equal(Object.hasOwn(rows[0],key),false,key+' stays out of lightweight history');rows[0].title='Local title';rows.push({id:'external'});assert.equal(S.get(session.id).title,'组会讨论');
+ const withDrafts=S.list({includeDrafts:true,summary:true});assert.equal(withDrafts.find(row=>row.id===draft.id).isDraft,true);assert.equal(withDrafts.find(row=>row.id===draft.id).messageCount,0);assert.equal(S.list()[0].messages[0].text,'保留完整研究问题'.repeat(1000),'existing full list remains available');assert.equal(fixture.reads,reads);assert.equal(fixture.normalizations,normalizations);
+ await S.append(session.id,{role:'assistant',text:'新回答'});assert.equal(S.list({summary:true})[0].messageCount,2);
+ const attachments=S.getAttachments(session.id);assert.equal(attachments[0].attachmentID,31);attachments[0].title='Local edit';attachments.push({id:'external'});assert.equal(S.getAttachments(session.id).length,1);assert.equal(S.getAttachments(session.id)[0].title,'实验数据.xlsx');assert.deepEqual(S.getAttachments('missing'),[]);
+});
+
+test('conversation cache ignores unrelated branch revisions and observes a changed conversation branch',async()=>{
+ const fixture=setup({researchWorkbench:{version:2,activeSessionID:'saved',sessions:[{id:'saved',title:'Saved',messages:[{id:'q',role:'user',text:'Original'}]}]}},true),{S,store}=fixture;let branchRevision=1;store.branchRevision=key=>{assert.equal(key,'researchWorkbench');return branchRevision;};S.get('saved');const reads=fixture.reads,normalizations=fixture.normalizations;
+ await store.update(data=>data.researchMaterials={m:{summary:'New material'}});assert.equal(S.get('saved').title,'Saved');assert.equal(fixture.reads,reads);assert.equal(fixture.normalizations,normalizations);
+ await store.update(data=>data.researchWorkbench.sessions[0].title='Renamed');branchRevision++;assert.equal(S.get('saved').title,'Renamed');assert.equal(fixture.reads,reads+1);assert.equal(fixture.normalizations,normalizations+1);
+});
+
+test('projected snapshots and subscriptions preserve active and requested scopes without exposing other transcripts',async()=>{
+ const {S}=setup({},true),a=await S.open({id:'paper-a',paperID:1}),b=await S.open({id:'paper-b',paperID:2}),draft=await S.open({id:'draft-c',paperID:3});await S.append(a.id,{role:'user',text:'论文一完整问题'});await S.attach(a.id,[{id:'attachment:31',attachmentID:31,title:'论文一.pdf',kind:'pdf'}]);await S.append(b.id,{role:'user',text:'论文二完整问题'});await S.update(draft.id,{draft:'未发送的问题'});await S.select(b.id);
+ let retained=a.id,projected,full;const off=S.subscribe(state=>{projected=state;},{summary:true,sessionID:()=>retained}),offFull=S.subscribe(state=>{full=state;});await S.updateHome({query:'研究方向'});
+ assert.equal(projected.sessions.find(row=>row.id===a.id).messages[0].text,'论文一完整问题');assert.equal(projected.sessions.find(row=>row.id===b.id).messages[0].text,'论文二完整问题');const omitted=projected.sessions.find(row=>row.id===draft.id);assert.equal(omitted.isDraft,true);assert.equal(omitted.messageCount,0);assert.equal(Object.hasOwn(omitted,'messages'),false);assert.equal(Object.hasOwn(omitted,'draft'),false);assert.equal(full.sessions.find(row=>row.id===draft.id).draft,'未发送的问题','default subscription still returns complete sessions');
+ projected.sessions.find(row=>row.id===a.id).attachments[0].title='本地更改';projected.sessions.find(row=>row.id===draft.id).title='外部标题';assert.equal(S.getAttachments(a.id)[0].title,'论文一.pdf');assert.notEqual(S.get(draft.id).title,'外部标题');
+ retained=draft.id;await S.updateHome({query:'不同方向'});assert.equal(projected.sessions.find(row=>row.id===draft.id).draft,'未发送的问题');assert.equal(Object.hasOwn(projected.sessions.find(row=>row.id===a.id),'messages'),false);
+ const selected=await S.select(draft.id,{scope:{paperID:3},summary:true});assert.equal(selected.activeSessionID,draft.id);assert.equal(selected.sessions.find(row=>row.id===draft.id).draft,'未发送的问题');assert.equal(Object.hasOwn(selected.sessions.find(row=>row.id===b.id),'messages'),false);assert.equal(S.getForScope({paperID:3}).id,draft.id);assert.equal(S.getForScope({paperID:1}).id,a.id);
+ const snapshot=S.snapshot({summary:true,sessionID:a.id});assert.equal(snapshot.sessions.find(row=>row.id===a.id).attachments[0].attachmentID,31);assert.equal(snapshot.sessions.find(row=>row.id===draft.id).draft,'未发送的问题');snapshot.sessions.find(row=>row.id===draft.id).draft='临时修改';assert.equal(S.get(draft.id).draft,'未发送的问题');assert.equal(S.snapshot().sessions.find(row=>row.id===b.id).messages[0].text,'论文二完整问题');off();offFull();
 });

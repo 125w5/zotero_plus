@@ -19,6 +19,31 @@ export function assemblySelectedSource(project,context,previewID='',assets={}){
  return material?JSON.parse(JSON.stringify({...material,kind:'material',stableID:'material:'+material.id})):null;
 }
 
+// Store notifications include other projects and draft keystrokes. Inspect
+// their metadata before touching a rendered transcript or its source previews.
+export function assemblyConversationRefresh(previous,session,meta={},menuChanged=false){
+ const switched=previous?.id!==session?.id,fields=meta.fields||[],targeted=!meta.sessionID||meta.sessionID===session?.id;
+ const knownUpdate=meta.action==='update'&&fields.length>0;
+ const changed=key=>switched||targeted&&(knownUpdate?fields.includes(key):JSON.stringify(previous?.[key])!==JSON.stringify(session?.[key]));
+ const transcript=changed('messages'),attachments=changed('attachments'),draft=changed('draft');
+ const preferences=['mode','modelID','thinkingLevel','executionMode'].some(changed);
+ const context=switched||menuChanged||transcript||attachments||['selectedSource','currentTask','assemblyContext'].some(changed);
+ return {switched,transcript,attachments,draft,preferences,context,surface:switched||menuChanged||transcript||attachments||draft||preferences};
+}
+
+// Capture the owner at the input event, and flush before leaving that owner.
+// A delayed old draft must never be written into a newly selected task or
+// restored after the send path has cleared its submitted draft.
+export function createAssemblyDraftSaver({save,onError=()=>{},delay=160,setTimer=setTimeout,clearTimer=clearTimeout}){
+ let pending,timer,disposed=false;
+ const flush=()=>{clearTimer(timer);timer=undefined;const value=pending;pending=undefined;if(!value)return Promise.resolve();return Promise.resolve().then(()=>save(value.sessionID,value.draft)).catch(onError);};
+ return {
+  queue(sessionID,draft){if(disposed)return;if(pending&&pending.sessionID!==sessionID)void flush();pending={sessionID,draft};clearTimer(timer);timer=setTimer(flush,delay);},
+  flush,
+  dispose(){disposed=true;return flush();}
+ };
+}
+
 export async function installAssemblyConversation(U,{renderChat,applyPanels,persist,status}){
  // Edge fades stay fixed to the transcript viewport, so reading or selecting a
  // long answer never turns a moving decoration into a click target.
@@ -26,6 +51,7 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
  const E=U.E,S=E.workbenchConversations;if(!S)throw Error('共享研究对话尚未加载，请重启新版 EasySch。');
  await S.importLegacy('assembly:'+U.p.id,U.p.chat||[],{title:'装配 · '+U.p.title,origin:'assembly',projectID:U.p.id,draft:U.p.ui.aiDraft||''});
  U.conversations=S;await S.open({projectID:U.p.id,origin:'assembly',title:U.p.title});U.conversationSession=S.getForScope({projectID:U.p.id});
+ const draftSaver=createAssemblyDraftSaver({save:(id,draft)=>S.update(id,{draft},{origin:'assembly'}),onError:error=>status(error.message,true)});U.flushResearchDraft=()=>draftSaver.flush();
  U.previewResearchSource=async source=>{
   const id=source?.materialID||String(source?.stableID||source?.id||'').replace(/^material:/u,''),material=U.p.materials.find(row=>row.id===id)||U.A.assetLibrary()[id];
   if(!material)throw Error('此依据尚未保存为可选素材；请使用“查看原文”打开来源');
@@ -42,6 +68,8 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
  };
  const send=async(prompt,{sessionID=U.conversationSession.id,onProgress=()=>{},mode,modelID,thinkingLevel,assemblyContext,executionMode,onToolPermission,onResearchQuestion,stop=false,fromComposer=false}={})=>{
   if(stop){U.abort?.abort();return;}if(U.busy||U.frameworkBusy||(U.aiSending&&!fromComposer))throw Error('当前研究任务尚未结束，请等待或停止。');
+  await draftSaver.flush();
+  if(U.busy||U.frameworkBusy||(U.aiSending&&!fromComposer))throw Error('当前研究任务尚未结束，请等待或停止。');
   const frameworkCapture=assemblyFrameworkIntent(prompt)?captureFramework(U.p,{instruction:prompt,materialIDs:U.p.ui.frameworkSources?.[U.p.ui.sectionID]}):null;
   const writingCapture=frameworkCapture?null:captureAssemblyWritingRequest(U.p,prompt);if(!writingCapture)E.aiPolicy?.assertResearchPrompt(prompt);const session=S.get(sessionID);if(!session)throw Error('研究对话已不可用，请重新选择。');
   U.busy=true;U.activeResearchSessionID=sessionID;U.updateAssemblyTaskState?.('running',sessionID);U.abort=new AbortController();const signal=U.abort.signal;
@@ -74,7 +102,7 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
   onState(value){if(Object.hasOwn(value,'draft')||Object.hasOwn(value,'mode')){const patch={};for(const key of ['draft','mode','modelID','thinkingLevel','executionMode'])if(Object.hasOwn(value,key))patch[key]=value[key];S.update(value.sessionID||U.conversationSession.id,patch,{origin:'assembly'}).catch(error=>status(error.message,true));return;}U.p.ui.aiConversation=value;persist();},
   renderContent:(...args)=>E.renderContent(...args),onSend:send,onSave:saveMessage,onSource:openSource,onDragMessage:event=>U.updateMessagePinTargets?.(event),getModels:()=>E.workbenchModels?.()||[],
   getAttachments:session=>session?.attachments||[],onAttach:(payload,{sessionID,source})=>E.chatAttachments.attach(sessionID,payload,{source}),onRemoveAttachment:(id,{sessionID})=>E.chatAttachments.remove(sessionID,id),onDragAttachment:(item,event)=>E.chatAttachments.setDragData(event,item,U.conversationSession.id),
-  onSelectSession:async id=>{if(id==='__new__'){const s=U.conversationSession;await S.create({title:'新研究对话',origin:'assembly',projectID:U.p.id,modelID:s.modelID||'',thinkingLevel:s.thinkingLevel||'off',executionMode:s.executionMode||'auto',mode:s.mode||'auto'});}else if(id==='__inherit__'){const active=S.getActive();if(active)await S.select(active.id,{scope:{projectID:U.p.id}});}else await S.select(id,{scope:{projectID:U.p.id}});},
+  onSelectSession:async id=>{if(id==='__new__'){const s=U.conversationSession;await S.create({title:'新研究对话',origin:'assembly',projectID:U.p.id,modelID:s.modelID||'',thinkingLevel:s.thinkingLevel||'off',executionMode:s.executionMode||'auto',mode:s.mode||'auto'});}else if(id==='__inherit__'){const active=S.getActive();if(active)await S.select(active.id,{scope:{projectID:U.p.id},summary:true});}else await S.select(id,{scope:{projectID:U.p.id},summary:true});},
   onError:error=>status(error.message,true)
  });
  U.conversationSurface=surface;U.aiOrb.button.setAttribute('aria-controls',surface.root.id);
@@ -86,7 +114,7 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
    if(save){save.replaceChildren(assemblyChatIcon(document,'save'));save.title='保存回答和问题为笔记';save.setAttribute('aria-label',save.title);}
    const pin=document.createElement('button');pin.type='button';pin.className='quiet-action chat-message-pin';pin.title='固定到右侧 · Shift 点击固定到左侧';pin.setAttribute('aria-label','固定对话片段');pin.append(assemblyChatIcon(document,'pin'));pin.onclick=event=>U.pinResearchMessage?.({sessionID:session.id,messageID:message.id},event.shiftKey?'left':'right').catch(error=>status(error.message,true));meta?.append(pin);
    const grip=document.createElement('button');grip.type='button';grip.className='quiet-action chat-message-grip';grip.title='拖动回答到素材库或论文，保留问题和证据';grip.setAttribute('aria-label',grip.title);grip.append(assemblyChatIcon(document,'grip'));meta?.append(grip);
-   installMessageDrag({card:row,grip,textRoots:[...row.children],sessionID:session.id,messageID:message.id,onDrag:event=>U.updateMessagePinTargets?.(event)});
+   row.disposeResearchDrag=installMessageDrag({card:row,grip,textRoots:[...row.children],sessionID:session.id,messageID:message.id,onDrag:event=>U.updateMessagePinTargets?.(event)});
   }
  };
  const transcriptObserver=new MutationObserver(decorateTranscript);transcriptObserver.observe(U.$('chat'),{childList:true});
@@ -116,25 +144,28 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
  // The service already delivered an immutable snapshot. Reading it again for
  // the selected session and menu would clone every saved transcript twice on
  // each task switch or draft emission.
- const update=(value,meta)=>{const session=S.getForScope({projectID:U.p.id},value);if(!session)return;
+ let sessionMenuSignature='';
+ const update=(value,meta)=>{const scoped=S.getForScope({projectID:U.p.id},value),session=scoped&&!Array.isArray(scoped.messages)?S.get(scoped.id):scoped;if(!session)return;
+  const sessions=value.sessions.filter(item=>!item.isDraft),menuSignature=JSON.stringify(sessions.map(item=>[item.id,item.title,item.projectID,item.sourceID])),refresh=assemblyConversationRefresh(U.conversationSession,session,meta,menuSignature!==sessionMenuSignature);sessionMenuSignature=menuSignature;
+  if(refresh.switched)void draftSaver.flush();
   const focused=document.activeElement,preserve=focused?.matches('.assembly-task-select,.assembly-compose-control,#ai-options,#assembly-execution-mode');
-  U.conversationSession=session;U.conversationSessions=value.sessions.filter(item=>!item.isDraft);surface.render(session,value.sessions,meta);renderAttachments(session);if(U.$('ai-mode'))U.$('ai-mode').value=session.mode||'auto';U.syncComposerMode?.();if(document.activeElement!==U.$('ai-prompt'))U.$('ai-prompt').value=session.draft||'';renderChat();decorateTranscript();
+  U.conversationSession=session;U.conversationSessions=sessions;if(refresh.surface)surface.render(session,value.sessions,meta);if(refresh.attachments)renderAttachments(session);if(refresh.switched||refresh.preferences){if(U.$('ai-mode'))U.$('ai-mode').value=session.mode||'auto';U.syncComposerMode?.();}if((refresh.switched||refresh.draft)&&(refresh.switched||document.activeElement!==U.$('ai-prompt')))U.$('ai-prompt').value=session.draft||'';if(refresh.transcript){renderChat();decorateTranscript();}else if(refresh.context)U.updateChatContext?.();
   // A synchronous shared-message repaint is not a new user focus request.
   // Retained task/menu controls keep the exact keyboard destination; an
   // intentionally removed control or a separate asynchronous user action does
   // not get refocused here.
   if(preserve&&focused.isConnected&&document.activeElement!==focused)focused.focus({preventScroll:true});
  };
- const unsubscribe=S.subscribe(update);update(S.snapshot());if(U.p.ui.aiConversation?.open)surface.show({restore:true});
+ const subscription={summary:true,sessionID:()=>U.conversationSession?.id},unsubscribe=S.subscribe(update,subscription);const initial=S.snapshot(subscription);U.conversationSession=null;update(initial);if(U.p.ui.aiConversation?.open)surface.show({restore:true});
  // Attachment chips and contextual task controls can change the footer's
  // height. Keep the history stack anchored to its actual input baseline.
  const footerResize=new ResizeObserver(()=>applyPanels());footerResize.observe(document.querySelector('footer'));
  const resize=U.$('ai').querySelector('.ai-grip'),beginResize=()=>U.$('ai').dataset.resizing='true',endResize=()=>delete U.$('ai').dataset.resizing;
  resize.addEventListener('pointerdown',beginResize);resize.addEventListener('pointerup',endResize);resize.addEventListener('pointercancel',endResize);
  const attachmentDrops=[];for(const node of [U.$('ai-history').parentElement,U.$('ai-form')].filter(Boolean)){const over=event=>{if(chatAttachmentDropPayload(event.dataTransfer)){event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='copy';node.dataset.attachmentDrop='true';}},leave=event=>{if(!node.contains(event.relatedTarget))delete node.dataset.attachmentDrop;},drop=event=>{const payload=chatAttachmentDropPayload(event.dataTransfer);delete node.dataset.attachmentDrop;if(!payload)return;event.preventDefault();event.stopPropagation();U.attachResearchFiles(payload,{source:'drop'}).catch(error=>status(error.message,true));};node.addEventListener('dragover',over);node.addEventListener('dragleave',leave);node.addEventListener('drop',drop);attachmentDrops.push(()=>{node.removeEventListener('dragover',over);node.removeEventListener('dragleave',leave);node.removeEventListener('drop',drop);});}
- let draftTimer;const input=U.$('ai-prompt'),saveDraft=()=>{clearTimeout(draftTimer);const id=U.conversationSession.id,draft=input.value;draftTimer=setTimeout(()=>S.update(id,{draft},{origin:'assembly'}).catch(error=>status(error.message,true)),160);};input.addEventListener('input',saveDraft);
+ const input=U.$('ai-prompt'),saveDraft=()=>draftSaver.queue(U.conversationSession.id,input.value),flushDraft=()=>void draftSaver.flush();input.addEventListener('input',saveDraft);input.addEventListener('blur',flushDraft);
  const target=U.$('left');target.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('application/x-easysch-research-message')){event.preventDefault();event.dataTransfer.dropEffect='copy';target.dataset.researchDrop='true';}});target.addEventListener('dragleave',event=>{if(!target.contains(event.relatedTarget))delete target.dataset.researchDrop;});
  target.addEventListener('drop',async event=>{const raw=event.dataTransfer.getData('application/x-easysch-research-message');delete target.dataset.researchDrop;if(!raw)return;event.preventDefault();event.stopImmediatePropagation();try{const reference=JSON.parse(raw),message=S.get(reference.sessionID)?.messages.find(value=>value.id===reference.messageID);if(!message)throw Error('研究消息已不可用，请重新拖动。');await saveMessage(message,{sessionID:reference.sessionID});status('回答已保存为研究笔记与来源素材。');}catch(error){status(error.message,true);}},{capture:true});
- window.addEventListener('pagehide',()=>{clearTimeout(draftTimer);footerResize.disconnect();resize.removeEventListener('pointerdown',beginResize);resize.removeEventListener('pointerup',endResize);resize.removeEventListener('pointercancel',endResize);collapseRail.removeEventListener('focus',revealCollapseRail);collapseRail.removeEventListener('blur',hideCollapseRail);transcriptObserver.disconnect();unsubscribe();surface.destroy();input.removeEventListener('input',saveDraft);for(const dispose of attachmentDrops)dispose();},{once:true});
+ window.addEventListener('pagehide',()=>{void draftSaver.dispose();footerResize.disconnect();resize.removeEventListener('pointerdown',beginResize);resize.removeEventListener('pointerup',endResize);resize.removeEventListener('pointercancel',endResize);collapseRail.removeEventListener('focus',revealCollapseRail);collapseRail.removeEventListener('blur',hideCollapseRail);transcriptObserver.disconnect();unsubscribe();surface.destroy();input.removeEventListener('input',saveDraft);input.removeEventListener('blur',flushDraft);for(const dispose of attachmentDrops)dispose();},{once:true});
  return surface;
 }

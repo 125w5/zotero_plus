@@ -40,6 +40,9 @@ body.library-discovery{font:13px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI"
 body.library-discovery>.rail,body.library-discovery .workspace>header,body.library-discovery .workspace>.statusbar,body.library-discovery #workspace-progress{display:none!important}
 body.library-discovery .workspace{margin:0;width:100%;min-width:0}
 body.library-discovery .workspace>main{padding:0;min-height:0;background:#f6f8fa}
+html[data-library-embedded=true] body>.rail,html[data-library-embedded=true] .workspace>header,html[data-library-embedded=true] .workspace>.statusbar,html[data-library-embedded=true] #workspace-progress{display:none!important}
+html[data-library-embedded=true] .workspace{margin:0;width:100%;min-width:0}
+html[data-library-embedded=true] .workspace>main{padding:0;min-height:0;background:#f6f8fa}
 body.library-discovery .workbench-home{max-width:none;margin:0;padding:20px 24px}
 body.library-discovery .workbench-home-heading{margin-bottom:12px}
 body.library-discovery .workbench-home-heading h2{font-size:15px}

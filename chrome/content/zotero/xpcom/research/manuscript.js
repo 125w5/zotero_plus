@@ -43,7 +43,26 @@
  const seen=new Set();for(const item of selected){const paper=item.isRegularItem()?item:item.parentItem;if(item.isNote())addNote(item);const items=paper?[paper,...paper.getNotes().map(id=>Zotero.Items.get(id)),...paper.getAttachments().map(id=>Zotero.Items.get(id))]:[item];for(const i of items){if(seen.has(i.id))continue;seen.add(i.id);if(i.isNote()&&i.id!==item.id)addNote(i);if(i.isPDFAttachment())for(const annotation of i.getAnnotations()){const position=JSON.parse(annotation.annotationPosition),text=annotation.annotationText||annotation.annotationComment;out.push(M.material({kind:'annotation',sourceItemID:annotation.id,title:'批注 · 第 '+(position.pageIndex+1)+' 页',sourceText:text,comment:annotation.annotationComment,anchor:{paperItemID:paper?.id||null,citationItemID:paper?.id||null,attachmentID:i.id,pageIndex:position.pageIndex,position,sourceText:text,annotationKey:annotation.key}}));}}}
  const store=E.store.get();for(const d of Object.values(store.pptDrafts||{}))for(const c of d.contributions||[])out.push(M.material({kind:'experiment',sourceRecordID:d.id+':'+c.id,title:'实验记录 · '+(c.title||d.title),sourceText:c.text||c.content||'',anchor:{sourceText:c.text||c.content||''}}));return out;};
  A.openAnchor=async(m)=>{const a=m.anchor;if(a.attachmentID){await Zotero.Reader.open(a.attachmentID,{pageIndex:a.pageIndex||0,...(a.position?{position:a.position}:{}),...(a.annotationKey?{annotationID:a.annotationKey}:{})});}else if(m.sourceItemID)await Zotero.getActiveZoteroPane().selectItem(m.sourceItemID);};
- A.dataset=async(file)=>E.runArtifactEngine({operation:'manuscript-data',python:Zotero.Prefs.get('extensions.easysch.assetPython',true),file});
+ // Focus checks often reach the same workbook through several linked
+ // materials. Reuse one parser result only while its file and interpreter are
+ // unchanged; returned rows remain detached from this bounded private cache.
+ const datasetCache=new Map(),datasetJobs=new Map(),DATASET_CACHE_LIMIT=8,DATASET_CACHE_BYTES=8*1024*1024;let datasetCacheBytes=0;
+ const dropDataset=key=>{const cached=datasetCache.get(key);if(cached){datasetCacheBytes-=cached.bytes;datasetCache.delete(key);}};
+ const forgetDataset=file=>{for(const [key,cached]of datasetCache)if(cached.file===file)dropDataset(key);};
+ const datasetStamp=async file=>{try{const stat=await IOUtils.stat(file),size=Number(stat.size),modified=Number(stat.lastModified);if(!Number.isFinite(size)||!Number.isFinite(modified))throw Error('无法确认数据文件版本，请重新选择文件。');return JSON.stringify([size,modified]);}catch(error){forgetDataset(file);throw error;}};
+ A.dataset=async file=>{
+  const python=Zotero.Prefs.get('extensions.easysch.assetPython',true),stamp=await datasetStamp(file),key=JSON.stringify([file,python,stamp]),cached=datasetCache.get(key);
+  if(cached){datasetCache.delete(key);datasetCache.set(key,cached);return JSON.parse(cached.text);}
+  let job=datasetJobs.get(key);
+  if(!job){job=(async()=>{
+   const result=await E.runArtifactEngine({operation:'manuscript-data',python,file});
+   if(await datasetStamp(file)!==stamp){forgetDataset(file);throw Error('数据文件在读取时发生变化，请重新读取。');}
+   const text=JSON.stringify(result);if(text===undefined)throw Error('未能读取数据文件，请重试。');
+   const bytes=text.length*2;forgetDataset(file);if(bytes<=DATASET_CACHE_BYTES){datasetCache.set(key,{file,text,bytes});datasetCacheBytes+=bytes;while(datasetCache.size>DATASET_CACHE_LIMIT||datasetCacheBytes>DATASET_CACHE_BYTES)dropDataset(datasetCache.keys().next().value);}
+   return text;
+  })();datasetJobs.set(key,job);job.finally(()=>{if(datasetJobs.get(key)===job)datasetJobs.delete(key);}).catch(()=>{});}
+  return JSON.parse(await job);
+ };
  A.image=async()=>{const result=await E.importWritingImage();return result?.path;};
  A.refreshMaterial=async(m)=>{if(m.file){const data=await A.dataset(m.file);return {data,sourceText:JSON.stringify(data.rows)};}if(m.sourceItemID){const item=await Zotero.Items.getAsync(m.sourceItemID);if(!item||item.deleted)throw Error('原始素材已删除');const text=item.isAnnotation()?item.annotationText:new(Zotero.getMainWindow().DOMParser)().parseFromString(item.getNote(),'text/html').body.textContent.trim();return {sourceText:text};}return null;};
  A.propose=async()=>{Policy.assertAIAction('manuscript_write');};

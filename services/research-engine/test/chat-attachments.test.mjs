@@ -44,6 +44,12 @@ test('protected dragover accepts MIME while message dragging remains separate',(
  assert.deepEqual(H.chatAttachmentDropPayload({types:['application/x-manuscript-material'],files:[],getData:()=> 'm-existing'}).materialIDs,['m-existing']);
 });
 
+test('listing conversation files never reads its transcript when the narrow attachment API is available',async()=>{
+ const h=await fixture();try{await h.E.chatAttachments.attach(h.session.id,{materialIDs:['m-existing']});const S=h.E.workbenchConversations,original=S.get;let reads=0;S.get=()=>{reads++;throw Error('Transcript read is unnecessary');};
+  const files=h.E.chatAttachments.get(h.session.id);assert.equal(files[0].id,'material:m-existing');assert.equal(reads,0);files[0].title='changed locally';assert.notEqual(h.E.chatAttachments.get(h.session.id)[0].title,'changed locally');S.get=original;
+ }finally{await h.cleanup();}
+});
+
 test('an explicit file drop reselects the existing source and links its project folder without copying the file',async()=>{
  const h=await fixture();try{
   const file=fileURLToPath(new URL('test/tests/data/test.pdf',root));await h.E.chatAttachments.attach(h.session.id,{files:[file]});const ref=h.E.chatAttachments.get(h.session.id)[0],item=h.items.get(ref.attachmentID),collections=new Set();let saves=0;
@@ -87,6 +93,13 @@ test('a file modified after caching cannot be incorrectly reused under its old f
 test('UTF-8 text and actual image bytes are read, and binary image data never enters the saved session',async()=>{
  const h=await fixture();try{const file=path.join(h.folder,'研究原句.txt');await fs.writeFile(file,'按采集批次划分后才拟合归一化参数。','utf8');const picture=fileURLToPath(new URL('test/tests/data/test.png',root));await h.E.chatAttachments.attach(h.session.id,{files:[file,picture]});const refs=h.E.chatAttachments.get(h.session.id),read=await h.E.chatAttachments.read(refs);assert.ok(read.rows.some(row=>row.text.includes('按采集批次')));assert.equal(read.images.length,1);assert.equal(read.images[0].data,(await fs.readFile(picture)).toString('base64'));assert.doesNotMatch(JSON.stringify(h.E.workbenchConversations.get(h.session.id)),/base64/);
   await h.E.chatAttachments.remove(h.session.id,refs.find(row=>row.kind==='image').id);assert.ok(Object.keys(h.data.writingImages).length);assert.equal(h.items.size,1);
+ }finally{await h.cleanup();}
+});
+test('a generated image keeps its AI provenance in both the conversation reference and pixel context',async()=>{
+ const h=await fixture();try{
+  const imagePath=fileURLToPath(new URL('test/tests/data/test.png',root));h.data.researchMaterials['generated-image']={id:'generated-image',title:'数据流程构想图',sourceType:'ai-illustration',summary:'AI 生成的说明性图片，非实测结果。',sourceText:'',imagePath};
+  await h.E.chatAttachments.attach(h.session.id,{materialIDs:['generated-image']});const reference=h.E.chatAttachments.get(h.session.id)[0];assert.equal(reference.sourceType,'ai-illustration');
+  const read=await h.E.chatAttachments.readSession(h.session.id);assert.equal(read.images.length,1);assert.ok(read.rows.length>=2);assert.ok(read.rows.every(row=>row.sourceType==='ai-illustration'));assert.ok(read.rows.every(row=>/AI 生成构想图片，非论文原图或实验结果/.test(row.coverage)));assert.doesNotMatch(read.rows.at(-1).text,/用户附加图片/);
  }finally{await h.cleanup();}
 });
 test('error webpages disguised as PDF, unsupported files and cancelled imports never create a Zotero attachment',async()=>{

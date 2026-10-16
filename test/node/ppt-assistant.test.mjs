@@ -1,11 +1,26 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {pptConversationSessions,pptAssistantIntent,pptDiscussionContext,pptDroppedFiles} from '../../chrome/content/zotero/research/ui/ppt-assistant.mjs';
+import {pptConversationSessions,pptConversationRefresh,pptAssistantIntent,pptDiscussionContext,pptDroppedFiles} from '../../chrome/content/zotero/research/ui/ppt-assistant.mjs';
 
 test('PPT discussions retain their own draft history rather than adopting another active paper or assembly session',()=>{
  const rows=[{id:'other-draft',pptDraftID:'B',updatedAt:'2026-10-15T12:00:00Z'},{id:'paper',paperID:1,updatedAt:'2026-10-15T13:00:00Z'},{id:'first',pptDraftID:'A',createdAt:'2026-10-15T10:00:00Z'},{id:'second',pptDraftID:'A',updatedAt:'2026-10-15T11:00:00Z'}];
  assert.deepEqual(pptConversationSessions(rows,'A').map(row=>row.id),['second','first']);assert.equal(rows[0].id,'other-draft');
+});
+
+test('PPT refreshes only its current transcript or affected history without reading unrelated messages',()=>{
+ const row=(id,pptDraftID)=>({id,pptDraftID,get messages(){throw Error('Refresh routing must not inspect transcripts');}}),current=row('current','A'),peer=row('peer','A'),paper=row('paper',undefined),other=row('other','B'),state={sessions:[current,peer,paper,other]},scope={draftID:'A',sessionID:'current',knownSessionIDs:new Set(['current','peer'])};
+ for(const action of ['update','attach','detach','attachment-state','select'])assert.equal(pptConversationRefresh(state,{action,sessionID:'paper'},scope),'none',action);
+ assert.equal(pptConversationRefresh(state,{action:'update',sessionID:'other',fields:['title']},scope),'none');
+ assert.equal(pptConversationRefresh(state,{action:'update',sessionID:'current',fields:['draft']},scope),'current');
+ assert.equal(pptConversationRefresh(state,{action:'attachment-state',sessionID:'current'},scope),'current');
+ assert.equal(pptConversationRefresh(state,{action:'update',sessionID:'peer',fields:['title']},scope),'rail');
+ assert.equal(pptConversationRefresh({...state,sessions:state.sessions.filter(value=>value.id!=='peer')},{action:'remove',sessionID:'peer'},scope),'rail');
+ assert.equal(pptConversationRefresh({...state,sessions:[current,row('peer','B'),paper,other]},{action:'update',sessionID:'peer',fields:['pptDraftID']},scope),'rail');
+ assert.equal(pptConversationRefresh(state,{action:'create-draft'},scope),'none');
+ assert.equal(pptConversationRefresh({...state,sessions:[...state.sessions,row('new','A')]},{action:'create-draft'},scope),'rail');
+ assert.equal(pptConversationRefresh(state,{action:'home'},scope),'none');
+ assert.equal(pptConversationRefresh(state,undefined,scope),'current','legacy notifications retain their conservative refresh');
 });
 test('explicit PPT commands reach real operations, while questions and negative instructions remain discussion',()=>{
  for(const [prompt,intent]of [['请读取当前论文材料','collect'],['帮我优化汇报大纲','outline'],['补齐所有未完成页面','generate'],['预览整套PPT','preview'],['导出可编辑 PPTX','export']])assert.equal(pptAssistantIntent(prompt),intent,prompt);

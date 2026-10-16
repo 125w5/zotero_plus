@@ -23,7 +23,7 @@ async function fixture({existingPaper=false,unified=false}={}){
  ui.agentDraftDirty=true;ui.agentData.draft=ui.agentInput.value;
  for(const name of ['refreshAgentProjects','renderAgentSessions','renderAgentMessages','renderAgentSources','resetAgentPreview','renderEmptyAgentPreview','queueAgentInputSize'])ui[name]=()=>{};
  ui.previewAgentSource=source=>{ui.agentSelected=source;};ui.agentMaterials=()=>[];
- E.workbenchConversations.subscribe(value=>ui.receiveSharedAgentState(value));
+ E.workbenchConversations.subscribe(value=>ui.receiveSharedAgentState(value),{summary:true,sessionID:()=>ui.agentData.activeSessionID});
  E.searchPaperPage=async(query,options)=>{calls.search.push({query,options});return {records:[{id:'controlled-paper',title:'Controlled result',doi:'10.1000/controlled',abstract:'Controlled abstract'}],provider:'controlled',page:1,hasMore:false};};
  if(unified)E.runWorkbenchTask=async request=>{calls.tasks.push(request);return {text:'Controlled research answer',sources:[]};};
  return {E,ui,state,calls};
@@ -58,4 +58,25 @@ test('new conversation blocks typing and duplicate creation until its new draft 
  release();const newSession=await creating;assert.notEqual(newSession.id,originalID);assert.equal(ui.agentData.activeSessionID,newSession.id);assert.equal(ui.agentCreatingSession,false);assert.equal(ui.agentInput.disabled,false);assert.equal(ui.agentSend.disabled,false);assert.equal(ui.agentNewSession.disabled,false);
  assert.equal(E.workbenchConversations.get(originalID).draft,originalInput,'previous draft is preserved');assert.equal(E.workbenchConversations.get(newSession.id).isDraft,true);assert.ok(!E.workbenchConversations.list().some(session=>session.id===newSession.id),'the empty session is absent from saved history');
  await E.workbenchConversations.append(newSession.id,{role:'user',text:'Question in the newly created conversation'});assert.ok(E.workbenchConversations.list().some(session=>session.id===newSession.id));assert.equal(ui.agentData.messages[0].text,'Question in the newly created conversation');assert.equal(ui.agentData.modelID,'selected-model');assert.equal(ui.agentData.thinkingLevel,'high');
+});
+
+test('saving an unchanged conversation skips redundant transcript and home writes',async()=>{
+ const {E,ui}=await fixture(),calls={update:[],home:0},update=E.workbenchConversations.update,home=E.workbenchConversations.updateHome;
+ E.workbenchConversations.update=async(id,patch,...rest)=>{calls.update.push(copy(patch));return update(id,patch,...rest);};E.workbenchConversations.updateHome=async(...args)=>{calls.home++;return home(...args);};
+ await ui.flushAgentDraft();assert.equal(calls.update.length,1);assert.equal(calls.home,0);assert.equal(Object.hasOwn(calls.update[0],'messages'),false,'a draft save does not clone and merge the entire transcript');
+ await ui.saveAgentState();await ui.saveAgentState();assert.equal(calls.update.length,1);assert.equal(calls.home,0);
+ ui.agentData.messages.push({id:'new-answer',role:'assistant',text:'A newly completed answer'});await ui.saveAgentState();assert.equal(calls.update.length,2);assert.equal(calls.update[1].messages.at(-1).id,'new-answer');assert.equal(E.workbenchConversations.get('current').messages.at(-1).id,'new-answer');
+ ui.agentData.home={...ui.agentData.home,query:'changed topic'};await ui.saveAgentState();assert.equal(calls.update.length,2);assert.equal(calls.home,1);await ui.saveAgentState();assert.equal(calls.home,1);
+});
+
+test('rapid conversation clicks keep the last selection and retain the outgoing unsent draft',async()=>{
+ const {E,ui}=await fixture({existingPaper:true}),originalDraft=ui.agentInput.value,select=E.workbenchConversations.select;let release,entered=false;const delayed=new Promise(resolve=>release=resolve);
+ E.workbenchConversations.select=async(id,options)=>{if(id==='paper-existing'){entered=true;await delayed;}return select(id,options);};ui.restoreAgentPreview=async()=>new Promise(()=>{});
+ const first=ui.switchAgentSession('paper-existing');for(let n=0;n<30&&!entered;n++)await new Promise(resolve=>setTimeout(resolve,1));assert.equal(entered,true);assert.equal(ui.agentInput.disabled,true);assert.equal(ui.agentSend.disabled,true);
+ await ui.switchAgentSession('current');assert.equal(ui.agentData.activeSessionID,'current');assert.equal(ui.agentInput.disabled,false);assert.equal(ui.agentSend.disabled,false);release();await first;
+ assert.equal(ui.agentData.activeSessionID,'current');assert.equal(E.workbenchConversations.getActive().id,'current');assert.equal(ui.agentInput.value,originalDraft);assert.equal(E.workbenchConversations.get('current').draft,originalDraft);assert.equal(ui.agentSwitchController,null);
+});
+
+test('generated image outcomes remain on the saved answer and do not become cited sources',async()=>{
+ const {E,ui}=await fixture({unified:true});ui.agentMode.value='auto';E.runWorkbenchTask=async()=>({text:'已生成研究流程示意图。',sources:[],generatedImages:[{kind:'image',sourceType:'ai-illustration',imagePath:'E:/workspace/test-writing-images/concept.png',title:'研究流程',model:'image-model'}]});await ui.runAgentTask();const answer=E.workbenchConversations.get(ui.agentData.activeSessionID).messages.at(-1);assert.equal(answer.generatedImages[0].title,'研究流程');assert.equal(answer.generatedImages[0].imagePath,'E:/workspace/test-writing-images/concept.png');assert.deepEqual(copy(answer.sources),[]);
 });

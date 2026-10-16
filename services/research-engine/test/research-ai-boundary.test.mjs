@@ -27,10 +27,10 @@ function fixture() {
  E.studio.request=async(system,input)=>{calls.push({system,input});return {value:{sectionOrder:input.sections.map(s=>s.id).reverse(),blockOrder:input.blocks.map(b=>b.id).reverse(),materialOrder:input.materials.map(m=>m.id).reverse(),reasons:[{targetID:'b2',reason:'先说明符号关系，再讨论证据。'}]},model:'controlled-only'};};
  return {E,state,calls};
 }
-test('source reading remains permitted, definite authorship and illustration APIs are closed',()=>{
+test('source reading and explicit image generation remain permitted, direct authorship APIs stay closed',()=>{
  for(const action of Policy.RESEARCH_AI_ACTIONS)assert.equal(Policy.assertAIAction(action),action);
- for(const action of ['coauthor','rewrite','propose','write','continue','manuscript_apply','image_generate','diagram_generate','chart_generate'])assert.throws(()=>Policy.assertAIAction(action),e=>e.code?.startsWith('AI_'));
- assert.throws(()=>completionProposal(),/AI 不代写/);assert.throws(()=>imageRequest('示意图'),/AI 不生成/);
+ for(const action of ['coauthor','rewrite','propose','write','continue','manuscript_apply','diagram_generate','chart_generate'])assert.throws(()=>Policy.assertAIAction(action),e=>e.code?.startsWith('AI_'));
+ assert.throws(()=>completionProposal(),/AI 不代写/);assert.equal(imageRequest('示意图').n,1);
 });
 test('explicit prohibited requests are rejected while source translations and research organization remain usable',()=>{
  for(const prompt of ['写论文','写引言','write a paper','write a paragraph','帮我写论文','续写当前段落','请润色我的论文','帮我继续写当前段落','翻译我的论文正文','write my manuscript introduction','请生成一张图片','画流程图','generate a chart','给我绘图代码'])assert.ok(Policy.researchPromptIssue(prompt),prompt);
@@ -43,7 +43,7 @@ test('legacy customization cannot restore write or image modes, but saved templa
 });
 test('all legacy backend APIs fail before provider, file access or store mutation',async()=>{
  const {E,state,calls}=fixture(),before=JSON.stringify(state);
- for(const invoke of [()=>E.manuscripts.propose(),()=>E.manuscripts.rewrite(),()=>E.manuscripts.coauthor(),()=>E.notebook.generateIllustration(),()=>E.planSelectionDiagram()])await assert.rejects(invoke(),/AI 不/);
+ for(const invoke of [()=>E.manuscripts.propose(),()=>E.manuscripts.rewrite(),()=>E.manuscripts.coauthor(),()=>E.planSelectionDiagram()])await assert.rejects(invoke(),/AI 不/);
  const ai=E.createAI({collect:async()=>{calls.push('collect');},fetch:async()=>{calls.push('fetch');}});
  await assert.rejects(ai.run({mode:'write',papers:[],prompt:''}),/AI 不代写/);
  await assert.rejects(ai.run({mode:'ask',papers:[],prompt:'帮我写论文'}),/AI 不代写/);

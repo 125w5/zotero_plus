@@ -470,13 +470,24 @@ test('unknown project, missing required project and blocked authorship fail befo
 	for (const request of [
 		{ prompt: '普通学术问题', projectID: 'missing' },
 		{ prompt: '评估实验方案' }, { prompt: '按主题整理素材' }, { prompt: '调整布局' },
-		{ prompt: '帮我写论文正文', projectID: 'project-1' }, { prompt: '生成一张架构图', projectID: 'project-1' },
+		{ prompt: '帮我写论文正文', projectID: 'project-1' },
 	]) {
 		const h = fixture();
 		await assert.rejects(h.E.runWorkbenchTask(request), /研究项目|AI 不/);
 		assert.equal(h.requests.length, 0);
 		assert.equal(h.calls.length, 0);
 	}
+});
+
+test('an explicit image request runs the configured generator and reports a saved local AI image through Pi',async()=>{
+	let generated=0;const h=fixture([payload=>{assert.deepEqual(payload.tool_choice,{type:'function',function:{name:'generate_research_image'}});return call('generate_research_image',{prompt:'数据流程说明图'});},payload=>{assert.equal(toolResult(payload).provenance,'AI 生成构想素材，不是来源证据或实验结果');return text('图片已生成并保存，可用作构想素材。');}],{generateResearchImage:async(prompt)=>{generated++;assert.equal(prompt,'数据流程说明图');return {path:'/library/writing-images/controlled.png',model:'gpt-image-2.5-flare'};}});
+	const result=await h.E.runWorkbenchTask({prompt:'生成一张数据流程图',modelID:'selected-chat-model'});
+	assert.equal(generated,1);assert.equal(h.requests.length,2);assert.equal(result.generatedImages[0].imagePath,'/library/writing-images/controlled.png');assert.equal(result.generatedImages[0].model,'gpt-image-2.5-flare');assert.ok(h.requests.every(request=>request.payload.model==='selected-chat-model'));
+});
+
+test('Ask permission can cancel image generation before any paid image request',async()=>{
+	let generated=0;const h=fixture([call('generate_research_image',{prompt:'数据流程说明图'}),text('已取消。')],{generateResearchImage:async()=>{generated++;throw Error('must not run');}});
+	const result=await h.E.runWorkbenchTask({prompt:'生成一张数据流程图',executionMode:'ask',onToolPermission:async()=>false});assert.equal(generated,0);assert.match(result.text,/取消.*图片生成/);assert.equal(result.generatedImages,undefined);
 });
 
 test('search/evaluate/organize/layout cannot claim completion without a successful corresponding tool', async () => {

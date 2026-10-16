@@ -46,6 +46,7 @@ user_pref("app.update.auto", false);
 user_pref("extensions.zotero.httpServer.port", 23126);
 "@
 if ($Test) {
+    $prefs += "`nuser_pref(`"browser.dom.window.dump.enabled`", true);`n"
     $prefs += "`nuser_pref(`"extensions.easysch.liveProviderLongHistoryProbe`", $($LiveLongHistory.IsPresent.ToString().ToLowerInvariant()));`n"
     $prefs += "user_pref(`"extensions.easysch.liveProviderEvidenceProbe`", $($LiveEvidence.IsPresent.ToString().ToLowerInvariant()));`n"
     $prefs += "`nuser_pref(`"extensions.easysch.liveProviderTwoTurnProbe`", $($LiveConversation.IsPresent.ToString().ToLowerInvariant()));`n"

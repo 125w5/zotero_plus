@@ -42,18 +42,27 @@
 		// Import a user-supplied OpenAI-compatible provider into the profile's
 		// password manager. The source tree and exported research data never hold keys.
 		if (data.ai) {
-			const endpoint = R.core.endpoint(data.ai.endpoint);
+			const endpoint = R.core.endpoint(data.ai.endpoint || data.ai.url || R.settings().endpoint);
 			if (!['gpt6luna', 'gpt-6-luna'].includes(data.ai.model)) throw new Error('此 AI 接口只允许使用 GPT-6 Luna');
-			if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(data.ai.key || '')) throw new Error('AI 密钥格式无效');
-			await R.credentials.set(endpoint, data.ai.key);
+			if (data.ai.key !== undefined) {
+				if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(data.ai.key || '')) throw new Error('AI 密钥格式无效');
+				await R.credentials.set(endpoint, data.ai.key);
+			}
+			else if (!await R.credentials.get(endpoint)) throw new Error('此接口尚未保存 AI 密钥');
 			await R.store.update(s => { s.settings.endpoint = endpoint; s.settings.model = 'gpt-6-luna'; });
 		}
 		if (data.image) {
-			const endpoint = R.core.endpoint(data.image.endpoint);
+			const endpoint = R.core.endpoint(data.image.endpoint || data.image.url);
 			if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(data.image.key || '')) throw new Error('生图密钥格式无效');
+			if (data.image.model !== undefined && (typeof data.image.model !== 'string' || !data.image.model.trim() || data.image.model.length > 160)) throw new Error('生图模型名称无效');
 			// A separate credential scope is required when chat and images share a host.
 			await R.credentials.set(endpoint + '/images', data.image.key);
-			await R.store.update(s => { s.settings.imageEndpoint = endpoint; });
+			await R.store.update(s => {
+				if (s.settings.imageEndpoint !== endpoint) delete s.settings.imageModel;
+				s.settings.imageEndpoint = endpoint;
+				if (data.image.model) s.settings.imageModel = data.image.model.trim();
+			});
+			imageCatalogs.delete(endpoint);
 		}
 		if (data.deepseek) await R.credentials.set('https://api.deepseek.com', data.deepseek);
 		if (data.easyscholar) await R.saveMetricsKey(data.easyscholar);
@@ -62,6 +71,60 @@
 			if (data.deepseek) Object.assign(s.settings, { endpoint: 'https://api.deepseek.com', model: 'deepseek-flash' });
 			if (data.youdaoAppID) s.settings.youdaoAppID = data.youdaoAppID;
 		});
+	};
+	const imageCatalogs = new Map();
+	R.imageModels = async function ({ refresh = false, signal } = {}) {
+		const config = R.settings();
+		if (!config.imageEndpoint) throw Error('请先在设置中保存生图接口');
+		const endpoint = R.core.endpoint(config.imageEndpoint), saved = imageCatalogs.get(endpoint);
+		if (!refresh && saved && Date.now() - saved.at < 3600000) return [...saved.models];
+		const key = await R.credentials.get(endpoint + '/images');
+		if (!key) throw Error('请先在设置中保存生图密钥');
+		const Image = ChromeUtils.importESModule('chrome://zotero/content/research/shared/image-generation.mjs');
+		try {
+			const response = JSON.parse(await R.requestProvider(endpoint + '/models', { signal, headers: { Authorization: 'Bearer ' + key } }, 12000));
+			const models = Image.imageModelsFromCatalog(response);
+			imageCatalogs.set(endpoint, { models, at: Date.now() });
+			return models;
+		}
+		catch (error) {
+			if (signal?.aborted) throw error;
+			// Some compatible services omit /models. Preserve a deliberate model
+			// setting, rather than guessing a different paid model after an error.
+			if (config.imageModel) return [config.imageModel];
+			throw Error('无法读取生图模型列表，请检查接口或在设置中填写支持的生图模型');
+		}
+	};
+	R.generateResearchImage = async function (prompt, { signal, onProgress = () => {}, size = '1024x1024', retainImport = false } = {}) {
+		const Image = ChromeUtils.importESModule('chrome://zotero/content/research/shared/image-generation.mjs');
+		// Validate before touching credentials, files or a paid request.
+		Image.imageRequest(prompt, { size });
+		const abort = () => { if (signal?.aborted) throw Object.assign(Error('已取消生成图片'), { name: 'AbortError' }); };abort();
+		const config = R.settings();
+		if (!config.imageEndpoint) throw Error('请先在设置中保存生图接口');
+		const endpoint = R.core.endpoint(config.imageEndpoint);
+		const key = await R.credentials.get(endpoint + '/images');
+		if (!key) throw Error('请先在设置中保存生图密钥');
+		onProgress('正在确认生图模型…');
+		const model = Image.selectImageModel(await R.imageModels({ signal }), config.imageModel);abort();
+		if (R.core.endpoint(R.settings().imageEndpoint || '') !== endpoint || R.settings().imageModel !== config.imageModel) throw Error('生图设置已变化，请按新的设置重新生成');
+		onProgress('正在生成图片 · ' + model);
+		const body = Image.imageRequest(prompt, { model, size });
+		const response = JSON.parse(await R.requestProvider(endpoint + '/images/generations', { method: 'POST', signal,
+			headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 180000));abort();
+		const { bytes, extension } = Image.generatedImageBytes(response);
+		const temporary = PathUtils.join(Zotero.getTempDirectory().path, 'easysch-image-' + Zotero.Utilities.randomString(16) + '.' + extension);
+		let image;
+		try {
+			await IOUtils.write(temporary, bytes);abort();
+			image = await R.importWritingImage(temporary, { signal: signal || new (Zotero.getMainWindow().AbortController)().signal });abort();
+			const result = { ...image, model, endpoint, prompt: String(prompt).trim(), generatedAt: new Date().toISOString() };
+			for (const name of ['rollbackImport', 'finishImport']) if (image[name]) Object.defineProperty(result, name, { value: image[name] });
+			if (!retainImport) image.finishImport?.();
+			return result;
+		}
+		catch (error) { await image?.rollbackImport?.();throw error; }
+		finally { await IOUtils.remove(temporary, { ignoreAbsent: true }); }
 	};
 	R.importProviderSetup = async function () {
 		let file = PathUtils.join(Services.dirsvc.get('ProfD', Ci.nsIFile).path, 'easysch-provider-setup.json');
@@ -92,7 +155,11 @@
 					if (!reply.text) throw new Error('模型未返回正文');
 					results[name] = '对话成功 · ' + model;
 				}
-				else if (name === 'image') results[name] = '凭据已保存（生图请求另行验证）';
+				else if (name === 'image') {
+					const Image = ChromeUtils.importESModule('chrome://zotero/content/research/shared/image-generation.mjs');
+					const selected = Image.selectImageModel(await R.imageModels({ refresh: true }), R.settings().imageModel);
+					results[name] = '已连接 · ' + selected + '（未生成图片）';
+				}
 				else if (name === 'deepseek') {
 					let headers = { Authorization: 'Bearer ' + await R.credentials.get('https://api.deepseek.com'), 'Content-Type': 'application/json' };
 					let models = JSON.parse(await R.requestProvider('https://api.deepseek.com/models', { headers }));

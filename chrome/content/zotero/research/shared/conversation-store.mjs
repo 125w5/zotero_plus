@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {workbenchSessions} from './agent-workbench.mjs';
 import {normalizeChatAttachments,mergeChatAttachments} from './chat-attachments.mjs';
-const clone = value => JSON.parse(JSON.stringify(value));
+export const cloneConversationValue = value => JSON.parse(JSON.stringify(value));
+const clone = cloneConversationValue;
 function hash(text) {let value=2166136261;for(const char of text){value^=char.charCodeAt(0);value=Math.imul(value,16777619);}return (value>>>0).toString(36);}
 export function normalizeMessages(messages=[],prefix='message') {
  const seen=new Set();return messages.filter(value=>value&&typeof value==='object').map((value,index)=>{

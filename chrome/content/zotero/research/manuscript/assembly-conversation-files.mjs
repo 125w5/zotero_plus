@@ -3,6 +3,7 @@ import {normalizeChatAttachments} from '../shared/chat-attachments.mjs';
 import {normalizeWritingWorkflow,updateWritingWorkflow} from '../shared/paper-writing-workflow.mjs';
 import {installMediaPreview,disposeMediaPreviews} from '../shared/media-preview.mjs';
 import {assemblyChatIcon} from './assembly-chat-context.mjs';
+import {mountConversationFiles} from '../shared/conversation-files.mjs';
 
 const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/\s+/gu,'');
 const kindLabel=kind=>({pdf:'论文',spreadsheet:'表格',image:'图片',docx:'文档',text:'文本',material:'素材'})[kind]||'文件';
@@ -34,42 +35,45 @@ export function assemblyConversationFiles(project,references,{query='',filter='a
 /** A source workspace beside the canvas. Files stay scoped to the selected
  * conversation; the right panel never creates a reader or navigates the PDF. */
 export function installAssemblyConversationFiles(U,{persist,status}){
- const doc=U.$('library').ownerDocument,win=doc.defaultView,S=U.conversations,A=U.E.chatAttachments;let signature='',detail,controller,generation=0,activeID='',activeSession='',filter='all',query='';
+ const doc=U.$('library').ownerDocument,win=doc.defaultView,S=U.conversations,A=U.E.chatAttachments;let signature='',detailSignature='',detail,controller,generation=0,activeID='',activeSession='',fileRail,folderLabel='';
  if(!doc.getElementById('assembly-conversation-file-styles')){const link=doc.createElement('link');link.id='assembly-conversation-file-styles';link.rel='stylesheet';link.href=new URL('./assembly-conversation-files.css',import.meta.url).href;doc.head.append(link);}
  const el=(tag,text,cls)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
  const run=action=>Promise.resolve().then(action).catch(error=>status(error.message,true));
  const button=(label,action,parent,{icon,cls='assembly-file-control'}={})=>{const node=el('button',undefined,cls);node.type='button';node.title=label;node.setAttribute('aria-label',label);if(icon)node.append(assemblyChatIcon(doc,icon));node.append(el('span',label));node.onclick=()=>run(action);parent?.append(node);return node;};
  const refs=()=>A?.get?.(U.conversationSession.id)||U.conversationSession.attachments||[];
- const close=()=>{generation++;controller?.abort();if(detail)disposeMediaPreviews(detail);detail?.remove();detail=null;activeID=activeSession='';};
+ const close=()=>{generation++;controller?.abort();if(detail)disposeMediaPreviews(detail);detail?.remove();detail=null;activeID=activeSession=detailSignature='';};
+ // Selection and starring affect the answering scope, not a file's content.
+ // Unrelated dialogue updates must not reread an open workbook or PDF preview.
+ const detailKey=reference=>JSON.stringify([U.p.ui.sectionID,Object.fromEntries(Object.entries(reference).filter(([key])=>!['selected','featured','stateVersion'].includes(key)))]);
  const current=(owner,request)=>detail?.isConnected&&owner===U.conversationSession.id&&request===generation&&!controller?.signal.aborted;
  const selectedSection=()=>U.p.sections.find(row=>row.id===U.p.ui.sectionID);
- const renderList=host=>{
-  host.replaceChildren();const owner=U.conversationSession.id,rows=assemblyConversationFiles(U.p,refs(),{query,filter});
-  if(!rows.length){host.append(el('p',filter==='exemplar'?'在本章关联的论文中选择结构范文。':'添加论文、表格或文档，再选择本次讨论使用的资料。','assembly-files-empty'));return;}
-  for(const reference of rows){const row=el('article',undefined,'assembly-file-row');row.dataset.fileId=reference.id;row.dataset.selected=String(reference.selected);host.append(row);
-   const check=el('input');check.type='checkbox';check.checked=reference.selected;check.setAttribute('aria-label','本次使用 '+reference.title);check.onchange=()=>run(()=>owner===U.conversationSession.id&&A.setState(owner,reference.id,{selected:check.checked}));row.append(check);
-   const open=button(reference.title||'研究文件',()=>openDetail(reference),row,{icon:'file',cls:'assembly-file-name'});open.dataset.action='preview-conversation-file';open.append(el('small',[kindLabel(reference.kind),reference.sheet,assemblyFileIsExemplar(U.p,reference)?'结构范文':''].filter(Boolean).join(' · ')));
-   const featured=button(reference.featured?'取消精选':'加入精选',()=>owner===U.conversationSession.id&&A.setState(owner,reference.id,{featured:!reference.featured}),row,{cls:'assembly-file-feature'});featured.querySelector('span').textContent=reference.featured?'★':'☆';featured.setAttribute('aria-pressed',String(reference.featured));
-   const grip=el('span',undefined,'assembly-file-grip');grip.draggable=true;grip.title='拖动手柄到论文中的位置；文件标题仍可选择和打开';grip.setAttribute('aria-label',grip.title);grip.append(assemblyChatIcon(doc,'grip'));grip.ondragstart=event=>{if(owner!==U.conversationSession.id){event.preventDefault();return;}U.dragResearchAttachment?.(event,reference);};row.insertBefore(grip,check);
-  }
- };
  const render=()=>{
-  if(U.p.ui.left!=='files')return;const host=U.$('library');host.replaceChildren();const root=el('section',undefined,'assembly-conversation-files');host.append(root);
-  const heading=el('header',undefined,'assembly-files-heading');heading.append(el('strong','对话文件'));button('新建对话',()=>S.create({title:'新研究对话',origin:'assembly',projectID:U.p.id}),heading,{icon:'plus'});root.append(heading);
-  const sessions=el('nav',undefined,'assembly-file-sessions');sessions.setAttribute('aria-label','本项目对话');root.append(sessions);
-  for(const session of [...new Map([...(U.conversationSessions||[]),U.conversationSession].map(row=>[row.id,row])).values()].filter(row=>row.projectID===U.p.id&&(!row.isDraft||row.id===U.conversationSession.id))){
-   const tab=button(session.title||'研究对话',()=>S.select(session.id,{scope:{projectID:U.p.id}}),sessions,{icon:'chat',cls:'assembly-file-session'});tab.dataset.sessionId=session.id;tab.setAttribute('aria-current',String(session.id===U.conversationSession.id));tab.append(el('small',String((session.attachments||[]).length)));
+  if(U.p.ui.left!=='files')return;const host=U.$('library');
+  if(!fileRail){
+   host.replaceChildren();
+   fileRail=mountConversationFiles({host,E:U.E,getSessionID:()=>U.conversationSession.id,
+    getSessions:()=>[...new Map([...(U.conversationSessions||[]),U.conversationSession].map(row=>[row.id,row])).values()].filter(row=>row.projectID===U.p.id&&(!row.isDraft||row.id===U.conversationSession.id)),
+    getFiles:()=>refs(),getContext:()=>({project:U.p.title,folder:folderLabel}),getRevision:()=>[U.p.ui.sectionID,U.p.writingWorkflow?.sections?.[U.p.ui.sectionID]?.referenceMaterialIDs],
+    onNew:()=>S.create({title:'新研究对话',origin:'assembly',projectID:U.p.id}),
+    onSession:id=>S.select(id,{scope:{projectID:U.p.id},summary:true}),onPreview:reference=>openDetail(reference),
+    onFileDrag:(event,reference,owner)=>{if(U.dragResearchAttachment)U.dragResearchAttachment(event,reference);else A.setDragData(event,reference,owner);},
+    onChange:()=>update(),onError:error=>status(error.message,true),title:'装配资料',
+    fileFilters:[['all','全部'],['selected','已选'],['featured','精选'],['papers','论文'],['tables','表格'],['exemplar','结构范文']],
+    matchesFile:(file,query,filter)=>filter==='papers'?file.kind==='pdf'&&assemblyConversationFiles(U.p,[file],{query}).length>0:filter==='tables'?file.kind==='spreadsheet'&&assemblyConversationFiles(U.p,[file],{query}).length>0:assemblyConversationFiles(U.p,[file],{query,filter}).length>0
+   });
+   fileRail.root.classList.add('assembly-conversation-files');
+   const tools=fileRail.root.querySelector('.conversation-files-subheading');button('选择论文',()=>U.openAssemblySources?.('papers'),tools,{icon:'plus'});
+   const hint=el('small',undefined,'assembly-files-scope');hint.dataset.sectionScope='true';fileRail.root.append(hint);
   }
-  const tools=el('div',undefined,'assembly-files-tools');button('选择论文',()=>U.openAssemblySources?.('papers'),tools,{icon:'plus'});button('导入文件',()=>{const owner=U.conversationSession.id;return A.attach(owner);},tools,{icon:'file'});root.append(tools);
-  const search=el('input',undefined,'assembly-file-search');search.type='search';search.placeholder='搜索当前对话的论文或文件';search.setAttribute('aria-label',search.placeholder);search.value=query;root.append(search);
-  const filters=el('nav',undefined,'assembly-files-filters');filters.setAttribute('aria-label','对话文件筛选');root.append(filters);const list=el('div',undefined,'assembly-file-list');root.append(list);
-  for(const [key,label]of [['all','全部'],['selected','已选'],['featured','精选'],['exemplar','结构范文']]){const item=button(label,()=>{filter=key;for(const node of filters.children)node.setAttribute('aria-pressed',String(node===item));renderList(list);},filters);item.setAttribute('aria-pressed',String(key===filter));}
-  search.oninput=()=>{query=search.value;renderList(list);};const hint=el('p',(selectedSection()?.title||'当前章节')+' · 范文只用于章节结构与表达参考','assembly-files-scope');root.append(hint);renderList(list);
+  if(fileRail.root.parentElement!==host){host.replaceChildren(fileRail.root);}
+  const hint=fileRail.root.querySelector('[data-section-scope]');if(hint)hint.textContent=(selectedSection()?.title||'当前章节')+' · 范文用于结构与表达参考';
+  fileRail.render();
  };
+ Promise.resolve(U.E.discoveryCollections?.()).then(result=>{folderLabel=(result?.collections||[]).find(row=>String(row.id)===String(U.p.paperCollectionID))?.path||'';fileRail?.render();}).catch(()=>{});
  const relatedMaterials=reference=>[...new Map([...U.p.materials,...Object.values(U.A.assetLibrary())].map(row=>[row.id,row])).values()].filter(row=>row.id===reference.materialID||reference.attachmentID&&(row.attachmentID===reference.attachmentID||row.anchor?.attachmentID===reference.attachmentID)||reference.paperItemID&&(row.paperItemID===reference.paperItemID||row.anchor?.paperItemID===reference.paperItemID));
  const metadata=async reference=>{const Zotero=U.E.window?.Zotero||win.parent?.Zotero,id=reference.paperItemID||reference.attachmentID;if(!id||!Zotero?.Items?.getAsync)return reference;let item=await Zotero.Items.getAsync(id);if(!item||item.deleted)return reference;if(item.isAttachment?.()&&item.parentID)item=await Zotero.Items.getAsync(item.parentID);await item?.loadDataType?.('itemData');return {...reference,...(item?{...U.E.library.describe(item),abstract:item.getField('abstractNote')}: {})};};
  const openDetail=async(reference,{view:initialView='info'}={})=>{
-  close();const owner=U.conversationSession.id,request=++generation;controller=new win.AbortController();activeID=reference.id;activeSession=owner;U.p.ui.rightOpen=true;U.workflow?.closePanel();U.applyPanels();
+  close();const owner=U.conversationSession.id,request=++generation;controller=new win.AbortController();activeID=reference.id;activeSession=owner;detailSignature=detailKey(reference);U.p.ui.rightOpen=true;U.workflow?.closePanel();U.applyPanels();
   detail=el('section',undefined,'assembly-conversation-file-detail');detail.dataset.fileId=reference.id;detail.setAttribute('aria-label','对话文件详情');U.$('right').append(detail);const heading=el('header',undefined,'assembly-file-detail-heading');button('返回模块详情',close,heading,{icon:'chevron'});heading.append(el('strong',reference.title||'研究文件'));detail.append(heading);
   const tabs=el('nav',undefined,'assembly-file-detail-tabs');tabs.setAttribute('aria-label','文件详情');detail.append(tabs);const body=el('div',undefined,'assembly-file-detail-body');body.append(el('p','正在读取已保存资料…','assembly-files-empty'));detail.append(body);
   const sectionID=U.p.ui.sectionID,materials=relatedMaterials(reference),linked=assemblyFileMaterials(U.p,reference,sectionID),plan=el('div',undefined,'assembly-file-example');detail.append(plan);const example=el('input');example.type='checkbox';example.checked=assemblyFileIsExemplar(U.p,reference,sectionID);example.disabled=!linked.length;const label=el('label');label.append(example,el('span','用作“'+(selectedSection()?.title||'本章')+'”结构范文'));plan.append(label);plan.append(el('small',linked.length?'仅学习论证顺序与表达，不沿用范文结果。':'先在本章关联这篇论文的完整素材。'));example.onchange=()=>run(async()=>{if(owner!==U.conversationSession.id)return;setAssemblyFileExemplar(U.p,reference,example.checked,{sectionID});await persist({flush:true});render();});
@@ -100,9 +104,9 @@ export function installAssemblyConversationFiles(U,{persist,status}){
   for(const section of workbook.sections||[]){const title=el('h4',workbook.selectedSheet+' · '+section.range);body.append(title);const scroll=el('div',undefined,'assembly-file-table'),table=el('table');scroll.append(table);body.append(scroll);for(const row of section.cells||[]){const tr=el('tr');tr.append(el('th',String(row.row)));for(const value of row.values||[])tr.append(el('td',value==null?'':String(value)));table.append(tr);}}
  };
  const update=()=>{const session=U.conversationSession;if(!session)return;const next=JSON.stringify([session.id,refs(),U.p.ui.sectionID,U.p.writingWorkflow?.sections?.[U.p.ui.sectionID]?.referenceMaterialIDs,(U.conversationSessions||[]).map(row=>[row.id,row.title,row.attachments?.length])]);if(next===signature)return;signature=next;
-  if(activeID){const reference=refs().find(row=>row.id===activeID);if(activeSession!==session.id||!reference)close();else if(detail)void openDetail(reference,{view:detail.dataset.view||'info'});}
+  if(activeID){const reference=refs().find(row=>row.id===activeID);if(activeSession!==session.id||!reference)close();else if(detail&&detailSignature!==detailKey(reference))void openDetail(reference,{view:detail.dataset.view||'info'});}
   render();
  };
- const unsubscribe=S.subscribe(update);U.renderConversationFiles=render;U.previewConversationFile=openDetail;U.closeConversationFile=close;U.refreshConversationFiles=update;update();
- const dispose=()=>{close();unsubscribe();delete U.renderConversationFiles;delete U.previewConversationFile;delete U.closeConversationFile;delete U.refreshConversationFiles;};win.addEventListener('pagehide',dispose,{once:true});return {render,open:openDetail,close,dispose};
+ const unsubscribe=S.subscribe(update,{summary:true});U.renderConversationFiles=render;U.previewConversationFile=openDetail;U.closeConversationFile=close;U.refreshConversationFiles=update;update();
+ const dispose=()=>{close();fileRail?.destroy();unsubscribe();delete U.renderConversationFiles;delete U.previewConversationFile;delete U.closeConversationFile;delete U.refreshConversationFiles;};win.addEventListener('pagehide',dispose,{once:true});return {render,open:openDetail,close,dispose};
 }

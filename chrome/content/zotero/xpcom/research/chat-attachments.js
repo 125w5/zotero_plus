@@ -8,7 +8,7 @@
  const libraryID=()=>Zotero.getActiveZoteroPane()?.getSelectedLibraryIDs?.()[0]||Zotero.Libraries.userLibraryID;
  const material=id=>E.store.get('researchMaterials',id)||Object.values(E.manuscripts.all?.()||{}).flatMap(project=>project.materials||[]).find(row=>row.id===id);
  const A=E.chatAttachments={
-  get(sessionID){return H.normalizeChatAttachments(E.workbenchConversations.get(sessionID)?.attachments||[]);},
+  get(sessionID){const S=E.workbenchConversations;return H.normalizeChatAttachments(S.getAttachments?S.getAttachments(sessionID):S.get(sessionID)?.attachments||[]);},
   selected(sessionID,options={}){return H.selectedChatAttachments(A.get(sessionID),options);},
   async location(sessionID,id){
    const reference=A.get(sessionID).find(row=>row.id===id);if(!reference)throw Error('资料已从这次对话移除。');
@@ -64,7 +64,7 @@
     await E.workbenchConversations.attach(sessionID,[reference],{origin:'attachment'});return reference;
    }finally{try{image?.close();}finally{await IOUtils.remove(path,{ignoreAbsent:true});}}
   },
-  async fromMaterial(row){const path=nativePath(row.imagePath);return {id:'material:'+row.id,sourceID:'material:'+row.id,materialID:row.id,title:path?(row.title||'图片素材'):E.manuscripts.titleFor?.(row)||row.title||'研究素材',kind:path?'image':'material',...(row.sourceRecordID?.startsWith('image:')?{fingerprint:row.sourceVersion}:{}),...(path?{thumbnailURL:Zotero.File.pathToFileURI(path),previewURL:Zotero.File.pathToFileURI(path)}:{}),attachmentID:row.attachmentID||row.anchor?.attachmentID,paperItemID:row.paperItemID||row.anchor?.paperItemID};},
+  async fromMaterial(row){const path=nativePath(row.imagePath);return {id:'material:'+row.id,sourceID:'material:'+row.id,materialID:row.id,...(row.sourceType?{sourceType:row.sourceType}:{}),title:path?(row.title||'图片素材'):E.manuscripts.titleFor?.(row)||row.title||'研究素材',kind:path?'image':'material',...(row.sourceRecordID?.startsWith('image:')?{fingerprint:row.sourceVersion}:{}),...(path?{thumbnailURL:Zotero.File.pathToFileURI(path),previewURL:Zotero.File.pathToFileURI(path)}:{}),attachmentID:row.attachmentID||row.anchor?.attachmentID,paperItemID:row.paperItemID||row.anchor?.paperItemID};},
   async fromItem(id){const item=await Zotero.Items.getAsync(id);if(!item||item.deleted)throw Error('所选文件已不存在。');if(!item.isAttachment()){
    if(!item.isRegularItem())throw Error('请拖入论文附件或素材。');const file=await E.library.localPDF(item)||await item.getBestAttachment();if(!file)throw Error('此题录尚无本地附件。');return A.fromItem(file.id);
   }
@@ -134,7 +134,7 @@
    for(const reference of H.selectedChatAttachments(references)){
     stopped(signal);const current=await A.resolve(reference);
     let imagePath;
-    if(current.materialID){const row=material(current.materialID);push(current,{...row,...(row.imagePath?{imagePath:nativePath(row.imagePath)}:{}),text:row.sourceText||E.manuscripts.summaryFor(row),coverage:row.sourceText?'已保存原文摘录':'仅依据已保存说明，未读取原始文件'});imagePath=nativePath(row.imagePath);}
+    if(current.materialID){const row=material(current.materialID);push(current,{...row,...(row.imagePath?{imagePath:nativePath(row.imagePath)}:{}),text:row.sourceText||E.manuscripts.summaryFor(row),coverage:row.sourceType==='ai-illustration'?'AI 生成构想图片，非论文原图或实验结果':row.sourceText?'已保存原文摘录':'仅依据已保存说明，未读取原始文件'});imagePath=nativePath(row.imagePath);}
     else if(current.attachmentID){const item=await Zotero.Items.getAsync(current.attachmentID),path=nativePath(await item.getFilePathAsync());
      if(current.kind==='image')imagePath=path;
      else if(current.kind==='spreadsheet'){
@@ -149,7 +149,7 @@
       for(const [index,row]of relevant.entries()){if(textBudget<=0)break;push(current,{...row,coverage:row.attachmentID?'原文件提取片段，可能取样':'题录与摘要'},row.id||index);}warnings.push(...data.warnings||[]);
      }
     }else if(current.kind==='image')imagePath=current.imagePath;
-    if(imagePath){push(current,{text:'用户附加图片：'+current.title,materialID:current.materialID,imageReference:current.id,imagePath,attachmentID:current.attachmentID,coverage:images?'已附完整图片像素，可解读；数字看不清时须标为待核验':'仅图片名称，未读取像素'},'image');
+    if(imagePath){push(current,{text:(current.sourceType==='ai-illustration'?'AI 生成构想图片：':'用户附加图片：')+current.title,sourceType:current.sourceType,materialID:current.materialID,imageReference:current.id,imagePath,attachmentID:current.attachmentID,coverage:current.sourceType==='ai-illustration'?'AI 生成构想图片，非论文原图或实验结果；'+(images?'已附图片像素':'未读取像素'):images?'已附完整图片像素，可解读；数字看不清时须标为待核验':'仅图片名称，未读取像素'},'image');
      if(images&&visuals.length<4){const dataURL=await E.previewImage(imagePath);stopped(signal);const match=String(dataURL).match(/^data:(image\/(?:png|jpeg|webp));base64,([\s\S]+)$/);if(!match)throw Error('图片格式无法读取。');if(match[2].length>21*1024*1024)throw Error('图片超过模型输入限制，请先缩小图片。');visuals.push({type:'image',mimeType:match[1],data:match[2]});}
      else if(images)warnings.push('本轮最多读取 4 张图片，其余图片仅保留关联。');
     }

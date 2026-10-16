@@ -5,7 +5,28 @@ import {assertAIAction} from './research-ai-policy.mjs';
 // GPT Image replies contain base64 bytes, never a durable download URL.
 export const IMAGE_MODEL = 'gpt-image-2.5';
 
-export function imageRequest(){assertAIAction('image_generate');}
+export function imageModelsFromCatalog(response) {
+ const rows=Array.isArray(response?.data)?response.data:[];
+ return [...new Set(rows.map(row=>row?.id).filter(id=>typeof id==='string'&&id.length<=160&&/(?:gpt-image|dall-e|imagen|flux|seedream|nano[-_ ]?banana)/i.test(id)))];
+}
+
+export function selectImageModel(models,configured='') {
+ if(configured){if(models.length&&!models.includes(configured))throw Error('当前生图模型不在接口提供的模型列表中，请重新选择');return configured;}
+ const selected=[IMAGE_MODEL,'gpt-image-1.5','gpt-image-1','gpt-image-1-mini','dall-e-3','dall-e-2'].find(id=>models.includes(id))||models[0];
+ if(!selected)throw Error('接口没有列出生图模型，请在设置中填写该接口支持的生图模型');
+ return selected;
+}
+
+export function imageRequest(prompt,{model=IMAGE_MODEL,size='1024x1024'}={}) {
+ assertAIAction('image_generate');
+ const text=String(prompt||'').trim();
+ if(!text)throw Error('请描述要生成的图片');
+ if(text.length>12000)throw Error('图片描述过长，请缩短到 12000 字以内');
+ if(!['1024x1024','1536x1024','1024x1536'].includes(size))throw Error('请选择有效的图片尺寸');
+ // GPT Image returns base64 by default and rejects response_format. DALL-E
+ // needs this option so generated files are stored locally before URLs expire.
+ return {model,prompt:text,n:1,size,...(/^dall-e-/i.test(model)?{response_format:'b64_json'}:{})};
+}
 
 export function generatedImageBytes(response) {
  const encoded=response?.data?.[0]?.b64_json;

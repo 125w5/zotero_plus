@@ -332,4 +332,10 @@ describe('Research-only agent workbench', function () {
 		doc.body.dispatchEvent(new view.MouseEvent('click',{bubbles:true}));assert.equal(root.dataset.dimmed,'true');assert.equal(root.dataset.cluiSize,'detail');
 		ui.agentCLUI.setPinned(true);doc.body.dispatchEvent(new view.MouseEvent('dblclick',{bubbles:true}));assert.equal(root.dataset.cluiSize,'detail');ui.agentCLUI.setPinned(false);doc.body.dispatchEvent(new view.MouseEvent('dblclick',{bubbles:true}));await Zotero.Promise.delay(320);assert.equal(root.dataset.cluiSize,'compact');assert.isBelow(root.getBoundingClientRect().height,normal.height-80);await capture('research-clui-compact');
 	 });
+	it('switches recent conversations without scanning manuscripts or rebuilding retained answer content',async()=>{
+		const S=E.workbenchConversations,first=ui.agentData.activeSessionID,second=await S.create({title:'原生性能切换验收',origin:'workbench'});await S.append(second.id,{role:'user',text:'另一段研究问题'});await S.append(second.id,{role:'assistant',text:'保留这段对话内容。',sources:[]});await ui.switchAgentSession(first);
+		const answer=ui.agentMessages.querySelector('.agent-message.assistant'),all=E.manuscripts.all;let scans=0;E.manuscripts.all=(...args)=>{scans++;return all.apply(E.manuscripts,args);};
+		try{await S.update(first,{draft:'未发送的性能验收草稿'},{origin:'agent'});assert.strictEqual(ui.agentMessages.querySelector('.agent-message.assistant'),answer);await ui.switchAgentSession(second.id);await ui.switchAgentSession(first);await Zotero.Promise.delay(180);assert.equal(ui.agentInput.value,'未发送的性能验收草稿');assert.strictEqual(ui.agentMessages.querySelector('.agent-message.assistant'),answer,'切换回来复用Markdown及图片节点');assert.equal(scans,0,'草稿及会话切换不扫描全部论文项目');await capture('research-conversation-performance-retained');}
+		finally{E.manuscripts.all=all;await S.remove(second.id);}
+	});
 });
