@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocalization } from '@fluent/react';
 import cx from 'classnames';
 import { ANNOTATION_COLORS } from '../../defines';
@@ -12,10 +12,16 @@ import IconUnderline from '../../../../res/icons/16/annotate-underline.svg';
 
 function SelectionPopup(props) {
 	const { l10n } = useLocalization();
+	const [annotationMode, setAnnotationMode] = useState(props.textSelectionAnnotationMode === 'underline' ? 'underline' : 'highlight');
+	const [annotationColor, setAnnotationColor] = useState(props.params.annotation.color || ANNOTATION_COLORS[0][1]);
 
 	function handleColorPick(color) {
-		let type = props.textSelectionAnnotationMode;
-		props.onAddAnnotation({ ...props.params.annotation, type, color });
+		setAnnotationColor(color);
+	}
+
+	function handleSaveAnnotation() {
+		props.onChangeTextSelectionAnnotationMode(annotationMode);
+		props.onAddAnnotation({ ...props.params.annotation, type: annotationMode, color: annotationColor });
 	}
 
 	function handleAddToNote() {
@@ -36,25 +42,35 @@ function SelectionPopup(props) {
 				{ANNOTATION_COLORS.map((color, index) => (<button
 					key={index}
 					tabIndex={-1}
-					className="toolbar-button color-button"
+					className={cx('toolbar-button color-button', { active: annotationColor === color[1] })}
 					title={l10n.getString(color[0])}
+					aria-label={l10n.getString(color[0])}
+					aria-pressed={annotationColor === color[1]}
+					data-annotation-color={color[1]}
 					onClick={() => handleColorPick(color[1])}
 				><IconColor16 color={color[1]}/></button>))}
 			</div>
 			<div className="tool-toggle" data-tabstop={1}>
 				<button
 					tabIndex={-1}
-					className={cx('highlight', { active: props.textSelectionAnnotationMode === 'highlight' })}
+					className={cx('highlight', { active: annotationMode === 'highlight' })}
 					title={l10n.getString('reader-highlight-text')}
-					onClick={() => { props.onChangeTextSelectionAnnotationMode('highlight'); props.onAddAnnotation({ ...props.params.annotation, type: 'highlight', color: '#ffd400' }); }}
-				><IconHighlight/></button>
+					aria-pressed={annotationMode === 'highlight'}
+					data-annotation-mode="highlight"
+					onClick={() => setAnnotationMode('highlight')}
+				><IconHighlight/><span>{l10n.getString('reader-highlight-text')}</span></button>
 				<button
 					tabIndex={-1}
-					className={cx('underline', { active: props.textSelectionAnnotationMode === 'underline' })}
+					className={cx('underline', { active: annotationMode === 'underline' })}
 					title={l10n.getString('reader-underline-text')}
-					onClick={() => { props.onChangeTextSelectionAnnotationMode('underline'); props.onAddAnnotation({ ...props.params.annotation, type: 'underline', color: '#2ea8e5' }); }}
-				><IconUnderline/></button>
+					aria-pressed={annotationMode === 'underline'}
+					data-annotation-mode="underline"
+					onClick={() => setAnnotationMode('underline')}
+				><IconUnderline/><span>{l10n.getString('reader-underline-text')}</span></button>
 			</div>
+			<button className="toolbar-button wide-button selection-annotation-save" data-tabstop={1} onClick={handleSaveAnnotation}>
+				保存批注
+			</button>
 			{props.enableAddToNote &&
 				<button className="toolbar-button wide-button" data-tabstop={1} onClick={handleAddToNote}>
 					{l10n.getString('reader-add-to-note')}

@@ -1,5 +1,6 @@
 import Page from './page';
 import { lineRects, strikePositions } from '../../../chrome/content/zotero/research/shared/annotation-geometry.mjs';
+import { normalizePaperOutline } from '../../../chrome/content/zotero/research/shared/paper-outline.mjs';
 import { p2v, v2p } from './lib/coordinates';
 import {
 	getLineSelectionRanges,
@@ -665,6 +666,7 @@ class PDFView {
 			changed = true;
 		}
 		if (outline !== undefined) {
+			outline = normalizePaperOutline(outline);
 			this.setOutline(outline);
 			if (this._primary) {
 				this._onSetOutline(outline || []);

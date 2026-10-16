@@ -71,7 +71,8 @@ function needsActivation(outline, path) {
 }
 
 function Item({ item, id, children, onOpenLink, onUpdate, onSelect }) {
-	function handleExpandToggleClick() {
+	function handleExpandToggleClick(event) {
+		event?.stopPropagation();
 		item.expanded = !item.expanded;
 		onUpdate();
 	}
@@ -93,7 +94,7 @@ function Item({ item, id, children, onOpenLink, onUpdate, onSelect }) {
 
 	let toggle;
 	if (item.items?.length && item.childMatched !== false) {
-		toggle = <div className="toggle" onClick={handleExpandToggleClick}><IconChevronDown8/></div>;
+		toggle = <button type="button" className="toggle" aria-label={item.expanded ? '收起章节' : '展开章节'} aria-expanded={!!item.expanded} onKeyDown={event => { if (['Enter', ' '].includes(event.key)) event.stopPropagation(); }} onClick={handleExpandToggleClick}><IconChevronDown8/></button>;
 	}
 	else {
 		toggle = <div className="toggle"></div>;
@@ -166,6 +167,7 @@ function OutlineView({ outline, currentOutlinePath, onNavigate, onOpenLink, onUp
 
 		let currentIndex = list.findIndex(x => x.active);
 		let currentItem = list[currentIndex];
+		if (!currentItem) return;
 
 		if (key === 'ArrowUp') {
 			let previousItem = list[currentIndex - 1];
@@ -196,7 +198,7 @@ function OutlineView({ outline, currentOutlinePath, onNavigate, onOpenLink, onUp
 			}
 		}
 		else if (key === 'Enter') {
-			if (currentItem.items.length) {
+			if (currentItem.items?.length) {
 				currentItem.expanded = !currentItem.expanded;
 			}
 			else if (currentItem.url) {
@@ -204,12 +206,12 @@ function OutlineView({ outline, currentOutlinePath, onNavigate, onOpenLink, onUp
 			}
 		}
 		else if (!window.rtl && event.key === 'ArrowLeft' || window.rtl && event.key === 'ArrowRight') {
-			if (currentItem.items.length) {
+			if (currentItem.items?.length) {
 				currentItem.expanded = false;
 			}
 		}
 		else if (!window.rtl && event.key === 'ArrowRight' || window.rtl && event.key === 'ArrowLeft') {
-			if (currentItem.items.length) {
+			if (currentItem.items?.length) {
 				currentItem.expanded = true;
 			}
 		}

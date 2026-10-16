@@ -8,6 +8,7 @@ import { ReaderContext } from '../../reader';
 import CustomSections from './custom-sections';
 import { getPositionBoundingRect } from '../../../pdf/lib/utilities';
 import { calculateInkImageRect } from '../../../pdf/pdf-renderer';
+import { annotationPresentation } from '../../../../../chrome/content/zotero/research/shared/annotation-presentation.mjs';
 
 import IconHighlight from '../../../../res/icons/16/annotate-highlight.svg';
 import IconUnderline from '../../../../res/icons/16/annotate-underline.svg';
@@ -51,9 +52,10 @@ export function PopupPreview(props) {
 	}
 
 	let { annotation } = props;
+	const presentation = annotationPresentation(annotation);
 
 	return (
-		<div className={cx('preview', { 'read-only': props.readOnly })}>
+		<div className={cx('preview', { 'read-only': props.readOnly })} data-easysch-generated={presentation.translation ? 'translation' : undefined}>
 			<header
 				title={
 					(new Date(annotation.dateModified)).toLocaleDateString()
@@ -103,7 +105,7 @@ export function PopupPreview(props) {
 				<div className="comment">
 					<Editor
 						id={annotation.id}
-						text={annotation.comment}
+						text={presentation.text}
 						ariaLabel={l10n.getString('reader-annotation-comment')}
 						placeholder={
 							props.readOnly
@@ -226,6 +228,7 @@ export function SidebarPreview(props) {
 	}
 
 	let { annotation, state, type } = props;
+	const presentation = annotationPresentation(annotation);
 
 	let text = ['highlight', 'underline'].includes(annotation.type) && (
 		<div
@@ -263,7 +266,7 @@ export function SidebarPreview(props) {
 		>
 			<ExpandableEditor
 				id={annotation.id}
-				text={annotation.comment}
+				text={presentation.text}
 				readOnly={props.readOnly || !(state === 1 || state === 2 || state === 3)}
 				expanded={state >= 1}
 				placeholder={l10n.getString('reader-add-comment')}
@@ -295,6 +298,7 @@ export function SidebarPreview(props) {
 	return (
 		<div
 			onContextMenu={handleContextMenu}
+			data-easysch-generated={presentation.translation ? 'translation' : undefined}
 			className={cx('preview', {
 				'read-only': props.readOnly, ...expandedState
 			})}

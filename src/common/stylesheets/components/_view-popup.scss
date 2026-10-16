@@ -87,9 +87,14 @@
 }
 
 .selection-popup {
-	max-width: 198px;
-	padding: 8px;
+	max-width: 260px;
+	padding: 10px;
 	gap: 8px;
+	color: var(--fill-primary);
+	border: 1px solid var(--fill-senary);
+	border-radius: 10px;
+
+	[hidden] { display: none !important; }
 
 	.colors {
 		gap: 4px;
@@ -99,21 +104,24 @@
 	}
 
 	.color-button {
-		width: 20px;
-		height: 20px;
+		width: 26px;
+		height: 28px;
+		border-radius: 6px;
+		&.active { background: var(--fill-quinary); box-shadow: inset 0 0 0 1px var(--fill-secondary); }
 	}
 
 	.tool-toggle {
 		background: var(--fill-quinary);
-		height: 22px;
+		height: 32px;
 		border-radius: 6px;
 		padding: 1px;
 		display: flex;
 		box-shadow: 0px 0px 2px 0px #0000000D inset, 0px 0px 4px 0px #0000000D inset, 0px 0px 2px 0px #0000000D inset;
 
 		.highlight, .underline {
-			height: 20px;
+			height: 30px;
 			flex: 1;
+			gap: 5px;
 			display: flex;
 			justify-content: center;
 			align-items: center;
@@ -140,17 +148,20 @@
 		box-shadow: $shadow-button;
 		width: 100%;
 		color: var(--fill-primary);
-		height: 22px;
+		height: 30px;
+		border-radius: 7px;
 	}
 
 	.custom-sections {
 		padding-top: 5px;
 
 		.section {
-			padding: 5px 0;
-			border-top: 1px solid #d7dad7;
+			padding: 0;
 		}
 	}
+
+	.easysch-quick-translation { min-width: 0; }
+	.quick-translation-output { display: block; min-height: 22px; color: var(--fill-secondary); overflow-wrap: anywhere; }
 }
 
 .preview-popup {

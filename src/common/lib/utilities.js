@@ -17,7 +17,8 @@ export let isSafari = /constructor/i.test(window.HTMLElement)
 	|| !!navigator && navigator.userAgent.includes('Safari/') && !navigator.userAgent.includes('Chrome/');
 
 export function isTextBox(node) {
-	return ['INPUT'].includes(node.nodeName) && node.type === 'text' || node.getAttribute('contenteditable') === 'true';
+	return !!node && (['INPUT'].includes(node.nodeName) && node.type === 'text'
+		|| node.getAttribute?.('contenteditable') === 'true');
 }
 
 export function pressedNextKey(event) {

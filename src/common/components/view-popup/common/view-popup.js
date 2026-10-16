@@ -39,6 +39,15 @@ function ViewPopup({ id, rect, anchorPoint, className, uniqueRef, padding, prefe
 		setTimeout(updatePopupPosition, 0);
 	}, [uniqueRef, rect, anchorPoint]);
 
+	useLayoutEffect(() => {
+		// Selected-text translation arrives after the original popup has been
+		// measured. Keep its larger content within the visible reading area.
+		if (!className?.includes('selection-popup') || !window.ResizeObserver || !containerRef.current) return;
+		const observer = new ResizeObserver(updatePopupPosition);
+		observer.observe(containerRef.current);
+		return () => observer.disconnect();
+	}, [className, uniqueRef, rect, anchorPoint]);
+
 	function updatePopupPosition() {
 		if (!containerRef.current) {
 			return;

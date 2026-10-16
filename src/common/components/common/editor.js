@@ -246,7 +246,7 @@ function Toolbar({ onCommand }) {
 
 	function handleKeyDown(event) {
 		let editable = event.target.closest('.editor [contenteditable=true]');
-		if (!editable || !toolbarRef.current.parentNode.contains(editable)) {
+		if (!editable || !toolbarRef.current?.parentNode?.contains(editable)) {
 			return;
 		}
 		let { key } = event;
@@ -277,28 +277,31 @@ function Toolbar({ onCommand }) {
 	}
 
 	function update() {
+		// Selection events already queued during unmount can outlive the toolbar.
+		let toolbar = toolbarRef.current;
+		if (!toolbar?.isConnected) return;
 		let selection = window.getSelection();
 		if (!selection || selection.isCollapsed) {
-			toolbarRef.current.style.display = 'none';
+			toolbar.style.display = 'none';
 			activeRef.current = false;
 			return;
 		}
 		let range = selection.getRangeAt(0);
 		let selectionRect = range.getBoundingClientRect();
-		let editorNode = range.startContainer.parentNode.closest('.editor');
-		if (!editorNode || !editorNode.parentNode.contains(toolbarRef.current)) {
-			toolbarRef.current.style.display = 'none';
+		let editorNode = range.startContainer.parentElement?.closest('.editor');
+		if (!editorNode || !editorNode.parentNode.contains(toolbar)) {
+			toolbar.style.display = 'none';
 			activeRef.current = false;
 			return;
 		}
 		let editorRect = editorNode.getBoundingClientRect();
 		let top = selectionRect.y - editorRect.y;
 		if (top < -15) {
-			toolbarRef.current.style.display = 'none';
+			toolbar.style.display = 'none';
 			return;
 		}
-		toolbarRef.current.style.display = 'flex';
-		toolbarRef.current.style.top = top + 'px';
+		toolbar.style.display = 'flex';
+		toolbar.style.top = top + 'px';
 		activeRef.current = true;
 	}
 
