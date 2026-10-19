@@ -9,6 +9,7 @@ using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using System.Reflection;
+using System.Collections.Generic;
 
 [assembly: AssemblyTitle("EasySch")]
 [assembly: AssemblyProduct("EasySch")]
@@ -18,6 +19,49 @@ using System.Reflection;
 class Launcher {
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr hWnd, int command);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool Process32First(IntPtr snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool Process32Next(IntPtr snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    struct ProcessEntry {
+        public uint size, usage, processId;
+        public IntPtr defaultHeap;
+        public uint moduleId, threads, parentProcessId;
+        public int basePriority;
+        public uint flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=260)] public string executable;
+    }
+
+    static Process FindMainProcess(Process starter, string app) {
+        starter.Refresh();
+        if(starter.HasExited) return null;
+        var descendants = new HashSet<uint> { (uint)starter.Id };
+        var entries = new List<ProcessEntry>();
+        IntPtr snapshot = CreateToolhelp32Snapshot(2, 0);
+        if(snapshot != new IntPtr(-1)) {
+            try {
+                var entry = new ProcessEntry { size = (uint)Marshal.SizeOf(typeof(ProcessEntry)) };
+                if(Process32First(snapshot, ref entry)) do { entries.Add(entry); } while(Process32Next(snapshot, ref entry));
+            } finally { CloseHandle(snapshot); }
+            bool changed;
+            do {
+                changed = false;
+                foreach(var entry in entries) if(descendants.Contains(entry.parentProcessId) && descendants.Add(entry.processId)) changed = true;
+            } while(changed);
+        }
+        foreach(uint id in descendants) {
+            Process candidate = null;
+            try {
+                candidate = Process.GetProcessById((int)id);
+                if(candidate.MainWindowHandle != IntPtr.Zero && candidate.StartTime.ToUniversalTime() >= starter.StartTime.ToUniversalTime().AddSeconds(-1)
+                    && String.Equals(candidate.MainModule.FileName, app, StringComparison.OrdinalIgnoreCase)) return candidate;
+            } catch { /* A child can exit between the process snapshot and inspection. */ }
+            if(candidate != null) candidate.Dispose();
+        }
+        return null;
+    }
 
     static string Quote(string value) {
         // CommandLineToArgvW quoting, including a trailing backslash.
@@ -51,9 +95,14 @@ class Launcher {
                 string pidFile = Path.Combine(profile, "easysch-process.txt");
                 if(!created) {
                     try {
-                        var previous = Process.GetProcessById(Int32.Parse(File.ReadAllText(pidFile)));
-                        if(String.Equals(previous.MainModule.FileName, app, StringComparison.OrdinalIgnoreCase)) {
-                            ShowWindowAsync(previous.MainWindowHandle, 9); SetForegroundWindow(previous.MainWindowHandle);
+                        string[] identity = File.ReadAllLines(pidFile);
+                        using(var previous = Process.GetProcessById(Int32.Parse(identity[0]))) {
+                            if(identity.Length == 2 && previous.StartTime.ToUniversalTime().Ticks == Int64.Parse(identity[1])
+                                && String.Equals(previous.MainModule.FileName, app, StringComparison.OrdinalIgnoreCase)) {
+                                IntPtr window = previous.MainWindowHandle;
+                                if(IsIconic(window)) ShowWindowAsync(window, 9);
+                                SetForegroundWindow(window);
+                            }
                         }
                     } catch { /* An already-starting instance will show its window. */ }
                     return 0;
@@ -73,7 +122,7 @@ class Launcher {
                         "user_pref(\"extensions.easysch.writingAppearance\", \"light\");\n",
                         new UTF8Encoding(false));
                 }
-                var start = new ProcessStartInfo(app, "-no-remote -profile " + Quote(profile) + " " + String.Join(" ", args.Select(Quote))) {
+                var start = new ProcessStartInfo(app, "--wait-for-browser -no-remote -profile " + Quote(profile) + " " + String.Join(" ", args.Select(Quote))) {
                     WorkingDirectory = Path.GetDirectoryName(app), UseShellExecute = false
                 };
                 // Use the shipped runtimes even on machines with unrelated
@@ -82,10 +131,15 @@ class Launcher {
                     start.EnvironmentVariables.Remove(name);
                 start.EnvironmentVariables["PYTHONNOUSERSITE"] = "1";
                 using(var process = Process.Start(start)) {
-                    File.WriteAllText(pidFile, process.Id.ToString());
-                    process.WaitForExit();
-                    File.Delete(pidFile);
-                    return process.ExitCode;
+                    try {
+                        // Mozilla's Windows starter owns no window. Track only
+                        // its own child tree and persist the actual GUI identity.
+                        Process main = null;
+                        while(!process.HasExited && main == null) { main = FindMainProcess(process, app); if(main == null) Thread.Sleep(200); }
+                        if(main != null) using(main) File.WriteAllLines(pidFile, new[] { main.Id.ToString(), main.StartTime.ToUniversalTime().Ticks.ToString() });
+                        process.WaitForExit();
+                        return process.ExitCode;
+                    } finally { if(File.Exists(pidFile)) File.Delete(pidFile); }
                 }
             }
         } catch(Exception error) {

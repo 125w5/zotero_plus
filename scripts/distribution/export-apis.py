@@ -30,6 +30,10 @@ def export(profile, client, workspace, destination):
     state = json.loads(workspace.read_text('utf-8'))
     settings = {k: v for k, v in state['settings'].items()
                 if k in SETTING_NAMES and isinstance(v, str)}
+    # Snapshot the effective document-translation defaults as well as explicit
+    # overrides, so recipients keep today's independent low-cost service.
+    settings['translationEndpoint'] = settings.get('translationEndpoint') or 'https://api.deepseek.com'
+    settings['translationModel'] = settings.get('translationModel') or 'deepseek-flash'
     dll_directory = os.add_dll_directory(str(client))
     nss = ctypes.CDLL(str(client / 'nss3.dll'))
     nss.NSS_Init.argtypes = [ctypes.c_char_p]
