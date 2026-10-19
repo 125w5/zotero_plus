@@ -15,12 +15,21 @@ class SECItem(ctypes.Structure):
     _fields_ = [('type', ctypes.c_uint), ('data', ctypes.c_void_p), ('len', ctypes.c_uint)]
 
 
+# Only service configuration travels with an authorized preconfigured build.
+# Library paths, papers, chat history and the publisher's account do not.
+SETTING_NAMES = (
+    'endpoint', 'model', 'imageEndpoint', 'imageModel',
+    'translationEndpoint', 'translationModel', 'azureTranslatorRegion',
+    'youdaoAppID', 'language', 'documentLanguage', 'reasoningParameter',
+)
+
+
 def export(profile, client, workspace, destination):
     logins = json.loads((profile / 'logins.json').read_text('utf-8'))['logins']
     logins = [v for v in logins if v.get('hostname') == 'chrome://easysch']
     state = json.loads(workspace.read_text('utf-8'))
     settings = {k: v for k, v in state['settings'].items()
-                if k in ['endpoint', 'model', 'youdaoAppID', 'language', 'documentLanguage']}
+                if k in SETTING_NAMES and isinstance(v, str)}
     dll_directory = os.add_dll_directory(str(client))
     nss = ctypes.CDLL(str(client / 'nss3.dll'))
     nss.NSS_Init.argtypes = [ctypes.c_char_p]
@@ -54,7 +63,7 @@ def export(profile, client, workspace, destination):
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(json.dumps({'version': 1, 'settings': settings,
                                            'credentials': credentials}, ensure_ascii=False), 'utf-8')
-        print(json.dumps({'exported': len(credentials), 'providers': [c['endpoint'] for c in credentials]}))
+        print(json.dumps({'exported': len(credentials), 'configuredSettings': list(settings)}))
     finally:
         nss.NSS_Shutdown()
         dll_directory.close()

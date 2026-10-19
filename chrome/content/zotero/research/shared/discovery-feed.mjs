@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {abstractExcerpt} from './paper-overview-data.mjs';
+import {discoveryContinuation,parseDiscoveryContinuation,discoverySourceScope,matchDiscoverySource,crossrefFeedRecord,europePMCFeedRecord,crossrefFeedURL,europePMCFeedURL} from './discovery-providers.mjs';
 
 export const DISCOVERY_DISCIPLINES=[
  ['engineering','工程技术','Engineering'],['information','信息科学','Computer science'],['materials','材料科学','Materials science'],
@@ -51,10 +52,13 @@ export function discoveryFeedURL({mode='trends',preferences={},query='',fieldIDs
  params.set('filter',filter.join(','));if(choice.sort!=='relevance')params.set('sort',choice.sort==='citations'||!choice.sort&&mode==='trends'?'cited_by_count:desc':'publication_date:desc');params.set('per-page',String(Math.min(100,Math.max(5,Number(limit)||20))));if(cursor!=null)params.set('cursor',String(cursor));else params.set('page',String(Math.max(1,Number(page)||1)));
  return 'https://api.openalex.org/works?'+params;
 }
-export function discoveryFeedError(error){const limited=/429|rate.?limit|too many requests/i.test(String(error?.message||error));return{limited,message:limited?'文献来源请求较多，已暂停请求。保留已有结果，可稍后刷新。':'联网推荐暂不可用，已有结果和本地论文仍可使用。'};}
+export function discoveryFeedError(error,provider='在线来源'){
+ const raw=String(error?.message||error),status=Number(error?.providerStatus||error?.status||raw.match(/(?:HTTP\s*|status\s*[:=]?\s*)(\d{3})/i)?.[1])||null,limited=status===429||/\b429\b|rate.?limit|too many requests/i.test(raw),timeout=error?.name==='TimeoutError'||/timeout|超时/i.test(raw);
+ return{provider,status,limited,code:limited?'rate_limit':timeout?'timeout':status?'http_error':'connection',message:limited?provider+' 请求较多，已暂停请求，可稍后刷新。':timeout?provider+' 响应超时。':status?provider+' 暂时无法访问（'+status+'）。':provider+' 暂时无法连接。'};
+}
 
 export function installDiscoveryFeed(E,{Zotero}){
- const pending=new Map(),sourceTasks=new Map(),summaries=new Map();let cooldownUntil=0,fieldTask;
+ const pending=new Map(),sourceTasks=new Map(),summaries=new Map(),cooldowns=new Map();let fieldTask;
  E.markDiscoveryPDFFailure=async(url,error)=>{if(!/^https:\/\//i.test(url||''))return;await E.store.update(s=>{s.discoveryPDFFailures||={};s.discoveryPDFFailures[url]={at:Date.now(),reason:String(error?.message||error).slice(0,500)};for(const key of Object.keys(s.discoveryPDFFailures).slice(0,-100))delete s.discoveryPDFFailures[key];});};
  E.clearDiscoveryPDFFailure=async url=>{if(E.store.get().discoveryPDFFailures?.[url])await E.store.update(s=>delete s.discoveryPDFFailures[url]);};
  const resolveFields=async preferences=>{
@@ -64,36 +68,52 @@ export function installDiscoveryFeed(E,{Zotero}){
   const names={engineering:['Engineering'],information:['Computer Science'],materials:['Materials Science'],chemistry:['Chemistry'],life:['Agricultural and Biological Sciences','Biochemistry, Genetics and Molecular Biology','Immunology and Microbiology'],math:['Mathematics'],physics:['Physics and Astronomy'],earth:['Earth and Planetary Sciences'],medicine:['Medicine'],psychology:['Psychology']};
   return fields.filter(field=>preferences.disciplineIDs.some(id=>names[id].some(name=>name.toLowerCase()===field.display_name?.toLowerCase()))).map(field=>field.id.split('/').at(-1));
  };
- const localRows=async(query,filters={})=>{
+ const localRows=async(query,filters={},sources=[])=>{
   const items=await Zotero.Items.getAll(Zotero.Libraries.userLibraryID,true,false),terms=String(query||'').toLowerCase().split(/\s+/).filter(t=>t.length>2);
   const rows=items.filter(item=>item.isRegularItem()&&!item.deleted&&item.itemType!=='manuscript').map(item=>({...E.library.describe(item),paperItemID:item.id,libraryID:item.libraryID,kind:'paper',source:'我的文库',sourceType:item.itemType==='journalArticle'?'journal':'',journal:item.getField('publicationTitle')||'',issn:item.getField('ISSN')||'',abstract:item.getField('abstractNote')||'',date:item.getField('date')||''}));
-  const ordered=rows.map(row=>({...row,score:terms.filter(t=>(row.title+' '+row.abstract).toLowerCase().includes(t)).length})).sort((a,b)=>b.score-a.score||String(b.date).localeCompare(String(a.date))).slice(0,12),available=[];
+  const ordered=rows.map(row=>matchDiscoverySource(row,sources)).filter(Boolean).map(row=>({...row,score:terms.filter(t=>(row.title+' '+row.abstract).toLowerCase().includes(t)).length})).sort((a,b)=>b.score-a.score||String(b.date).localeCompare(String(a.date))).slice(0,12),available=[];
   for(const row of ordered){const item=items.find(item=>item.id===row.paperItemID),attachment=await E.library.localPDF(item);if(attachment)available.push(enrichDiscoveryRecord({...row,attachmentID:attachment.id,localPDF:true},E));}
   return applyDiscoveryFilters(available,filters);
  };
- E.recommendationFeed=async({mode='trends',preferences={},query='',page=1,cursor,filters={},limit=20,signal,refresh=false}={})=>{
+ E.recommendationFeed=async({mode='trends',preferences={},query='',page=1,cursor,filters={},limit=20,signal,refresh=false,provider=''}={})=>{
+  query=String(query||'').trim();page=Math.max(1,Math.floor(Number(page)||1));limit=Math.min(100,Math.max(5,Math.floor(Number(limit)||20)));
   const settings=discoveryPreferences(preferences);if(mode==='subscriptions'&&!query&&!settings.topics.length&&!settings.disciplineIDs.length&&!settings.sources.length)return{records:[],hasMore:false,needsPersonalization:true,mode};
-  const choice=discoveryFilters(filters),key='pdf-feed-v3:'+JSON.stringify([mode,settings,query,page,cursor,choice,limit]),cache=E.store.get().discoveryFeeds?.[key],now=Date.now();
+  const choice=discoveryFilters(filters),key='pdf-feed-v4:'+JSON.stringify([mode,settings,query,page,cursor,choice,limit,provider]),cache=E.store.get().discoveryFeeds?.[key],now=Date.now();
   if(!refresh&&cache&&now-cache.at<3600000)return{...cache.result,records:applyDiscoveryFilters((cache.sourceRecords||cache.result.records).map(row=>enrichDiscoveryRecord(row,E)),choice),cacheHit:true};
   if(pending.has(key))return pending.get(key);
-  const task=(async()=>{try{
-   if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});
-   if(Date.now()<cooldownUntil)throw Error('HTTP 429');
-   const fieldIDs=await resolveFields(settings),seen=new Set(),records=[],journalRows=[];let nextCursor=cursor??(page===1?'*':undefined),nextPage=page,hasMore=false;
-   // A provider page can contain OA landing pages without a downloadable PDF.
-   // Continue a bounded number of raw pages and retain the provider cursor even
-   // when local TOP/metric restrictions leave the visible batch empty.
-   for(let scanned=0;scanned<3;scanned++){
-    const url=discoveryFeedURL({mode,preferences:settings,query,fieldIDs,filters:choice,page:nextPage,cursor:nextCursor,limit}),data=JSON.parse(await E.requestProvider(url,{signal},20000));if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});
-    const raw=(data.results||[]).map(p=>enrichDiscoveryRecord(openAlexFeedRecord(p),E)).filter(row=>{const id=String(row.doi||row.url||row.id).toLowerCase();if(!row.title||!id||seen.has(id)||row.retracted)return false;seen.add(id);return true;});journalRows.push(...raw);
-    records.push(...applyDiscoveryFilters(raw,choice));hasMore=Object.hasOwn(data.meta||{},'next_cursor')?!!data.meta.next_cursor&&!!data.results?.length:(nextPage-1)*limit+(data.results?.length||0)<(data.meta?.count||0);nextCursor=data.meta?.next_cursor??undefined;nextPage++;
-    if(records.length||!hasMore)break;
+  const task=(async()=>{
+   const check=()=>{if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});},continuation=parseDiscoveryContinuation(cursor),sources=discoverySourceScope(settings,choice,E.store.get()),errors=[],notes=[],topic=query.trim()||(mode==='subscriptions'?settings.activeTopic||settings.topics[0]||'':''),discipline=DISCOVERY_DISCIPLINES.filter(d=>settings.disciplineIDs.includes(d.id)).map(d=>d.query),fallbackQuery=[topic,...discipline].filter(Boolean).join(' '),labels={openalex:'OpenAlex',crossref:'Crossref',europepmc:'Europe PMC'};
+   if(String(cursor||'').startsWith('discovery-v1:')&&!continuation)throw Error('推荐页已失效，请刷新后重试');
+   const requested=continuation?.provider||(['openalex','crossref','europepmc'].includes(provider)?provider:'openalex'),providers=requested==='openalex'?['openalex','crossref','europepmc']:requested==='crossref'?['crossref','europepmc']:['europepmc'];let emptyResult;
+   const save=async entry=>{await E.store.update(s=>{s.discoveryFeeds||={};s.discoveryFeeds[key]={at:Date.now(),result:entry.result,sourceRecords:entry.sourceRecords};for(const old of Object.keys(s.discoveryFeeds).slice(0,-24))delete s.discoveryFeeds[old];});return entry.result;};
+   for(const name of providers){
+    check();const cooldown=cooldowns.get(name);if(cooldown&&Date.now()<cooldown.until){errors.push(cooldown.failure);continue;}
+    // Without a known journal/ISSN, an OpenAlex ID cannot be translated into
+    // another index's filter. Keep the user's scope instead of broadening it.
+    if(name!=='openalex'&&sources.some(source=>!source.name&&!source.issn)){notes.push('所选期刊尚无可核对的名称或 ISSN，备用来源保留筛选条件。');continue;}
+    try{
+     const seen=new Set(),records=[],journalRows=[];let fieldIDs=[],nextPage=continuation?.provider===name?continuation.page:name==='openalex'||provider===name?page:1,nextCursor=continuation?.provider===name?continuation.cursor||undefined:name==='openalex'?cursor??(page===1?'*':undefined):undefined,hasMore=false;
+     if(name==='openalex')try{fieldIDs=await resolveFields(settings);}catch(error){check();notes.push('学科索引暂不可用，已按所选学科关键词检索。');}
+     for(let scanned=0;scanned<3;scanned++){
+      check();let raw,rawCount=0,newCursor;
+      if(name==='openalex'){
+       const data=JSON.parse(await E.requestProvider(discoveryFeedURL({mode,preferences:settings,query,fieldIDs,filters:choice,page:nextPage,cursor:nextCursor,limit}),{signal},20000));if(!Array.isArray(data.results))throw Error('来源返回格式不正确');raw=data.results.map(openAlexFeedRecord);rawCount=data.results.length;newCursor=data.meta?.next_cursor;hasMore=Object.hasOwn(data.meta||{},'next_cursor')?!!newCursor&&!!rawCount:(nextPage-1)*limit+rawCount<(data.meta?.count||0);
+      }else if(name==='crossref'){
+       const data=JSON.parse(await E.requestProvider(crossrefFeedURL({mode,query:fallbackQuery,filters:choice,sources,cursor:nextCursor,page:nextPage,limit}),{signal},10000)),message=data.message;if(!Array.isArray(message?.items))throw Error('来源返回格式不正确');raw=message.items.map(row=>crossrefFeedRecord(row)).filter(Boolean);rawCount=message.items.length;newCursor=message['next-cursor'];hasMore=!!rawCount&&(nextPage-1)*limit+rawCount<(message['total-results']||0)&&(!newCursor||newCursor!==nextCursor);
+      }else{
+       const data=JSON.parse(await E.requestProvider(europePMCFeedURL({mode,query:fallbackQuery,filters:choice,sources,cursor:nextCursor,limit}),{signal},10000));if(!Array.isArray(data.resultList?.result))throw Error('来源返回格式不正确');raw=data.resultList.result.map(europePMCFeedRecord).filter(Boolean);rawCount=data.resultList.result.length;newCursor=data.nextCursorMark;hasMore=!!rawCount&&!!newCursor&&newCursor!==nextCursor&&(nextPage-1)*limit+rawCount<(data.hitCount||0);
+      }
+      check();const enriched=raw.map(row=>name==='openalex'?row:matchDiscoverySource(row,sources)).filter(Boolean).map(row=>enrichDiscoveryRecord(row,E)).filter(row=>{const id=String(row.doi||row.url||row.id).toLowerCase();if(!row.title||!id||seen.has(id)||row.retracted)return false;seen.add(id);return true;});journalRows.push(...enriched);records.push(...applyDiscoveryFilters(enriched,choice));nextPage++;nextCursor=newCursor;
+      if(records.length||!hasMore)break;
+     }
+     const result={records:applyDiscoveryFilters(records,choice),hasMore,nextCursor:hasMore?(name==='openalex'?nextCursor||null:discoveryContinuation(name,nextCursor,nextPage)):null,nextPage,page,mode,provider:labels[name],providerID:name,filters:choice,filterOptions:{journals:discoveryJournalOptions(journalRows)},limitations:[...discoveryFilterLimitations(choice),...notes,...(name==='europepmc'?['当前备用来源 Europe PMC 主要覆盖生命科学与医学。']:[]),...(name!=='openalex'?['已使用 '+labels[name]+' 的开放 PDF 题录。']:[])],providerErrors:errors,at:new Date().toISOString(),cacheHit:false,disciplineFilter:name==='openalex'&&fieldIDs.length?'provider-field':settings.disciplineIDs.length?'keyword':'none'},entry={result,sourceRecords:journalRows};
+     cooldowns.delete(name);if(result.records.length||name==='openalex'||continuation?.provider===name)return await save(entry);emptyResult||=entry;
+    }catch(error){check();if(error.name==='AbortError')throw error;const failure=discoveryFeedError(error,labels[name]);errors.push(failure);cooldowns.set(name,{until:Date.now()+(failure.limited?60000:15000),failure});}
    }
-   const result={records:applyDiscoveryFilters(records,choice),hasMore,nextCursor:nextCursor||null,nextPage,page,mode,provider:'OpenAlex',filters:choice,filterOptions:{journals:discoveryJournalOptions(journalRows)},limitations:discoveryFilterLimitations(choice),at:new Date().toISOString(),cacheHit:false,disciplineFilter:fieldIDs.length?'provider-field':settings.disciplineIDs.length?'keyword':'none'};
-   await E.store.update(s=>{s.discoveryFeeds||={};s.discoveryFeeds[key]={at:Date.now(),result,sourceRecords:journalRows};for(const old of Object.keys(s.discoveryFeeds).slice(0,-24))delete s.discoveryFeeds[old];});return result;
-  }catch(error){if(signal?.aborted||error.name==='AbortError')throw error;const failure=discoveryFeedError(error);if(failure.limited)cooldownUntil=Math.max(cooldownUntil,Date.now()+60000);
-   const cachedRows=cache?applyDiscoveryFilters((cache.sourceRecords||cache.result.records).map(row=>enrichDiscoveryRecord(row,E)),choice):[],fallback=cachedRows.length?cachedRows:await localRows(query||settings.activeTopic||settings.topics[0],choice);return{records:fallback,hasMore:false,nextCursor:null,page,mode,filters:choice,filterOptions:cache?.result.filterOptions||{journals:[]},limitations:discoveryFilterLimitations(choice),fallback:cachedRows.length?'cache':'library',error:failure.message,retryAt:cooldownUntil,cacheHit:!!cache};
-  }})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}
+   if(emptyResult){emptyResult.result.providerErrors=errors;return await save(emptyResult);}
+   const cachedRows=cache?applyDiscoveryFilters((cache.sourceRecords||cache.result.records).map(row=>enrichDiscoveryRecord(row,E)),choice):[],fallback=cachedRows.length?cachedRows:await localRows(topic,choice,sources),retryAt=Math.min(...providers.map(name=>cooldowns.get(name)?.until).filter(value=>value>Date.now()));
+   return{records:fallback,hasMore:false,nextCursor:null,page,mode,filters:choice,filterOptions:cache?.result.filterOptions||{journals:[]},limitations:[...discoveryFilterLimitations(choice),...notes],fallback:cachedRows.length?'cache':'library',error:errors.map(error=>error.message).join(' ')||'当前筛选条件暂无可用的在线来源。',providerErrors:errors,retryAt:Number.isFinite(retryAt)?retryAt:0,cacheHit:!!cache};
+  })();pending.set(key,task);try{return await task;}finally{pending.delete(key);}
  };
  E.findDiscoverySources=async(query,{signal}={})=>{
   query=String(query||'').trim();if(!query)return[];if(sourceTasks.has(query))return sourceTasks.get(query);

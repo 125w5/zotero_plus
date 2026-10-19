@@ -116,6 +116,18 @@ function markQuote(host,highlight){
   const range=doc.createRange();range.setStart(row.node,start-row.start);range.setEnd(row.node,end-row.start);const mark=doc.createElement('mark');mark.className='material-local-highlight';mark.dataset.highlightId=highlight.id;mark.dataset.style=highlight.style||'highlight';mark.style.setProperty('--highlight-color',MATERIAL_HIGHLIGHT_COLORS[highlight.color]||MATERIAL_HIGHLIGHT_COLORS.blue);mark.title=highlight.comment||'';mark.append(range.extractContents());range.insertNode(mark);marks.push(mark);
  }return marks;
 }
+/** Read the ordered DOM Range, rather than anchor/focus direction. Capture it
+ * before preview marks alter text nodes, so either drag direction has the same
+ * exact original/translated block anchors. */
+export function captureMaterialSelections(host,range,translationContexts=[]){
+ const fragment=(target,context)=>{
+  const {text,nodes}=textNodes(target);let start,end;
+  for(const row of nodes){if(!range.intersectsNode(row.node))continue;const from=row.node===range.startContainer?range.startOffset:0,to=row.node===range.endContainer?range.endOffset:row.node.length;if(to<=from)continue;if(start===undefined)start=row.start+from;end=row.start+to;}
+  if(start===undefined||!text.slice(start,end).trim())return null;
+  return {context,quote:text.slice(start,end),prefix:text.slice(Math.max(0,start-48),start),suffix:text.slice(end,end+48)};
+ };
+ return translationContexts.length?Array.from(host.querySelectorAll('[data-translation-context-id]')).filter(target=>range.intersectsNode(target)).map(target=>fragment(target,translationContexts.find(row=>row.id===target.dataset.translationContextId))).filter(row=>row?.context):[fragment(host)].filter(Boolean);
+}
 export function installMaterialHighlights(host,material,{E,onSave,onError=()=>{},commentsHost,translationContexts=[],commentsOnly=false,onLayout=()=>{}}){
  const doc=host.ownerDocument,win=doc.defaultView,create=(tag,text,cls)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
  const list=create('div',undefined,'material-local-comments');if(commentsHost)commentsHost.append(list);else host.after(list);let disposed=false,draft;
@@ -136,23 +148,17 @@ export function installMaterialHighlights(host,material,{E,onSave,onError=()=>{}
  };
  for(const group of materialHighlightGroups(material.highlights||[])){
   const highlight=group[0],painted=group.map(paint),display=materialHighlightDisplay(highlight);
-  const item=create('article',undefined,'material-local-comment');item.dataset.highlightId=highlight.id;item.tabIndex=-1;item.style.setProperty('--highlight-color',MATERIAL_HIGHLIGHT_COLORS[highlight.color]||MATERIAL_HIGHLIGHT_COLORS.blue);const quote=create('blockquote',group.map(row=>materialHighlightDisplay(row).quote).join('\n')),comment=create('div');if(E.renderContent)E.renderContent(comment,highlight.comment);else comment.textContent=highlight.comment;item.append(quote,comment);if(painted.some(row=>!row.resolved))item.append(create('small','来源已变化，标注保留待核对'));else if(painted.some(row=>row.translationChanged))item.append(create('small','译文已更新，保留原标注与原文位置'));list.append(item);
+  const item=create('article',undefined,'material-local-comment');item.dataset.highlightId=highlight.id;item.dataset.materialId=material.id;item.tabIndex=-1;item.style.setProperty('--highlight-color',MATERIAL_HIGHLIGHT_COLORS[highlight.color]||MATERIAL_HIGHLIGHT_COLORS.blue);const quote=create('blockquote',group.map(row=>materialHighlightDisplay(row).quote).join('\n')),comment=create('div',undefined,'material-comment-text');if(E.renderContent)E.renderContent(comment,highlight.comment);else comment.textContent=highlight.comment;item.append(quote,comment);if(painted.some(row=>!row.resolved))item.append(create('small','来源已变化，标注保留待核对'));else if(painted.some(row=>row.translationChanged))item.append(create('small','译文已更新，保留原标注与原文位置'));list.append(item);
   for(const mark of painted.flatMap(row=>row.marks))mark.onclick=event=>{event.stopPropagation();if(win.getSelection()?.toString())return;item.focus({preventScroll:true});item.scrollIntoView({block:'nearest'});};if(onSave)button(item,'移除标注',async()=>{const ids=new Set(group.map(row=>row.id));await onSave((material.highlights||[]).filter(row=>!ids.has(row.id)));});
  }
  onLayout(list);
  let previewMarks=[];
  const removePreview=()=>{for(const mark of previewMarks){const parent=mark.parentNode;mark.replaceWith(...mark.childNodes);parent?.normalize();}previewMarks=[];};
  const clear=()=>{removePreview();draft?.remove();draft=null;onLayout(list);};
- const fragment=(target,range,context)=>{
-  const {text,nodes}=textNodes(target);let start,end;
-  for(const row of nodes){if(!range.intersectsNode(row.node))continue;const from=row.node===range.startContainer?range.startOffset:0,to=row.node===range.endContainer?range.endOffset:row.node.length;if(to<=from)continue;if(start===undefined)start=row.start+from;end=row.start+to;}
-  if(start===undefined||!text.slice(start,end).trim())return null;
-  return {context,quote:text.slice(start,end),prefix:text.slice(Math.max(0,start-48),start),suffix:text.slice(end,end+48)};
- };
  const select=()=>{
   if(commentsOnly||!onSave)return;const selection=win.getSelection();if(!selection?.rangeCount||!selection.toString().trim()||!host.contains(selection.anchorNode)||!host.contains(selection.focusNode))return;
   const range=selection.getRangeAt(0);if(range.cloneContents().querySelector('.katex,img'))return;
-  const selected=translationContexts.length?Array.from(host.querySelectorAll('[data-translation-context-id]')).filter(target=>range.intersectsNode(target)).map(target=>fragment(target,range,translationContexts.find(row=>row.id===target.dataset.translationContextId))).filter(row=>row?.context):[fragment(host,range)].filter(Boolean);
+  const selected=captureMaterialSelections(host,range,translationContexts);
   if(!selected.length)return;
   try{createMaterialHighlightGroup(material,selected);}catch(error){onError(error);return;}
   const quoted=selected.map(row=>row.quote).join('\n');

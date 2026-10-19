@@ -89,3 +89,12 @@ body.library-embedded #view-search>.research-file-workspace-content>p{margin:7px
 .agent-generated-caption{margin-top:7px;font-size:11px;color:var(--muted);line-height:1.6}
 .conversation-file-location{flex:none;padding:9px 17px;border-bottom:1px solid color-mix(in srgb,var(--line) 75%,transparent);font-size:10px;line-height:1.7;color:var(--muted);background:color-mix(in srgb,var(--surface) 40%,transparent)}
 .conversation-file-location summary{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.conversation-file-location[open] summary{white-space:normal}.conversation-file-location code{display:block;overflow-wrap:anywhere;margin:8px 0;font-size:10px;user-select:text}.conversation-file-location button{font-size:10px;min-height:30px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:4px 8px;cursor:pointer}
+/* Source rails and the detail rail share a readable, quiet glass surface. */
+.conversation-files{font-size:13px;padding:18px 15px 14px;gap:12px;background:linear-gradient(150deg,color-mix(in srgb,var(--surface) 85%,transparent),color-mix(in srgb,var(--soft) 78%,transparent));border-color:var(--line)}
+.conversation-files-heading strong{font-size:14px}.conversation-files-history-heading{font-size:11px;letter-spacing:0}.conversation-files-search{font-size:12px!important}
+html[data-appearance] .conversation-files button{font-size:12px;min-height:34px}
+html[data-appearance] .conversation-files-filters button{font-size:11px;min-height:29px;padding:4px 8px}
+.conversation-file{grid-template-columns:16px 16px minmax(0,1fr) 28px;grid-template-rows:minmax(43px,auto);gap:0 5px;padding:10px 5px;min-height:68px;margin-bottom:5px;align-items:start}
+.conversation-file-check{align-self:start;margin-top:7px}.conversation-file-name{font-size:13px;line-height:1.55;-webkit-line-clamp:3}.conversation-file-meta{display:none}
+.conversation-file-grip{font-size:18px;min-height:31px}.conversation-file-detail-title h3{font-size:14px}.conversation-file-detail-tabs button{font-size:12px;min-height:34px}
+.conversation-files-drag-hint{font-size:11px;border-top:0;padding-top:2px;opacity:.65}.conversation-file-detail-body{font-size:13px}.conversation-file-detail{background:linear-gradient(150deg,color-mix(in srgb,var(--surface) 86%,transparent),color-mix(in srgb,var(--soft) 75%,transparent))}

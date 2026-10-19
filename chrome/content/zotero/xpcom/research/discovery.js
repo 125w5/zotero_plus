@@ -94,20 +94,20 @@
  const pageTasks=new Map();let pageTail=Promise.resolve(),pageLast=0;
  E.searchPaperPage=async(query,{provider='',page=1,cursor,filters={},limit=20,signal}={})=>{
   query=String(query).trim();if(!query)throw Error('请输入研究主题');limit=Math.min(40,Math.max(5,limit));page=Math.max(1,page);
-  const choice=Feed.discoveryFilters(filters),restricted=choice.journalOnly||choice.sourceIDs.length||choice.topOnly,key='pdf-search-v3:'+JSON.stringify([query,provider,page,cursor,choice,limit]);let task=pageTasks.get(key);
+  const choice=Feed.discoveryFilters(filters),restricted=choice.journalOnly||choice.sourceIDs.length||choice.topOnly,key='pdf-search-v4:'+JSON.stringify([query,provider,page,cursor,choice,limit]);let task=pageTasks.get(key);
   if(!task){task=(async()=>{const cache=E.store.get().paperSearchPages?.[key];if(cache&&Date.now()-cache.at<3600000)return{...cache.result,records:Feed.applyDiscoveryFilters(cache.result.records.map(row=>Feed.enrichDiscoveryRecord(row,E)),choice),cacheHit:true};
    const turn=pageTail.then(async()=>{await Zotero.Promise.delay(Math.max(0,pageLast+1000-Date.now()));pageLast=Date.now();});pageTail=turn.catch(()=>{});await turn;
-   let result,errors=[];for(const name of provider?[provider]:restricted?['openalex']:['openalex','semantic','arxiv'])try{
+   let result,fallback,errors=[];for(const name of provider?[provider]:restricted?['openalex']:['openalex','semantic','arxiv'])try{
     const offset=(page-1)*limit;let rows=[],more=false;
-    if(name==='openalex'){
-     const feed=await E.recommendationFeed({mode:'latest',query,page,cursor,limit,signal,filters:{...choice,sort:choice.sort||'relevance'}});if(feed.error&&!feed.records.length)throw Error(feed.error);result={...feed,provider:'openalex',query,limitations:[...errors,...(feed.limitations||[])]};break;
+    if(['openalex','crossref','europepmc'].includes(name)){
+     const feed=await E.recommendationFeed({mode:'latest',query,page,cursor,limit,signal,provider:name,filters:{...choice,sort:choice.sort||'relevance'}});if(feed.error&&!feed.records.length)throw Error(feed.error);result={...feed,provider:feed.providerID||name,providerName:feed.provider||'本地文库',query,limitations:[...errors,...(feed.limitations||[])]};if(!feed.error||provider||restricted)break;fallback=result;result=undefined;errors.push(feed.error);continue;
     }else if(name==='semantic'){
      const data=JSON.parse(await E.requestProvider(graph+'paper/search?query='+encodeURIComponent(query)+'&openAccessPdf&offset='+offset+'&limit='+limit+'&fields='+fields+',citationCount',{signal},20000));rows=(data.data||[]).map(p=>({...normalize(p),oa:true,citationCount:p.citationCount??null,retracted:null}));more=data.next!=null;
     }else if(name==='arxiv'){const data=await E.arxivSearchPage(query,{page,limit,signal});rows=data.records.map(p=>({...p,oa:true,retracted:null,citationCount:null,sourceType:'repository'}));more=data.hasMore;}else throw Error('不支持的文献来源');
     const seen=new Set();rows=Feed.applyDiscoveryFilters(rows.map(row=>Feed.enrichDiscoveryRecord(row,E)),choice).filter(r=>{const id=String(r.doi||r.url||r.id).toLowerCase();if(!r.title||!id||seen.has(id))return false;seen.add(id);return true;});
     result={records:rows,provider:name,page,nextPage:page+1,nextCursor:null,hasMore:more,cacheHit:false,filters:choice,filterOptions:{journals:Feed.discoveryJournalOptions(rows)},limitations:[...errors,...Feed.discoveryFilterLimitations(choice)],query};if(rows.length||provider)break;
    }catch(e){if(signal?.aborted||e.name==='AbortError')throw e;errors.push(name+'：'+e.message);}
-   if(!result)throw Error('联网检索失败：'+errors.join('；'));await E.store.update(s=>{s.paperSearchPages||={};s.paperSearchPages[key]={at:Date.now(),result};const keys=Object.keys(s.paperSearchPages);for(const k of keys.slice(0,Math.max(0,keys.length-80)))delete s.paperSearchPages[k];});return result;
+   if(fallback&&!result?.records.length)result={...fallback,limitations:[...new Set([...(fallback.limitations||[]),...errors])]};if(!result)throw Error('联网检索失败：'+errors.join('；'));await E.store.update(s=>{s.paperSearchPages||={};s.paperSearchPages[key]={at:Date.now(),result};const keys=Object.keys(s.paperSearchPages);for(const k of keys.slice(0,Math.max(0,keys.length-80)))delete s.paperSearchPages[k];});return result;
   })();pageTasks.set(key,task);task.finally(()=>pageTasks.delete(key)).catch(()=>{});}
   const result=await task;if(signal?.aborted)throw Error('已取消');return result;
  };

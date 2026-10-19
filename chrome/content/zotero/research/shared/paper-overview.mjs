@@ -18,7 +18,7 @@ export function installPaperOverview(E,{Zotero,IOUtils}){
   if(!task){task=(async()=>{let source='';try{const cache=Zotero.Fulltext?.getItemCacheFile?.(attachment);if(cache?.path&&await IOUtils.exists(cache.path))source=await IOUtils.readUTF8(cache.path);}catch{}if(!source)source=(await Zotero.PDFWorker.getFullText(attachment.id,null)).text||'';const result=abstractFromExtractedDocument({paragraphs:[{sourceText:source}]});return result?{...result,attachmentID:attachment.id}:null;})();boundedMapSet(abstractTasks,cacheKey,task,24);task.catch(()=>{if(abstractTasks.get(cacheKey)===task)abstractTasks.delete(cacheKey);});}return task;
  };
  // Brief and full abstract views share machine-translation tasks.
- const translate=text=>{let task=translations.get(text);if(!task){task=Promise.resolve().then(()=>E.quickTranslate(text)).then(result=>{if(!result?.text?.trim())throw Error('摘要译文为空');return result.text;});boundedMapSet(translations,text,task,24);task.catch(()=>{if(translations.get(text)===task)translations.delete(text);});}return task;};
+ const translate=text=>{let task=translations.get(text);if(!task){task=Promise.resolve().then(()=>E.quickTranslate(text,undefined,{purpose:'material'})).then(result=>{if(!result?.text?.trim())throw Error('摘要译文为空');return result.text;});boundedMapSet(translations,text,task,24);task.catch(()=>{if(translations.get(text)===task)translations.delete(text);});}return task;};
  E.paperAbstractBrief=async text=>{
   const excerpt=abstractExcerpt(text),chinese=(excerpt.text.match(/[\u3400-\u9fff]/g)||[]).length>(excerpt.text.match(/[A-Za-z]/g)||[]).length;
   return {...excerpt,text:chinese?excerpt.text:await translate(excerpt.text)};

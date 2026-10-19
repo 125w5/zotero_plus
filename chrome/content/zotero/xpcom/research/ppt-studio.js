@@ -3,10 +3,12 @@
  const M=ChromeUtils.importESModule('chrome://zotero/content/research/shared/ppt-model.mjs');
  const S=E.studio={model:M};
  const Scope=ChromeUtils.importESModule('chrome://zotero/content/research/shared/ppt-scope.mjs');
- S.all=()=>E.store.get().pptDrafts||{};
- S.get=id=>S.all()[id];
+ const Outline=ChromeUtils.importESModule('chrome://zotero/content/research/shared/ppt-outline.mjs');S.outlineTools=Outline;
+ const capture=d=>({at:new Date().toISOString(),slides:structuredClone(d.slides),outline:structuredClone(d.outline),outlineApproved:d.outlineApproved,outlineCustomized:d.outlineCustomized,outlineModel:d.outlineModel,templateID:d.templateID,step:d.step,themeID:d.themeID,theme:structuredClone(d.theme)});
+ S.all=()=>E.store.get('pptDrafts')||{};
+ S.get=id=>E.store.get('pptDrafts',id);
  S.patch=async(id,change,{snapshot=false}={})=>{
-  await E.store.update(state=>{const d=state.pptDrafts[id];if(snapshot){d.history||=[];d.history.push({at:new Date().toISOString(),slides:structuredClone(d.slides),themeID:d.themeID,theme:structuredClone(d.theme)});d.history=d.history.slice(-12);d.redo=[];}change(d);d.updatedAt=new Date().toISOString();d.revision=(d.revision||0)+1;});return S.get(id);
+  await E.store.update(state=>{const d=state.pptDrafts[id];if(snapshot){d.history||=[];d.history.push(capture(d));d.history=d.history.slice(-12);d.redo=[];}change(d);d.updatedAt=new Date().toISOString();d.revision=(d.revision||0)+1;});return S.get(id);
  };
  S.create=async(papers=E.library.selection(),scope={mode:'all'})=>{
   const id=Zotero.Utilities.randomString(16),templateID=papers.length>1?'review':'single';
@@ -16,10 +18,17 @@
  };
  S.history=async(id,redo=false)=>S.patch(id,d=>{
   const from=redo?d.redo:d.history,to=redo?d.history:d.redo;if(!from?.length)return;
-  const previous=from.pop();to.push({at:new Date().toISOString(),slides:d.slides,themeID:d.themeID,theme:d.theme});Object.assign(d,{slides:previous.slides,themeID:previous.themeID,theme:previous.theme});
+  const previous=from.pop();to.push(capture(d));Object.assign(d,{slides:previous.slides,themeID:previous.themeID,theme:previous.theme});if(previous.outline){d.outline=previous.outline;d.outlineApproved=previous.outlineApproved;d.outlineCustomized=previous.outlineCustomized;d.outlineModel=previous.outlineModel;if(previous.templateID)d.templateID=previous.templateID;d.step=previous.step;delete d.outlineProposal;}
  });
+ S.editOutline=async(id,operation)=>S.patch(id,d=>{d.outline=Outline.applyOutlineEdit(d.outline,operation);d.outlineCustomized=true;d.outlineApproved=false;delete d.outlineProposal;},{snapshot:true});
+ S.acceptOutline=async id=>S.patch(id,d=>{const p=d.outlineProposal;if(!p)throw Error('没有待接受的结构建议');if(p.base!==Outline.outlineFingerprint(d.outline))throw Error('结构已发生变化，请重新生成建议，当前编辑已保留');d.outline=structuredClone(p.sections);d.outlineCustomized=true;if(p.templateID)d.templateID=p.templateID;d.outlineApproved=false;d.outlineModel=p.model;delete d.outlineProposal;d.step=2;},{snapshot:true});
+ S.discardOutline=async id=>S.patch(id,d=>{delete d.outlineProposal;});
+ S.selectMaterials=async(id,references=[])=>{
+  const isPaper=file=>['pdf','paper'].includes(file.kind)&&file.paperItemID,papers=[];for(const reference of references){if(!isPaper(reference))continue;const item=await Zotero.Items.getAsync(reference.paperItemID);if(item)papers.push(E.library.describe(item.parentItem||item));}
+  return S.patch(id,d=>{const existing=new Map(d.papers.map(row=>[row.id,row]));for(const paper of papers)existing.set(paper.id,paper);if(existing.size>12)throw Error('本次最多选择 12 篇论文，请先移除部分论文');d.papers=[...existing.values()];d.materialFiles=[...new Map([...(d.materialFiles||[]),...references.filter(file=>!isPaper(file))].map(file=>[file.id,{...file,selected:true}])).values()];d.materialsReady=false;d.outlineApproved=false;delete d.outlineProposal;});
+ };
  S.collect=async(id,status,signal)=>{
-  const draft=S.get(id);if(!draft.papers.length&&draft.templateID!=='progress')throw Error('请先在文献列表选择论文，或选择个人研究进展模板');
+  const draft=S.get(id);if(!draft.papers.length&&!draft.materialFiles?.length&&draft.templateID!=='progress')throw Error('先选择论文，或拖入表格、图片和文字资料');
   let sources=[],assets=[],warnings=[],hashes=[];const scope=draft.scope||{mode:'all'};
   for(const [i,paper] of draft.papers.entries()){
    if(signal?.aborted)throw Error('已取消材料读取');status(`正在读取第 ${i+1}/${draft.papers.length} 篇论文`);
@@ -45,8 +54,14 @@
    status(text.cacheHit?'已复用分页文字缓存':'已提取分页文字');
    if(allowed.size){const result=await E.assets.index(pdf.id,status,signal);assets.push(...result.assets.filter(a=>allowed.has(a.pageIndex)&&['figure','table','formula'].includes(a.kind)).map(a=>({...a,cacheHit:result.cacheHit})));}
   }
+  if(draft.materialFiles?.length){
+   status('正在读取本次文件…');const read=await E.chatAttachments.read(draft.materialFiles,{signal,query:draft.title});
+   sources.push(...(read.rows||[]).filter(row=>row.text||row.sourceText).map(row=>({id:row.stableID||row.id,label:row.title||row.label||'研究文件',text:row.text||row.sourceText,attachmentID:row.attachmentID,pageIndex:row.pageIndex,conversationFileID:row.conversationFileID||draft.materialFiles.find(file=>String(row.stableID||row.id).startsWith('evidence:chat:'+file.id+':'))?.id})));
+   for(const row of (read.rows||[]).filter(row=>row.imagePath)){const key=row.imageReference||row.materialID||row.attachmentID;assets.push({id:'file-'+key,kind:'user_image',sourceType:row.sourceType||'user',label:row.title,path:row.imagePath,thumbnail:row.imagePath,attachmentID:row.attachmentID});}
+   warnings.push(...(read.warnings||[]));
+  }
   if(draft.papers.length&&!sources.length)throw Error('所选范围没有可用文字或批注，请调整范围；不会自动改用全文');
-  return S.patch(id,d=>{d.sources=sources;d.assets=[...assets,...d.assets.filter(a=>a.kind==='user_image')];d.pdfHashes=hashes;d.materialWarnings=warnings;d.materialsReady=true;d.step=Math.max(d.step,1);});
+  return S.patch(id,d=>{d.sources=sources;d.assets=[...new Map([...d.assets.filter(a=>a.kind==='user_image'&&!String(a.id).startsWith('file-')),...assets].map(row=>[row.id,row])).values()];d.pdfHashes=hashes;d.materialWarnings=warnings;d.materialsReady=true;d.step=Math.max(d.step,1);});
  };
  S.plan=d=>({version:3,title:d.title,theme:M.themeFor(d),assets:d.assets,slides:d.slides});
  S.pageRequest=(d,slide)=>{

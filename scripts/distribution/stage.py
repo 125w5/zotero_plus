@@ -2,13 +2,17 @@
 import argparse
 import json
 import shutil
+import sys
 import zipfile
 from pathlib import Path
 
 
 def copy_tree(source, target, exclude=()):
     shutil.copytree(source, target, dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '.git', *exclude))
+                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '.git', '.env', '.env.*', '*.log',
+                                                 'workspace.json', 'logins.json', 'key4.db', 'cert9.db', '*.sqlite*',
+                                                 'provider-setup.json', 'easysch-provider-setup.json',
+                                                 'easysch-provider-defaults.json', *exclude))
 
 
 def strip_tests(archive):
@@ -43,7 +47,7 @@ def main(args):
     # An actual standalone CPython directory, never the development venv launchers.
     python = runtime / 'python'
     python.mkdir()
-    for name in ['python.exe', 'pythonw.exe', 'python3.dll', 'python312.dll',
+    for name in ['python.exe', 'pythonw.exe', 'python3.dll', f'python{sys.version_info.major}{sys.version_info.minor}.dll',
                  'vcruntime140.dll', 'vcruntime140_1.dll', 'LICENSE.txt']:
         shutil.copy2(args.python_home / name, python / name)
     copy_tree(args.python_home / 'DLLs', python / 'DLLs')
@@ -53,7 +57,7 @@ def main(args):
     copy_tree(tools / 'pandoc/pandoc-3.11', runtime / 'pandoc')
     copy_tree(tools / 'libreoffice', runtime / 'libreoffice', ('LibreOffice.msi',))
     copy_tree(tools / 'poppler', runtime / 'poppler')
-    config = {'version': 1, 'release': args.release, 'runtime': {
+    config = {'version': 1, 'release': args.release, 'configuration': 'preconfigured' if args.credentials else 'standard', 'runtime': {
         'node': 'runtime/node/node.exe', 'engine': 'runtime/research-engine/src/cli.mjs',
         'python': 'runtime/python/python.exe', 'pandoc': 'runtime/pandoc/pandoc.exe',
         'soffice': 'runtime/libreoffice/program/soffice.exe', 'poppler': 'runtime/poppler/Library/bin'}}
@@ -72,6 +76,10 @@ def main(args):
     ini.write_text(ini.read_text('utf-8').replace('Name=Zotero', 'Name=EasySch'), 'utf-8')
     shutil.copy2(repo / 'COPYING', output / 'LICENSE.txt')
     shutil.copy2(repo / 'scripts/distribution/README.zh-CN.md', output / '使用说明.md')
+    readme = output / '使用说明.md'
+    setup = ('这是预配置版。第一次启动会导入发行者授权提供的接口配置；以后可在设置中更换自己的接口。'
+             if args.credentials else '这是标准版，不含 API 密钥。首次使用 AI 或在线翻译前，请在设置中配置自己的接口。')
+    readme.write_text(readme.read_text('utf-8').replace('{{API_CONFIGURATION}}', setup), 'utf-8')
     shutil.copy2(repo / 'scripts/distribution/THIRD-PARTY.md', output / '第三方许可与源码.md')
     # The supplied symbol is transparent; a neutral tile keeps the OS shortcut visible.
     from PIL import Image

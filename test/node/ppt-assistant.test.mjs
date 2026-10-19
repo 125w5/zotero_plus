@@ -40,8 +40,8 @@ test('PPT notifications from another source folder do not refresh the current di
  assert.equal(pptConversationRefresh({...state,sessions:[...state.sessions,{id:'new',pptDraftID:'A'}]},{action:'create-draft'},scope),'rail');
 });
 test('explicit PPT commands reach real operations, while questions and negative instructions remain discussion',()=>{
- for(const [prompt,intent]of [['请读取当前论文材料','collect'],['帮我优化汇报大纲','outline'],['补齐所有未完成页面','generate'],['预览整套PPT','preview'],['导出可编辑 PPTX','export']])assert.equal(pptAssistantIntent(prompt),intent,prompt);
- for(const prompt of ['不要导出 PPT，先讨论结果','如何生成全部页面？','怎么优化大纲才有重点？','解释一下预览和导出的区别','我想比较这两篇论文的方法'])assert.equal(pptAssistantIntent(prompt),'discuss',prompt);
+ for(const [prompt,intent]of [['请读取当前论文材料','collect'],['帮我优化汇报大纲','outline'],['请新增一个实验对比板块','outline'],['把结构中的第三节改为结果讨论','outline'],['撤销刚才的结构修改','undo'],['重做大纲修改','redo'],['补齐所有未完成页面','generate'],['预览整套PPT','preview'],['导出可编辑 PPTX','export']])assert.equal(pptAssistantIntent(prompt),intent,prompt);
+ for(const prompt of ['不要导出 PPT，先讨论结果','如何生成全部页面？','怎么优化大纲才有重点？','如何新增结构板块？','如何撤销大纲修改？','解释一下预览和导出的区别','我想比较这两篇论文的方法'])assert.equal(pptAssistantIntent(prompt),'discuss',prompt);
 });
 const draft={title:'独立批次汇报',step:3,minutes:15,papers:[{id:1,title:'Controlled paper A',year:2025},{id:2,title:'Controlled paper B',year:2026}],sources:[{id:'A',label:'Controlled paper A · PDF 第 1 页',text:'Measured batches use independent acquisition.'},{id:'B',label:'Controlled paper B · PDF 第 2 页',text:'Unselected source must not enter the model context.'}],outline:[{title:'研究问题',purpose:'解释独立批次'}],slides:[{id:'s',title:'批次比较',explanation:'人工设置',status:'user',assetIDs:['figure-a'],blocks:[{text:'完整人工正文保留在草稿'}]}],contributions:[{title:'人工实验',text:'明确标记自己的观察。'}]};
 test('unchecking a paper removes its sources from model evidence and preserves the editable PPT',()=>{

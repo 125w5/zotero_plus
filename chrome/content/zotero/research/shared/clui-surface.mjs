@@ -32,12 +32,12 @@ export function cluiVisibleMessages(messages,renderOffset=0){const start=Math.ma
  * compact = retained tabs + pill; conversation = normal reply size;
  * detail = enlarged content inspection. Outside click dims, double click
  * collapses unless pinned. There is intentionally no focusout collapse. */
-export function installCLUIChatBehavior({root,body,onChange=()=>{}}){
- const doc=root.ownerDocument,win=doc.defaultView;installCLUIStyles(doc);root.dataset.cluiNative='true';let mode='compact',pinned=false,disposed=false,pointer,drag,preferredHeight=null,detailSize=cluiDetailHeight();
+export function installCLUIChatBehavior({root,body,onChange=()=>{},persistent=false}){
+ const doc=root.ownerDocument,win=doc.defaultView;installCLUIStyles(doc);root.dataset.cluiNative='true';root.dataset.cluiPersistent=String(persistent);let mode='compact',pinned=false,disposed=false,pointer,drag,preferredHeight=null,detailSize=cluiDetailHeight();
  const storageKey='research.clui.detail-height.v1:'+(root.id||root.getAttribute?.('aria-label')||'shared');
  try{const saved=Number(win?.localStorage?.getItem(storageKey));if(saved>0)preferredHeight=saved;}catch{/* Chrome documents may disable web storage. */}
  const shell=body?.closest?.('.clui-native-shell')||root.querySelector?.('.clui-native-shell');
- const grip=shell&&doc.createElementNS(HTML,'div');
+ const grip=!persistent&&shell?doc.createElementNS(HTML,'div'):null;
  if(grip){grip.className='clui-native-height-grip';grip.dataset.cluiIgnoreExpand='true';grip.tabIndex=0;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','horizontal');grip.setAttribute('aria-label','调整对话高度');grip.title='向上拖动增高，向下拖动缩短 · ↑ ↓ 调整 · 双击恢复自动高度';shell.prepend(grip);}
  const notify=()=>onChange({mode,expanded:mode!=='compact',pinned,detailHeight:detailSize.height});
  const measure=()=>{
@@ -47,7 +47,7 @@ export function installCLUIChatBehavior({root,body,onChange=()=>{}}){
   if(grip){grip.setAttribute('aria-valuemin',String(detailSize.min));grip.setAttribute('aria-valuemax',String(detailSize.max));grip.setAttribute('aria-valuenow',String(detailSize.height));grip.setAttribute('aria-valuetext',detailSize.height+' 像素');}
  };
  const saveHeight=()=>{try{if(preferredHeight===null)win?.localStorage?.removeItem(storageKey);else win?.localStorage?.setItem(storageKey,String(preferredHeight));}catch{/* The in-memory choice still lasts for this surface. */}};
- const apply=next=>{if(disposed)return;mode=next;root.dataset.cluiSize=mode;root.dataset.expanded=String(mode!=='compact');root.dataset.dimmed='false';if(body){body.inert=mode==='compact';body.setAttribute('aria-hidden',String(mode==='compact'));}if(mode==='detail')measure();notify();};
+ const apply=next=>{if(disposed)return;mode=persistent?'conversation':next;root.dataset.cluiSize=mode;root.dataset.expanded=String(mode!=='compact');root.dataset.dimmed='false';if(body){body.inert=mode==='compact';body.setAttribute('aria-hidden',String(mode==='compact'));}if(mode==='detail')measure();notify();};
  const setDetailHeight=(height,{save=true}={})=>{if(disposed)return;preferredHeight=Number.isFinite(Number(height))&&Number(height)>0?Number(height):null;if(mode!=='detail')apply('detail');else{measure();root.dataset.dimmed='false';notify();}if(save)saveHeight();};
  const finishDrag=(event,cancel=false)=>{if(!drag||event&&event.pointerId!==undefined&&event.pointerId!==drag.id)return;const previous=drag;drag=null;delete root.dataset.cluiResizing;if(cancel)setDetailHeight(previous.preferred,{save:false});else saveHeight();try{grip?.releasePointerCapture?.(previous.id);}catch{/* Capture can end before pointerup is dispatched. */}doc.removeEventListener('pointermove',resizeMove,true);doc.removeEventListener('pointerup',resizeEnd,true);doc.removeEventListener('pointercancel',resizeCancel,true);};
  const resizeMove=event=>{if(!drag||event.pointerId!==drag.id)return;event.preventDefault();setDetailHeight(Math.max(detailSize.min,Math.min(detailSize.max,drag.height+drag.y-event.clientY)),{save:false});};
@@ -58,11 +58,11 @@ export function installCLUIChatBehavior({root,body,onChange=()=>{}}){
  if(grip){grip.addEventListener('pointerdown',resizeStart);grip.addEventListener('keydown',resizeKeys);grip.addEventListener('dblclick',resetHeight);}
  const resizeViewport=()=>{if(mode==='detail'&&!disposed){measure();notify();}};
  win?.addEventListener?.('resize',resizeViewport);
- const contains=event=>root.contains(event.target)||event.composedPath?.().includes(root);
+ const contains=event=>root.contains(event.target)||event.composedPath?.().includes(root)||!!root.id&&event.target.closest?.('[data-clui-owner]')?.dataset.cluiOwner===root.id;
  const pointerDown=event=>{pointer=contains(event)?{x:event.clientX,y:event.clientY}:null;};
  const click=event=>{if(contains(event)){root.dataset.dimmed='false';const start=pointer;pointer=null;if(event.defaultPrevented||event.target.closest?.('[data-clui-collapse],[data-clui-toggle],[data-clui-ignore-expand],button,a,summary,select,[role=button]'))return;const selection=doc.defaultView?.getSelection?.();if(selection&&!selection.isCollapsed&&root.contains(selection.anchorNode))return;if(start&&Math.hypot(event.clientX-start.x,event.clientY-start.y)>5)return;apply('detail');}else{pointer=null;if(mode!=='compact')root.dataset.dimmed='true';}};
  const doubleClick=event=>{if(!contains(event)&&!pinned)apply('compact');};
- doc.addEventListener('pointerdown',pointerDown,true);doc.addEventListener('click',click);doc.addEventListener('dblclick',doubleClick);root.dataset.pinned='false';apply('compact');
+ if(!persistent){doc.addEventListener('pointerdown',pointerDown,true);doc.addEventListener('click',click);doc.addEventListener('dblclick',doubleClick);}root.dataset.pinned='false';apply('compact');
  return {get mode(){return mode;},get pinned(){return pinned;},get detailHeight(){return detailSize.height;},heightGrip:grip,setDetailHeight,resetDetailHeight:()=>resetHeight(),setExpanded(value,{detail=false}={}){apply(value?detail?'detail':'conversation':'compact');},setConversation(){apply('conversation');},setDetail(){apply('detail');},setPinned(value){pinned=!!value;root.dataset.pinned=String(pinned);if(pinned&&mode==='compact')apply('conversation');else notify();},destroy(){finishDrag(null,true);disposed=true;grip?.remove();win?.removeEventListener?.('resize',resizeViewport);doc.removeEventListener('pointerdown',pointerDown,true);doc.removeEventListener('click',click);doc.removeEventListener('dblclick',doubleClick);}};
 }
 

@@ -9,6 +9,8 @@ import * as Policy from '../../../chrome/content/zotero/research/shared/research
 import * as Chat from '../../../chrome/content/zotero/research/shared/chat-completion.mjs';
 import * as JSONStream from '../../../chrome/content/zotero/research/shared/json-stream.mjs';
 import * as model from '../../../chrome/content/zotero/research/shared/ppt-model.mjs';
+import * as scopeModule from '../../../chrome/content/zotero/research/shared/ppt-scope.mjs';
+import * as outlineModule from '../../../chrome/content/zotero/research/shared/ppt-outline.mjs';
 import {renderStudioDeck} from '../src/studio-render.mjs';
 import {layoutDiagram,diagramSVG,diagramDrawio} from '../src/studio-diagram.mjs';
 import {validateStudioSlide,CONTENT_TEMPLATES,THEMES} from '../../../chrome/content/zotero/research/shared/ppt-model.mjs';
@@ -16,8 +18,8 @@ const source={id:'p1',text:'Inputs are encoded before classification. The evalua
 const diagram={diagramType:'method_pipeline',title:'Encoding pipeline',nodes:[{id:'input',label:'输入',evidenceIDs:['p1']},{id:'encoder',label:'编码',evidenceIDs:['p1']},{id:'output',label:'分类',evidenceIDs:['p1']}],edges:[{source:'input',target:'encoder',relation:'编码'},{source:'encoder',target:'output',relation:'分类'}]};
 const page={id:'page1',title:'编码连接输入与分类',explanation:'流程图呈现原文明确说明的步骤，测试内容不代表实际论文结论。',layout:'balanced',blocks:[{kind:'paper_fact',text:'输入先经过编码，再完成分类。',quote:'Inputs are encoded before classification.',evidenceIDs:['p1']},{kind:'synthesis',text:'独立测试集用于评价模型在训练材料之外的表现。',evidenceIDs:['p1']},{kind:'unverified',text:'原文片段没有给出样本量，不应据此推断显著性。',evidenceIDs:[]}],assetIDs:[],diagram,notes:'测试讲稿与引用来源。'};
 test('native draft history preserves the old page across in-place edits and redo',async()=>{
- let state={pptDrafts:{}};const E={store:{get:()=>structuredClone(state),update:async fn=>{const next=structuredClone(state);fn(next);state=next;}},library:{selection:()=>[]}};
- const context={Zotero:{Research:E,Utilities:{randomString:()=> 'draft'}},ChromeUtils:{importESModule:()=>model},structuredClone};
+ let state={pptDrafts:{}};const E={store:{get:(...keys)=>structuredClone(keys.reduce((value,key)=>value?.[key],state)),update:async fn=>{const next=structuredClone(state);fn(next);state=next;}},library:{selection:()=>[]}};
+ const context={Zotero:{Research:E,Utilities:{randomString:()=> 'draft'}},ChromeUtils:{importESModule:uri=>uri.includes('ppt-scope')?scopeModule:uri.includes('ppt-outline')?outlineModule:model},structuredClone};
  vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/ppt-studio.js',import.meta.url),'utf8'),context);
  const d=await E.studio.create();await E.studio.patch(d.id,x=>x.slides=[structuredClone(page)]);
  await E.studio.patch(d.id,x=>x.slides[0].title='changed',{snapshot:true});await E.studio.history(d.id);assert.equal(E.studio.get(d.id).slides[0].title,page.title);

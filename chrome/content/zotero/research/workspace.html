@@ -118,9 +118,12 @@
 		<h3>会后任务</h3><textarea id="meeting-task" placeholder="记录导师问题、待补文献、实验或修改意见"></textarea>
 		<button id="meeting-add-task">加入会后任务</button><div id="meeting-tasks"></div></div></section>
 			<section id="view-settings" class="view" hidden="hidden">
+ <div class="card"><h2>翻译</h2><p>选区优先使用 Azure 机翻。整篇译文和完整素材使用独立的低价模型，PDF 打开时后台准备并缓存，不改变研究对话模型。</p>
+ <label>Azure 资源区域 <input id="azure-region" placeholder="例如 eastasia" autocomplete="off"/></label><label>Azure 密钥 <input id="azure-key" type="password" autocomplete="off" placeholder="留空保留已保存密钥"/></label><button id="save-azure">保存选区机翻</button>
+ <label>翻译接口 <input id="translation-endpoint" type="url" placeholder="https://api.deepseek.com"/></label><label>翻译模型 <input id="translation-model" placeholder="deepseek-flash"/></label><label>翻译密钥 <input id="translation-key" type="password" autocomplete="off" placeholder="留空保留已有 DeepSeek 密钥"/></label><button id="save-translation">保存学术翻译</button></div>
  <p id="provider-status" role="status"></p><button id="test-providers">测试已配置服务</button><div class="card"><h2>有道翻译</h2><label>应用 ID <input id="youdao-app-id" autocomplete="off"/></label><label>应用密钥 <input id="youdao-secret" type="password" autocomplete="off" placeholder="留空保留已保存密钥"/></label><button id="save-youdao">保存有道配置</button><p>选中文字后可在阅读器内翻译；LaTeX 公式保留原样。调用使用有道账户的额度。</p></div><div class="card"><h2>期刊指标服务</h2><p>支持 easyScholar 和 JSON 数据导入。接口查询按期刊名称匹配，保存前需核对期刊与指标年份。</p>
  <label>easyScholar 密钥 <input id="metrics-key" type="password" autocomplete="off"/></label><button id="metrics-save-key">保存指标服务密钥</button><button id="metrics-remove-key">删除指标服务密钥</button></div>
-				<div class="settings-grid"><div><h2>模型连接</h2><p class="muted">仅在点击分析、翻译或提问时，将选中文献的文本片段、批注和近期记忆发送到下面的接口。</p>
+				<div class="settings-grid"><div><h2>模型连接</h2><p class="muted">研究对话使用本轮选用的资料。已配置翻译后，打开 PDF 会在后台准备中文译文并缓存；翻译接口与对话接口分别管理。</p>
 					<label for="endpoint">接口基础地址</label><input id="endpoint" type="url" placeholder="https://api.example.com/v1 或 http://localhost:11434/v1"/>
 					<label for="model">模型名称</label><input id="model" placeholder="填写服务商提供的模型 ID"/>
 					<label for="api-key">API 密钥</label><input id="api-key" type="password" autocomplete="off" placeholder="留空保持已保存密钥；密钥不会写入项目文件"/><button id="forget-key">删除当前接口密钥</button>

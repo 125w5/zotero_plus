@@ -30,7 +30,9 @@
 .easysch-comment-marker{position:absolute;display:grid;place-items:center;width:16px;height:18px;min-height:18px;padding:0;border:0;border-radius:5px;background:transparent;pointer-events:auto;cursor:pointer}
 .easysch-comment-marker:before{content:'';width:4px;height:8px;border-radius:3px;background:var(--comment-color,#87aaca);box-shadow:0 1px 3px #172b4318;transition:width 120ms}
 .easysch-comment-marker:hover:before,.easysch-comment-marker:focus-visible:before{width:7px}
-.primary-editor.ProseMirror{font:14px/1.75 system-ui,'Microsoft YaHei',sans-serif;color:var(--es-read-ink);padding:18px 18px 32px}
+/* The native note editor resolves its own scheme independently of the writing
+   page. Keep quotation, table and math chrome on those same native colors. */
+.primary-editor.ProseMirror{--es-read-ink:var(--fill-primary,#20242a);--es-read-muted:var(--fill-secondary,#59636f);--es-read-tray:var(--color-sidepane,#f3f5f7);--es-read-surface:var(--color-background,#fff);--es-read-line:var(--color-border,#dbe1e8);font:14px/1.75 system-ui,'Microsoft YaHei',sans-serif;color:var(--es-read-ink);padding:18px 18px 32px}
 .primary-editor.ProseMirror :is(h1,h2,h3){font-family:system-ui,'Microsoft YaHei',sans-serif;line-height:1.45;margin:18px 0 10px}
 .primary-editor.ProseMirror h1{font-size:20px}.primary-editor.ProseMirror h2{font-size:17px}.primary-editor.ProseMirror h3{font-size:15px}
 .primary-editor.ProseMirror blockquote{margin:12px 0;padding:8px 12px;border-left:3px solid #9eafc3;border-radius:0 7px 7px 0;background:color-mix(in srgb,var(--es-read-tray) 70%,var(--es-read-surface));color:var(--es-read-muted);font-size:13px}

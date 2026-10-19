@@ -249,7 +249,7 @@
  const academicBlock=block=>!!block.inlineMath?.length||mathRelations(block.sourceText).length>0;
  const translateBatch=async(batch,signal)=>{
   const forceAcademic=batch.some(academicBlock);
-  if(batch.length===1)return [(await E.quickTranslate(proseSource(batch[0].sourceText),signal,{persist:false,forceAcademic})).text];
+  if(batch.length===1)return [(await E.quickTranslate(proseSource(batch[0].sourceText),signal,{persist:false,forceAcademic,purpose:'document'})).text];
   // Local IDs restart at zero in each source block. Scope them only for this
   // request so a response cannot move a formula into a neighbouring passage.
   const scoped=batch.map((block,index)=>{
@@ -257,7 +257,7 @@
    return {map,text:proseSource(block.sourceText).replace(/\bZXQMATH[A-Z0-9]*ZXQ\b/g,token=>map.get(token))};
   });
   const input=scoped.map((request,i)=>`ZXQBLOCK${i}ZXQ\n${request.text}`).join('\n\n');
-  const reply=(await E.quickTranslate(input,signal,{persist:false,forceAcademic})).text;
+  const reply=(await E.quickTranslate(input,signal,{persist:false,forceAcademic,purpose:'document'})).text;
   const markers=[...reply.matchAll(/ZXQ\s*BLOCK\s*(\d+)\s*ZXQ/gi)];
   if(markers.length===batch.length&&markers.every((m,i)=>Number(m[1])===i))
    return markers.map((m,i)=>{
@@ -267,7 +267,7 @@
     return value.replace(/\bZXQMATH[A-Z0-9]*ZXQ\b/g,token=>reverse.get(token)||token);
    });
   // A changed delimiter must never bind one paper passage to another.
-  const output=[];for(const block of batch)output.push((await E.quickTranslate(proseSource(block.sourceText),signal,{persist:false,forceAcademic:academicBlock(block)})).text);return output;
+  const output=[];for(const block of batch)output.push((await E.quickTranslate(proseSource(block.sourceText),signal,{persist:false,forceAcademic:academicBlock(block),purpose:'document'})).text);return output;
  };
  const processPage=async(job,pageIndex)=>{
   const {key}=job,source=sourceBlocks(job.layout||job.document,pageIndex);if(!source.length)return;

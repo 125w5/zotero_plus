@@ -128,7 +128,7 @@
   button.title = '学术对话 · 拖动调整位置'; button.setAttribute('aria-label', button.title);
   const image = doc.createElementNS(HTML, 'img'); image.alt = ''; image.draggable = false;
   button.append(image); layer.append(style, button); doc.documentElement.append(layer);
-  let reader, observedFrame, observedPanes=[], normalized = E.store.get().settings?.readerAIOrbPosition, position, bounds, contentBounds, drag, frame, initialPlacementFrame, disposed = false, suppressClick = false;
+  let reader, observedFrame, observedPanes=[], normalized = E.store.get().settings?.readerAIOrbPosition, position, bounds, contentBounds, drag, frame, initialPlacementFrame, orbDragFrame,orbDragPoint,lastDrawDark,disposed = false, suppressClick = false;
   let taskController, messageDrag, pendingMessage, rangeDrag, rangePreview, dropDocuments=[], dropFrames=[], opening,focusedAsset;
   const focusAsset=asset=>{const previous=focusedAsset,scope={asset};focusedAsset=scope;return ()=>{if(focusedAsset===scope)focusedAsset=previous;};};
   const dropHint=doc.createElementNS(HTML,'div');dropHint.className='easysch-ai-pdf-drop-hint';dropHint.hidden=true;layer.append(dropHint);
@@ -154,12 +154,17 @@
   const renderSession=(state=conversations.snapshot(),meta={})=>{const current=activeReader(win),session=current?conversations.getForScope({paperID:sourceFor(current).paperItemID},state):conversations.getActive(state);surface.render(session||conversations.getActive(state),state.sessions,meta);};
   const dockTargets=()=>{
    const current=activeReader(win);if(!current)return [];
-   const left=current._iframeWindow?.document.getElementById('sidebarContainer'),right=doc.getElementById('zotero-context-pane');
-   return [{id:'left',label:'详情',element:left,ensureOpen:()=>{current._internalReader.toggleSidebar(true);current._internalReader.setSidebarView('annotations');},getRect:()=>{
-    const rect=G.rectInWindow(left,win);if(rect?.width>10&&rect.height>10)return rect;const area=current._iframe.getBoundingClientRect(),width=Math.min(260,area.width*.35);return {left:area.left,top:area.top+40,width,height:area.height-40,right:area.left+width,bottom:area.bottom};
-   }},{id:'right',label:'详情',element:right,ensureOpen:()=>{win.ZoteroContextPane.collapsed=false;win.ZoteroContextPane.context.mode='item';},getRect:()=>{
-    const rect=right?.getBoundingClientRect();if(rect?.width>10&&rect.height>10)return rect;const area=current._iframe.getBoundingClientRect(),width=Math.min(300,win.innerWidth*.32);return {left:win.innerWidth-width,top:area.top,width,height:area.height,right:win.innerWidth,bottom:area.bottom};
-   }}].filter(target=>target.element);
+   // React unmounts the native left sidebar while it is closed. Keep its
+   // edge target available, and resolve the element again after opening it.
+   const left=()=>current._iframeWindow?.document.getElementById('sidebarContainer'),right=()=>doc.getElementById('zotero-context-pane');
+   // A closed pane still needs an overlay-sized drop target, but its parked
+   // icon belongs at the real reader edge rather than inside that virtual pane.
+   const iconPosition=(id,{y,size=40}={})=>{const area=current._iframe.getBoundingClientRect(),visible=id==='left'?current._internalReader?._state?.sidebarOpen||current._iframeWindow?.document.body?.classList.contains('sidebar-open'):!win.ZoteroContextPane?.collapsed,pane=id==='left'?G.rectInWindow(left(),win):right()?.getBoundingClientRect(),open=visible&&pane?.width>10&&pane.height>10,rect=open?pane:area;return {x:id==='left'?(open?rect.right-size-8:rect.left+8):(open?rect.left+8:rect.right-size-8),y:Math.min(Math.max(Number.isFinite(y)?y-size/2:rect.top+48,rect.top+8),Math.max(rect.top+8,rect.bottom-size-8))};};
+   return [{id:'left',label:'详情',get element(){return left();},getIconPosition:options=>iconPosition('left',options),ensureOpen:()=>{current._internalReader.toggleSidebar(true);current._internalReader.setSidebarView('annotations');win.requestAnimationFrame(schedule);},getRect:()=>{
+    const rect=G.rectInWindow(left(),win);if(rect?.width>10&&rect.height>10)return rect;const area=current._iframe.getBoundingClientRect(),width=Math.min(260,area.width*.35);return {left:area.left,top:area.top+40,width,height:area.height-40,right:area.left+width,bottom:area.bottom};
+   }},{id:'right',label:'详情',get element(){return right();},getIconPosition:options=>iconPosition('right',options),ensureOpen:()=>{win.ZoteroContextPane.collapsed=false;win.ZoteroContextPane.context.mode='item';},getRect:()=>{
+    const rect=right()?.getBoundingClientRect();if(rect?.width>10&&rect.height>10)return rect;const area=current._iframe.getBoundingClientRect(),width=Math.min(300,win.innerWidth*.32);return {left:win.innerWidth-width,top:area.top,width,height:area.height,right:win.innerWidth,bottom:area.bottom};
+   }}];
   };
   const newSession=async({inherit=false}={})=>{
    const current=activeReader(win);if(!current)throw Error('请先打开一篇论文');const source=sourceFor(current),prior=conversations.getForScope({paperID:source.paperItemID})||conversations.getActive();
@@ -169,8 +174,10 @@
   };
   const openSurface=async (current,{show=true}={})=>{
    if(!current||disposed||activeReader(win)!==current)return null;
-   if(opening)return opening;
-   opening=(async()=>{
+   // Initialization may start passively when a PDF opens. A later click must
+   // still reveal it, and a newly selected PDF must not reuse the prior scope.
+   if(opening&&opening.reader!==current){try{await opening.promise;}catch{/* The prior paper reports its own failure. */}return openSurface(current,{show});}
+   if(!opening){const pending={reader:current};opening=pending;pending.promise=(async()=>{
     if(activeReader(win)!==current)return null;
     const source=sourceFor(current),legacy=E.paperConversation?.(source.paperItemID);
     if(legacy?.turns?.length)await conversations.importLegacy('reader-paper:'+source.paperItemID,legacy.turns.flatMap(turn=>[
@@ -179,10 +186,11 @@
     ]),{title:(source.title||'论文讨论').slice(0,25),origin:'reader',paperID:source.paperItemID,selectedSource:source});
     if(disposed||activeReader(win)!==current)return null;
     await conversations.open({title:(source.title||'论文讨论').slice(0,25),origin:'reader',paperID:source.paperItemID,selectedSource:source});
-    if(disposed||activeReader(win)!==current)return null;ensureDropListeners(current);renderSession();if(show){if(surface.docked)surface.dock(surface.docked);surface.show({nearLogo:!surface.docked});}return surface;
-   })();try{return await opening;}finally{opening=null;}
+    if(disposed||activeReader(win)!==current)return null;ensureDropListeners(current);renderSession();return surface;
+   })();}
+   const pending=opening;try{const result=await pending.promise;if(disposed||activeReader(win)!==current)return null;if(result&&show){if(surface.docked)surface.dock(surface.docked);surface.show({nearLogo:!surface.docked});surface.setExpanded(true);}return result;}finally{if(opening===pending)opening=null;}
   };
-  const surface=Surface.installConversationSurface({doc,orb:button,dockTargets,state:E.store.get().settings?.readerAISurface||{},
+  const surface=Surface.installConversationSurface({doc,orb:button,dockTargets,state:E.store.get().settings?.readerAISurface||{},presentation:'reader-bottom',getWorkArea:()=>contentBounds,
    getModels:()=>E.workbenchModels?.()||[],
    getAttachments:session=>session?.attachments||[],
    onAttach:(payload,{sessionID,source}={})=>E.chatAttachments.attach(sessionID,payload,{source}),
@@ -272,10 +280,11 @@
   const media = win.matchMedia('(prefers-color-scheme:dark)');
   const draw = () => {
    const node = doc.documentElement;
-   const theme = node.getAttribute('data-easysch-appearance') || node.getAttribute('data-theme');
-   const dark = theme ? theme === 'dark' : media.matches;
-   button.dataset.dark = String(dark);
-   for(const [name,value]of Object.entries(dark?{surface:'#242a32',soft:'#2c333d',text:'#e6ebf1',muted:'#a6b1bf',line:'#454e5b'}:{surface:'#ffffff',soft:'#f5f6f8',text:'#20252b',muted:'#69727d',line:'#d4d8de'}))surface.root.style.setProperty('--'+name,value);
+   const theme = node.getAttribute('data-easysch-appearance') || node.getAttribute('data-appearance') || node.getAttribute('data-theme');
+   const dark = theme ? theme === 'dark' : node.hasAttribute('systemdark') || media.matches;
+   // The shell and its document-level popovers inherit one shared palette.
+   // A separate inline palette here would leave menus and input text behind.
+   if(lastDrawDark!==dark){lastDrawDark=dark;button.dataset.dark = String(dark);}
    const imageURL='chrome://zotero/content/research/brand/easysch-symbol-'+(dark?'white':'black')+'.png';if(image.src!==imageURL)image.src=imageURL;
    button.style.left = position.x + 'px'; button.style.top = position.y + 'px';
   };
@@ -297,7 +306,7 @@
    const leftVisible=reader._internalReader?._state?.sidebarOpen||reader._iframeWindow?.document.body?.classList.contains('sidebar-open'),rightVisible=!win.ZoteroContextPane?.collapsed;
    const contentArea=G.contentOrbArea({left:area.left,right:area.right,top:area.top,bottom:area.bottom},{leftPane:leftVisible?leftPane:null,rightPane:rightVisible?rightPane:null});
    contentBounds=G.orbBounds({width:win.innerWidth,height:win.innerHeight},contentArea);
-   if(drag||surface.root.dataset.dragging==='true')position=G.clampOrb(position,bounds);else{position=G.snapOrb(G.positionFromNormalized(normalized,contentBounds),contentBounds);normalized=G.normalizeOrb(position,contentBounds);if(position.edge)button.dataset.edge=position.edge;else delete button.dataset.edge;}
+   if(drag||surface.root.dataset.dragging==='true')position=G.clampOrb(position,bounds);else{const parked=surface.state.iconDock,area=parked?bounds:contentBounds,restored=G.positionFromNormalized(normalized,area),target=parked&&panes.find(pane=>pane.id===parked);position=parked?G.clampOrb(target?.getIconPosition?.({y:restored.y+area.size/2,size:area.size})||restored,area):G.snapOrb(restored,area);normalized=G.normalizeOrb(position,area);if(position.edge)button.dataset.edge=position.edge;else delete button.dataset.edge;}
    button.style.width = button.style.height = bounds.size + 'px'; draw();
    if(button.dataset.initialPlacement==='true'&&!initialPlacementFrame){
     // Resolve initial edge styles while transitions are disabled; only later
@@ -306,7 +315,8 @@
     initialPlacementFrame=win.requestAnimationFrame(()=>{initialPlacementFrame=null;if(!disposed)delete button.dataset.initialPlacement;});
    }
    surface.refresh();
-   const paneElements=panes.map(pane=>pane.element);
+   if(prior!==reader&&!surface.state.iconDock){const current=reader;openSurface(current,{show:false}).then(value=>{if(value&&!disposed&&activeReader(win)===current&&!value.isOpen)value.showBottom();}).catch(Zotero.logError);}
+   const paneElements=panes.map(pane=>pane.element).filter(Boolean);
    if (observedFrame !== reader._iframe||paneElements.length!==observedPanes.length||paneElements.some((element,index)=>element!==observedPanes[index])) {
     observer.disconnect(); if (stack) observer.observe(doc.getElementById('zotero-pane-stack'));
     observer.observe(reader._iframe); observedFrame = reader._iframe;
@@ -315,10 +325,10 @@
     for(const element of paneElements)observer.observe(element);observedPanes=paneElements;
    }
   };
-  const surfaceMoved=event=>{const detail=event.detail,point=detail?.orbPosition;if(!point||drag||!contentBounds)return;position=detail.movement==='move'?G.clampOrb(point,bounds):G.snapOrb(point,contentBounds);normalized=G.normalizeOrb(position,contentBounds);if(position.edge)button.dataset.edge=position.edge;else delete button.dataset.edge;draw();if(detail.persistOrb!==false)save();};doc.addEventListener('easysch-conversation-statechange',surfaceMoved);
+  const surfaceMoved=event=>{const detail=event.detail,point=detail?.orbPosition;if(!point||drag||!contentBounds)return;const area=detail.iconDock?bounds:contentBounds;position=detail.movement==='move'||detail.iconDock?G.clampOrb(point,detail.movement==='move'?bounds:area):G.snapOrb(point,area);normalized=G.normalizeOrb(position,area);if(position.edge)button.dataset.edge=position.edge;else delete button.dataset.edge;draw();if(detail.persistOrb!==false)save();};doc.addEventListener('easysch-conversation-statechange',surfaceMoved);
   const schedule = () => { if (!frame && !disposed && !win.closed) frame = win.requestAnimationFrame(refresh); };
   const save = () => {
-   normalized = G.normalizeOrb(position, contentBounds);
+   normalized = G.normalizeOrb(position, surface.state.iconDock?bounds:contentBounds);
    // The workspace queue can run after another drag or Escape. Capture this
    // completed placement rather than the subsequently reassigned local state.
    const savedPosition={...normalized};
@@ -326,10 +336,10 @@
   };
   const cancelDrag = () => {
    if (!drag) return;
-   // Persisted positions and refresh both use the article's visible area.
-   // Using whole-window bounds here makes returning from another tab change
-   // the cancelled position and produces a different location after rebuild.
-   const area=contentBounds||bounds;position=G.snapOrb(drag.original,area);normalized=G.normalizeOrb(position,area);
+   if(orbDragFrame){win.cancelAnimationFrame(orbDragFrame);orbDragFrame=null;}orbDragPoint=null;
+   // Parked icons stay inside their real pane; a free Logo stays inside the
+   // visible article. Cancellation and restoration must use the same bounds.
+   const parked=surface.state.iconDock,area=parked?bounds:contentBounds||bounds;position=parked?G.clampOrb(drag.original,area):G.snapOrb(drag.original,area);normalized=G.normalizeOrb(position,area);
    if(position.edge)button.dataset.edge=position.edge;else delete button.dataset.edge;
    const id = drag.id; drag = null; button.dataset.dragging = 'false'; suppressClick = true;
    surface.clearHighlight();
@@ -346,14 +356,15 @@
    if (!drag || event.pointerId !== drag.id) return;
    const current = {x:event.clientX,y:event.clientY}; drag.moved ||= G.isOrbDrag(drag.start, current);
    if (!drag.moved) return;
-   position = G.clampOrb({x:drag.original.x + current.x - drag.start.x,y:drag.original.y + current.y - drag.start.y}, bounds);
-   button.dataset.dragging = 'true'; draw();surface.previewDock(event.clientX,event.clientY);event.preventDefault();
+   orbDragPoint=current;button.dataset.dragging = 'true';if(!orbDragFrame)orbDragFrame=win.requestAnimationFrame(flushOrbDrag);event.preventDefault();
   };
+  const flushOrbDrag=()=>{orbDragFrame=null;if(!drag||!orbDragPoint)return;const current=orbDragPoint;position=G.clampOrb({x:drag.original.x+current.x-drag.start.x,y:drag.original.y+current.y-drag.start.y},bounds);draw();surface.previewDock(current.x,current.y);};
   button.onpointerup = event => {
    if (!drag || event.pointerId !== drag.id) return;
+   if(orbDragFrame){win.cancelAnimationFrame(orbDragFrame);orbDragFrame=null;flushOrbDrag();}orbDragPoint=null;
    const moved = drag.moved,owner=drag.reader; drag = null; suppressClick = moved; button.dataset.dragging = 'false';
    if (button.hasPointerCapture?.(event.pointerId)) button.releasePointerCapture(event.pointerId);
-   if(moved){const target=surface.previewDock(event.clientX,event.clientY);surface.clearHighlight();if(target)openSurface(owner).then(result=>{if(result&&activeReader(win)===owner)surface.dock(target);}).catch(error=>{surface.setStatus(error.message);Zotero.logError(error);});else{position=G.snapOrb(position,contentBounds);if(position.edge)button.dataset.edge=position.edge;else delete button.dataset.edge;draw();save();}}else surface.clearHighlight();
+   if(moved){surface.clearHighlight();if(!surface.parkAt(event.clientX,event.clientY)){position=G.snapOrb(position,contentBounds);if(position.edge)button.dataset.edge=position.edge;else delete button.dataset.edge;draw();save();}}else surface.clearHighlight();
   };
   button.onpointercancel = cancelDrag;
   button.onlostpointercapture = cancelDrag;
@@ -377,6 +388,7 @@
    if (disposed) return; disposed = true;
    if (frame) win.cancelAnimationFrame(frame);
    if (initialPlacementFrame) win.cancelAnimationFrame(initialPlacementFrame);
+   if (orbDragFrame) win.cancelAnimationFrame(orbDragFrame);
    observer.disconnect(); appearance.disconnect(); media.removeEventListener('change', schedule);
    taskController?.abort();unsubscribe();removeDropListeners();surface.destroy();
    doc.removeEventListener('easysch-conversation-statechange',surfaceMoved);doc.removeEventListener('pointerdown',dismissPending,true);
@@ -384,7 +396,7 @@
    win.removeEventListener('resize', schedule); win.removeEventListener('scroll', schedule, true); win.removeEventListener('unload', onWindowUnload);
    layer.remove(); windows.delete(win);
   };
-  appearance.observe(doc.documentElement, {attributes:true,attributeFilter:['data-easysch-appearance','data-theme','sizemode']});
+  appearance.observe(doc.documentElement, {attributes:true,attributeFilter:['data-easysch-appearance','data-appearance','data-theme','systemdark','sizemode']});
   const contextPane=doc.getElementById('zotero-context-pane');if(contextPane)appearance.observe(contextPane,{attributes:true,attributeFilter:['collapsed','hidden']});
   const onWindowUnload=event=>{if(event.target===doc||event.target===win)dispose();};
   media.addEventListener('change', schedule); win.addEventListener('resize', schedule); win.addEventListener('scroll', schedule, true); win.addEventListener('unload', onWindowUnload);

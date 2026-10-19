@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 describe('Reader interaction repairs 2026-09-19',function(){
- this.timeout(180000);const E=Zotero.Research;let win,pdf,reader,view,folder,selection,noteSave,prepareTranslation,indexArticle;const pageMetrics=[];const report={native:[],live:[],limitations:['原生 DOM 触发不等同真人鼠标验收；选区坐标为测试构造','译文版式与增量页面测试使用受控缓存，不代表真实整篇模型翻译']};
+ this.timeout(180000);const E=Zotero.Research;let win,pdf,reader,view,folder,selection,noteSave,prepareTranslation,indexArticle,queueImages;const pageMetrics=[];const report={native:[],live:[],limitations:['原生 DOM 触发不等同真人鼠标验收；选区坐标为测试构造','译文版式与增量页面测试使用受控缓存，不代表真实整篇模型翻译','图片说明生成队列在本套 DOM 测试中禁用；PDF 图表提取、参考文献解析和笔记写入使用真实实现，笔记说明为明确的受控测试文字']};
  const wait=async(fn,label='原生界面')=>{for(let i=0;i<250;i++){if(await fn())return;await Zotero.Promise.delay(100);}throw Error('等待'+label+'超时');};
  const cachedPage=(pageIndex,blocks=[],status='pending')=>({pageIndex,status,...pageMetrics[pageIndex],documentKey:'controlled-reader-interaction-cache',blocks});
+ const snapshot=async name=>{const image=await win.browsingContext.currentWindowGlobal.drawSnapshot(new win.DOMRect(0,0,win.innerWidth,win.innerHeight),1,'white');try{const canvas=win.document.createElementNS('http://www.w3.org/1999/xhtml','canvas');canvas.width=image.width;canvas.height=image.height;canvas.getContext('2d').drawImage(image,0,0);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await IOUtils.write(PathUtils.join(folder,name+'.png'),new Uint8Array(await blob.arrayBuffer()));}finally{image.close();}};
  before(async()=>{
   // Toolbar mounting now starts whole-document preparation. Keep this legacy
   // DOM suite isolated from real model/index jobs before the reader is opened.
@@ -11,16 +12,20 @@ describe('Reader interaction repairs 2026-09-19',function(){
   // installed and then queue unrelated translation. Isolate that import entry
   // before opening the pane; the reader's zero-request assertions stay intact.
   indexArticle=E.manuscripts.indexArticle;E.manuscripts.indexArticle=async()=>null;
+  queueImages=E.assets.queueImages;E.assets.queueImages=async()=>null;
   win=await loadZoteroPane();await E.attachWindow(win);folder=PathUtils.join(Zotero.DataDirectory.dir,'reader-interaction-2026-09-19');await IOUtils.makeDirectory(folder,{ignoreExisting:true});
   await win.Zotero_Tabs.closeAll();
-  for(const item of await Zotero.Items.getAll(Zotero.Libraries.userLibraryID))if(item.isPDFAttachment()&&!item.deleted&&await item.fileExists()){pdf=item;break;}
+  // A random prior attachment or test.pdf (a one-page Zotero introduction)
+  // cannot exercise extracted figures or bibliography. This repository paper
+  // contains three real figures, a table and nine numbered references.
+  const file=getTestDataDirectory();file.append('recognizePDF_test_arXiv.pdf');pdf=await Zotero.Attachments.importFromFile({file});report.pdfFixture={file:file.leafName,attachmentID:pdf.id};
   assert.exists(pdf,'隔离文库需要一个真实 PDF');reader=await Zotero.Reader.open(pdf.id,null,{allowDuplicate:true});await reader._initPromise;
   assert.strictEqual(reader._window,win,'使用本测试窗口的新阅读器，避免复用前一套用例关闭中的标签');view=reader._internalReader._primaryView;await view.initializedPromise;
   const document=view._iframeWindow.PDFViewerApplication.pdfDocument;
   for(let index=0;index<document.numPages;index++){const page=Cu.waiveXrays(await document.getPage(index+1)),viewport=page.getViewport(Cu.cloneInto({scale:1},view._iframeWindow));pageMetrics.push({width:viewport.width,height:viewport.height,rotation:viewport.rotation});}
   selection={paperID:pdf.parentID||pdf.id,attachmentID:pdf.id,text:'Interaction validation, not an experimental result.',pageIndex:0,position:{pageIndex:0,rects:[[60,600,220,612],[60,582,260,594]]},sortIndex:'00000|000003|00000'};
  });
- after(async()=>{E.manuscripts.prepareTranslation=prepareTranslation;E.manuscripts.indexArticle=indexArticle;await E.store.flush();await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));if(win&&!win.closed){try{await win.Zotero_Tabs.closeAll();await wait(()=>!Zotero.Reader._readers.some(value=>value._window===win),'原生交互测试阅读器清理');}finally{win.close();}}});
+ after(async()=>{E.manuscripts.prepareTranslation=prepareTranslation;E.manuscripts.indexArticle=indexArticle;await E.store.flush();await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));try{if(win&&!win.closed){try{await win.Zotero_Tabs.closeAll();await wait(()=>!Zotero.Reader._readers.some(value=>value._window===win),'原生交互测试阅读器清理');}finally{win.close();}}}finally{E.assets.queueImages=queueImages;}});
  afterEach(async function(){report.tests||=[];report.tests.push({name:this.currentTest.title,state:this.currentTest.state,error:this.currentTest.err?.message});await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));});
  it('keeps formula superscripts together and separates lines and columns',()=>{
   const G=ChromeUtils.importESModule('chrome://zotero/content/research/shared/annotation-geometry.mjs');
@@ -100,6 +105,7 @@ describe('Reader interaction repairs 2026-09-19',function(){
    const point=rightScroll.getBoundingClientRect(),wheel=new doc.defaultView.WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:120,clientX:point.left+40,clientY:point.top+80});
    rightScroll.dispatchEvent(wheel);
    await wait(()=>Math.abs(parseFloat(sheet.style.width)-initialWidth)>2,'Ctrl+滚轮改变译文页缩放');
+   await frames();
    assert.isTrue(wheel.defaultPrevented,'Ctrl+滚轮被右译文视图接管');
    assert.notEqual(app.pdfViewer.currentScaleValue,originalScale,'右侧 Ctrl+滚轮同步改变原文 PDF 缩放');
    assert.closeTo(sheet.getBoundingClientRect().width,sourcePaper.getBoundingClientRect().width,1,'缩放后两侧纸张仍同宽');
@@ -157,10 +163,10 @@ describe('Reader interaction repairs 2026-09-19',function(){
  it('fills a pending translated page from the background cache without reader-side translation',async()=>{
   const doc=reader._iframeWindow.document,app=view._iframeWindow.PDFViewerApplication,pageIndex=(app.pdfViewer.currentPageNumber||1)-1;
   const prior={page:E.manuscripts.translationPage,queue:E.manuscripts.queueTranslation,observe:E.manuscripts.observeTranslation,translate:E.quickTranslate,index:E.assets.index};
-  let notify,ready=false,queued=0,readerCalls=0;const reads=[],queueCalls=[];report.translationQueueCalls=queueCalls;
+  let notify,ready=false,queued=0,readerCalls=0;const reads=[],queueCalls=[],unexpectedCalls=[];report.translationQueueCalls=queueCalls;report.translationUnexpectedCalls=unexpectedCalls;
   E.manuscripts.translationPage=(id,i)=>{reads.push(i);return cachedPage(i,i===pageIndex&&ready?[{id:'background-result',sourceText:'Background source.',translatedText:'后台完成的中文译文',kind:'text',position:{pageIndex,rects:[[60,600,250,620]]}}]:[],i===pageIndex&&ready?'complete':'pending');};
   E.manuscripts.queueTranslation=(attachmentID,options={})=>{queued++;queueCalls.push({attachmentID:Number(attachmentID),retry:options.retry===true,priorityPages:Array.isArray(options.priorityPages)?options.priorityPages.map(Number):[],stack:new Error('Unexpected translation queue in cached-reader fixture').stack});return Promise.resolve();};E.manuscripts.observeTranslation=(id,fn)=>{notify=fn;return()=>{};};
-  E.quickTranslate=async()=>{readerCalls++;throw Error('阅读页不应发起翻译请求');};E.assets.index=async()=>{readerCalls++;throw Error('阅读页不应重新提取整篇图片');};
+  E.quickTranslate=async()=>{readerCalls++;unexpectedCalls.push({kind:'translation',stack:new Error().stack});throw Error('阅读页不应发起翻译请求');};E.assets.index=async()=>{readerCalls++;unexpectedCalls.push({kind:'index',stack:new Error().stack});throw Error('阅读页不应重新提取整篇图片');};
   try{
    doc.querySelector('.easysch-translation-open').click();const panel=doc.querySelector('.easysch-page-translation');assert.exists(panel);
    await wait(()=>new Set(reads).size===app.pdfDocument.numPages&&panel.textContent.includes('后台'));
@@ -206,15 +212,15 @@ describe('Reader interaction repairs 2026-09-19',function(){
    await E.store.update(s=>{if(prior.layout===undefined)delete s.settings.readerTranslationLayout;else s.settings.readerTranslationLayout=prior.layout;});
   }
  });
- it('falls back to GPT-6 Luna for academic translation without a machine-translation key',async()=>{
+ it('uses independent DeepSeek Flash document translation while research chat retains GPT-6 Luna',async()=>{
   const previous={settings:E.settings,credential:E.credentials.get,resolve:E.resolveModel,request:E.requestProvider};
   const checkID=Date.now(),phrase='The evaluation plan uses 3 baselines and a 0.05 significance threshold. Controlled translation check '+checkID+'.';
   const translated='评估计划使用 3 个基线，显著性阈值为 0.05。受控翻译检查 '+checkID+'。';let called=false;
-  E.settings=()=>({...previous.settings(),endpoint:'https://openai.goldgom.top/v1',model:'gpt-6-luna',youdaoAppID:''});
-  E.credentials.get=async endpoint=>endpoint==='https://openai.goldgom.top/v1'?'controlled-test-credential':null;
+  E.settings=()=>({...previous.settings(),endpoint:'https://openai.goldgom.top/v1',model:'gpt-6-luna',translationEndpoint:'https://api.deepseek.com',translationModel:'deepseek-flash',azureTranslatorRegion:'',youdaoAppID:''});
+  E.credentials.get=async endpoint=>endpoint==='https://api.deepseek.com'?'controlled-test-credential':null;
   E.resolveModel=async config=>config;
-  E.requestProvider=async(url,options,timeout,reader)=>{called=true;assert.include(url,'/chat/completions');const body=JSON.parse(options.body);assert.equal(body.model,'gpt-6-luna');assert.isTrue(body.stream);assert.include(body.messages[0].content,'只输出译文');assert.equal(body.messages[1].content,phrase);return {text:translated};};
-  try{const before=Object.keys(E.store.get('translationCache')||{}).length,result=await E.quickTranslate(phrase,undefined,{persist:false});assert.isTrue(called);assert.equal(result.text,translated);assert.include(result.text,'3');assert.include(result.text,'0.05');assert.include(result.text,String(checkID),'受控回复也须保留来源中的唯一数值');assert.include(result.provider,'GPT-6 Luna');assert.equal(Object.keys(E.store.get('translationCache')||{}).length,before,'后台按页保存时不逐段重写工作区缓存');report.native.push('无有道配置时切换 GPT-6 Luna，保留数量、显著性阈值与检查编号；校验流式请求与“只翻译”提示；persist:false 不逐段写工作区；回复为受控内容');}
+  E.requestProvider=async(url,options,timeout,reader)=>{called=true;assert.equal(url,'https://api.deepseek.com/chat/completions');const body=JSON.parse(options.body);assert.equal(body.model,'deepseek-flash');assert.isFalse(body.stream);assert.equal(body.thinking.type,'disabled');assert.include(body.messages[0].content,'只输出译文');assert.equal(body.messages[1].content,phrase);return {text:translated};};
+  try{const before=Object.keys(E.store.get('translationCache')||{}).length,result=await E.quickTranslate(phrase,undefined,{persist:false,purpose:'document'});assert.isTrue(called);assert.equal(result.text,translated);assert.include(result.text,'3');assert.include(result.text,'0.05');assert.include(result.text,String(checkID),'受控回复也须保留来源中的唯一数值');assert.include(result.provider,'deepseek-flash');assert.equal(E.settings().model,'gpt-6-luna');assert.equal(Object.keys(E.store.get('translationCache')||{}).length,before,'后台按页保存时不逐段重写工作区缓存');report.native.push('整篇译文使用独立 DeepSeek Flash，研究对话保留 GPT-6 Luna；保留数量、显著性阈值与检查编号；persist:false 不逐段写工作区；回复为受控内容');}
   finally{E.settings=previous.settings;E.credentials.get=previous.credential;E.resolveModel=previous.resolve;E.requestProvider=previous.request;}
  });
  it('applies toolbar underline to a selection and converts an existing annotation',async()=>{
@@ -241,7 +247,10 @@ describe('Reader interaction repairs 2026-09-19',function(){
   noteSave=await E.saveSelectionTranslation(selection,{text:'中文交互验收笔记。'});const context=win.ZoteroContextPane.context._getNotesContext(pdf.libraryID);await wait(()=>context._getCurrentEditor()?.item?.id===noteSave.noteID);
   const second=await E.saveSelectionTranslation(selection,{text:'第二条笔记应成为当前笔记。'});await wait(()=>context._getCurrentEditor()?.item?.id===second.noteID);
   assert.lengthOf(context.tabNotesDeck.querySelectorAll(`[data-tab-id="${reader.tabID}"]`),1);context.switchToTab(reader.tabID);assert.equal(context._getCurrentEditor().item.id,second.noteID);
-  const editor=context._getCurrentEditor();await editor._initPromise;assert.exists(editor.querySelector('.easysch-note-insert button'));
+  const editor=context._getCurrentEditor();await editor._initPromise;const noteDoc=editor.getCurrentInstance()._iframeWindow.document;assert.exists(noteDoc.querySelector('.toolbar .easysch-note-insert button'));assert.notExists(editor.querySelector('.custom-head .easysch-note-insert'));
+  await E.prepareNoteStyles(editor);const quote=noteDoc.querySelector('.primary-editor.ProseMirror blockquote');assert.exists(quote,'保存的来源引用实际存在');const noteStyle=noteDoc.defaultView.getComputedStyle(quote);assert.equal(noteStyle.getPropertyValue('--es-read-surface').trim(),noteStyle.getPropertyValue('--color-background').trim(),'来源引用沿用当前原生编辑器背景，避免浅底和深色文字 token 混用');assert.equal(noteStyle.getPropertyValue('--es-read-ink').trim(),noteStyle.getPropertyValue('--fill-primary').trim(),'正文与公式沿用原生编辑器文字颜色');
+  noteDoc.querySelector('.toolbar .easysch-note-insert button').click();let menu;await wait(()=>{menu=[...editor.querySelectorAll('menupopup')].find(node=>node.querySelector('[label="导入 Excel / CSV…"]'));return menu?.state==='open';},'原生笔记插入菜单展开');
+  assert.includeMembers([...menu.querySelectorAll('menuitem')].map(node=>node.getAttribute('label')),['图片…','导入 Excel / CSV…','创建表格','公式']);await snapshot('reader-note-inline-insert-menu');menu.hidePopup();await wait(()=>!menu.isConnected,'笔记插入菜单收起');
   report.native.push('连续保存两条笔记后聚焦最新笔记；切换标签后保持；插入菜单可用');
  });
  it('migrates old note links and synchronizes trash and restore without touching the PDF',async()=>{
@@ -256,6 +265,7 @@ describe('Reader interaction repairs 2026-09-19',function(){
   const csv=PathUtils.join(folder,'实验数据.csv');await IOUtils.writeUTF8(csv,'方法,数值\nCNN,待验证\nTransformer,待补\n');const inserted=await E.insertNoteFile(editor,csv,'data');assert.include(inserted,'CNN');assert.include(inserted,'<table');
   const indexed=await E.assets.index(pdf.id,()=>{}),asset=indexed.assets.find(a=>a.thumbnail);assert.exists(asset);const imageHTML=await E.insertNoteFile(editor,asset.thumbnail,'image');assert.include(imageHTML,'data-attachment-key');
   const inner=editor.getCurrentInstance()._iframeWindow.document;await wait(()=>inner.querySelector('.primary-editor table'));await wait(()=>inner.querySelector('.primary-editor img'));
+  await wait(()=>[...inner.querySelectorAll('.primary-editor img')].some(node=>node.complete&&node.naturalWidth>0),'笔记原图加载后截图');await snapshot('reader-note-native-table-image');
   const tables=inner.querySelectorAll('.primary-editor table').length;await E.insertNoteStructure(editor,'table');await wait(()=>inner.querySelectorAll('.primary-editor table').length>tables);
   report.native.push('TeX 转原生公式节点；实际 UTF-8 CSV 与图片插入原生笔记编辑器');
  });
@@ -301,9 +311,10 @@ describe('Reader interaction repairs 2026-09-19',function(){
  });
  it('saves a complete extracted image and its explanation into a linked native note',async()=>{
   const indexed=await E.assets.index(pdf.id,()=>{}),asset=indexed.assets.find(a=>a.kind==='figure'&&a.thumbnail);assert.exists(asset);
+  const summary='受控图片说明：核对本图的坐标、原始图像与来源，不表示实际实验结论。',material=await E.assets.retainMaterial(asset);await E.store.update(state=>{Object.assign(state.researchMaterials[material.id],{summary,generationStatus:'complete',userEdited:true,imageExplanation:{result:{sections:[]}}});});
   const saved=await E.saveAssetNote(asset),note=Zotero.Items.get(saved.noteID),annotation=Zotero.Items.get(saved.annotationID);
   assert.deepEqual(JSON.parse(annotation.annotationPosition).rects,E.assets.position(asset).rects);
-  assert.include(note.getNote(),'data-attachment-key');assert.exists(E.noteLinkForAnnotation(pdf.id,annotation.key));
+  assert.include(note.getNote(),'data-attachment-key');assert.include(note.getNote(),summary,'保存已有图片说明，不重新调用模型');assert.exists(E.noteLinkForAnnotation(pdf.id,annotation.key));
   const context=win.ZoteroContextPane.context._getNotesContext(pdf.libraryID);await wait(()=>context._getCurrentEditor()?.item?.id===note.id);
   const editor=context._getCurrentEditor();await editor._initPromise;await wait(()=>editor.getCurrentInstance()._iframeWindow.document.querySelector('.primary-editor img'));
   report.native.push('提取的完整原图与已有解读保存为原生笔记，原图矩形和来源关联保留');
@@ -316,14 +327,11 @@ describe('Reader interaction repairs 2026-09-19',function(){
   if(!Zotero.Prefs.get('extensions.easysch.liveProviderTest',true)){report.limitations.push('本轮未调用真实模型或机翻 API');this.skip();}
   const r=await E.quickTranslate('Attention Is All You Need');assert.match(r.text,/[\u3400-\u9fff]/);report.live.push({type:'真实机翻 API',text:r.text,cacheHit:r.cacheHit});
  });
- it('uses the configured GPT-6 Luna translator through Zotero when available',async function(){
+ it('uses the configured document translator through Zotero only when live services are enabled',async function(){
   if(!Zotero.Prefs.get('extensions.easysch.liveProviderTest',true)){this.skip();return;}
-  const providers=await E.providerStatus();if(!providers.ai){report.limitations.push('隔离 profile 没有已配置的 GPT-6 Luna，阅读器内真实译文未调用');this.skip();return;}
-  const previous=E.settings;E.settings=()=>({...previous(),youdaoAppID:''});
-  try{
-   const result=await E.quickTranslate('The ablation compares a control group with the proposed method under the same evaluation protocol. Translation check '+Date.now()+'.');
-   assert.match(result.text,/[\u3400-\u9fff]/);assert.include(result.provider,'GPT-6 Luna');
-   report.live.push({type:'Zotero 进程内 GPT-6 Luna 学术译文',provider:result.provider,text:result.text,cacheHit:result.cacheHit});
-  }finally{E.settings=previous;}
+  const providers=await E.providerStatus();if(!providers.deepseek){report.limitations.push('隔离 profile 没有配置独立翻译密钥，阅读器内真实译文未调用');this.skip();return;}
+  const result=await E.quickTranslate('The ablation compares a control group with the proposed method under the same evaluation protocol. Translation check '+Date.now()+'.',undefined,{purpose:'document'});
+  assert.match(result.text,/[\u3400-\u9fff]/);assert.include(result.provider,E.settings().translationModel||'deepseek-flash');
+  report.live.push({type:'Zotero 进程内独立模型学术译文',provider:result.provider,text:result.text,cacheHit:result.cacheHit});
  });
 });

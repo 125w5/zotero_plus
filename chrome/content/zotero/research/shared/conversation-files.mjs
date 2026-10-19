@@ -43,7 +43,7 @@ export function mountConversationFiles({host,E,getSessionID,getSessions=()=>[],g
  const fail=error=>{if(!disposed){status.textContent=error.message||String(error);onError(error);}};
  const action=fn=>()=>Promise.resolve().then(fn).catch(fail);
  for(const [value,text]of fileFilters){const button=node(doc,'button','',text);button.type='button';button.dataset.fileFilter=value;button.onclick=()=>{filter=value;render();};filters.append(button);filterButtons.push(button);}
- const hint=node(doc,'small','conversation-files-drag-hint','拖入文件 · 拖出用于装配或 PPT');hint.title='拖入论文会下载并加入本次资料。使用文件左侧的拖动手柄，可添加到其他对话、装配或 PPT。';
+ const hint=node(doc,'small','conversation-files-drag-hint','拖入资料 · 拖出使用');hint.title='拖入论文会下载并加入本次资料。使用文件左侧的拖动手柄，可添加到其他对话、装配或 PPT。';
  root.append(filters,list,hint,status);add.onclick=action(async()=>{if(creating)return;creating=true;add.disabled=true;add.setAttribute('aria-busy','true');try{await onNew();}finally{creating=false;if(!disposed){add.disabled=false;add.removeAttribute?.('aria-busy');render();}}});
  const droppedOn=async(event,id)=>{
   const answer=resolveDroppedAnswer(event.dataTransfer,E.workbenchConversations),payload=chatAttachmentDropPayload(event.dataTransfer),paper=discoveryPaperDrop(event.dataTransfer);if(!answer&&!payload&&!paper)return;

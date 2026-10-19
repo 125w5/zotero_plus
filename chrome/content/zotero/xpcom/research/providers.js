@@ -67,8 +67,21 @@
 		if (data.deepseek) await R.credentials.set('https://api.deepseek.com', data.deepseek);
 		if (data.easyscholar) await R.saveMetricsKey(data.easyscholar);
 		if (data.youdaoSecret) await R.credentials.set('https://openapi.youdao.com', data.youdaoSecret);
+		if (data.azure) {
+			const region=String(data.azure.region||'').trim();
+			if (!/^[a-z][a-z0-9-]{1,60}$/.test(region)) throw Error('请填写 Azure Translator 资源区域，例如 eastasia');
+			if (data.azure.key) await R.credentials.set('https://api.cognitive.microsofttranslator.com', data.azure.key.trim());
+			if (!await R.credentials.get('https://api.cognitive.microsofttranslator.com')) throw Error('请填写 Azure Translator 密钥');
+			await R.store.update(s=>{s.settings.azureTranslatorRegion=region;});
+		}
+		if (data.translation) {
+			const endpoint=R.core.endpoint(data.translation.endpoint||'https://api.deepseek.com'),model=String(data.translation.model||'deepseek-flash').trim();
+			if (!model||model.length>160) throw Error('请填写翻译模型名称');
+			if (data.translation.key) await R.credentials.set(endpoint,data.translation.key.trim());
+			await R.store.update(s=>{s.settings.translationEndpoint=endpoint;s.settings.translationModel=model;});
+		}
 		await R.store.update(s => {
-			if (data.deepseek) Object.assign(s.settings, { endpoint: 'https://api.deepseek.com', model: 'deepseek-flash' });
+			if (data.deepseek) Object.assign(s.settings, { translationEndpoint: 'https://api.deepseek.com', translationModel: 'deepseek-flash' });
 			if (data.youdaoAppID) s.settings.youdaoAppID = data.youdaoAppID;
 		});
 	};
@@ -136,7 +149,8 @@
 		let settings = R.settings();
 		return { ai: !!(settings.endpoint && await R.credentials.get(settings.endpoint)),
 			image: !!(settings.imageEndpoint && await R.credentials.get(settings.imageEndpoint + '/images')),
-			deepseek: !!await R.credentials.get('https://api.deepseek.com'),
+			deepseek: !!await R.credentials.get(settings.translationEndpoint||'https://api.deepseek.com'),
+			azure: !!settings.azureTranslatorRegion && !!await R.credentials.get('https://api.cognitive.microsofttranslator.com'),
 			easyscholar: !!await R.credentials.get('https://easyscholar.cc'),
 			youdao: !!R.settings().youdaoAppID && !!await R.credentials.get('https://openapi.youdao.com') };
 	};
@@ -161,19 +175,10 @@
 					results[name] = '已连接 · ' + selected + '（未生成图片）';
 				}
 				else if (name === 'deepseek') {
-					let headers = { Authorization: 'Bearer ' + await R.credentials.get('https://api.deepseek.com'), 'Content-Type': 'application/json' };
-					let models = JSON.parse(await R.requestProvider('https://api.deepseek.com/models', { headers }));
-					let model = R.settings().model;
-					if (!models.data?.some(m => m.id === model)) {
-						model = ['deepseek-flash', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-v4-pro', 'deepseek-reasoner'].find(id => models.data?.some(m => m.id === id));
-						if (!model) throw new Error('账户未提供可用的对话模型');
-						await R.store.update(s => { s.settings.model = model; });
-					}
-					let reply = JSON.parse(await R.requestProvider('https://api.deepseek.com/chat/completions', { method: 'POST', headers,
-						body: JSON.stringify({ model, max_tokens: 32, thinking: { type: 'disabled' }, messages: [{ role: 'user', content: 'Reply only: connection verified' }] }) }, 60000));
-					if (!reply.choices?.[0]?.message?.content) throw new Error('模型未返回正文');
-					results[name] = '对话成功 · ' + model;
+					const result=await R.quickTranslate('The experiment includes a control group.',undefined,{purpose:'document',persist:false});
+					results[name] = '学术翻译成功 · ' + result.provider;
 				}
+				else if (name === 'azure') { await R.translateAzure('The experiment includes a control group.'); results[name] = '选区机翻成功'; }
 				else if (name === 'youdao') { await R.translateYoudao('The experiment includes a control group.'); results[name] = '短句翻译成功'; }
 				else {
 					let item = new Zotero.Item('journalArticle'); item.setField('publicationTitle', 'Nature'); item.setField('ISSN', '0028-0836');
@@ -184,6 +189,25 @@
 			catch (e) { results[name] = e.message; }
 		}
 		return results;
+	};
+	R.translateAzure = async function (text, to = 'zh-Hans', {signal,timeout=15000} = {}) {
+		if (!text?.trim() || text.length>5000) throw Error('请选择不超过 5000 字符的原文');
+		const region=R.settings().azureTranslatorRegion,key=await R.credentials.get('https://api.cognitive.microsofttranslator.com');
+		if (!region||!key) throw Error('请在设置中保存 Azure Translator 密钥和区域');
+		if (signal?.aborted) throw Object.assign(Error('翻译已取消'),{name:'AbortError'});
+		// Preserve TeX and native PDF placeholders. HTML notranslate is part of
+		// Translator's documented textType=html API, never rendered as markup.
+		const protectedText=String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+			.replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$|\bZXQ(?:MATH|BLOCK)[A-Z0-9]*ZXQ\b/g,value=>'<span class="notranslate">'+value+'</span>');
+		const body=JSON.stringify([{Text:protectedText}]);
+		const response=JSON.parse(await R.requestProvider('https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&textType=html&to='+encodeURIComponent(to),{
+			method:'POST',signal,headers:{'Content-Type':'application/json','Ocp-Apim-Subscription-Key':key,'Ocp-Apim-Subscription-Region':region},body
+		},timeout));
+		const html=response?.[0]?.translations?.find(row=>row.to===to)?.text||response?.[0]?.translations?.[0]?.text;
+		if (!html?.trim()) throw Error('Azure Translator 未返回译文');
+		const translated=html.replace(/<br\s*\/?\s*>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#(?:39|x27);/gi,"'").replace(/&amp;/g,'&');
+		for (const token of text.match(/\bZXQ(?:MATH|BLOCK)[A-Z0-9]*ZXQ\b/g)||[]) if(translated.split(token).length!==text.split(token).length) throw Error('Azure 译文未保留公式位置，原文已保留');
+		return {text:translated,provider:'Microsoft Azure Translator',at:new Date().toISOString()};
 	};
 	R.translateYoudao = async function (text, to = 'zh-CHS', {signal,timeout=30000} = {}) {
 		if (!text?.trim()) throw new Error('请先选择或输入待翻译文字');

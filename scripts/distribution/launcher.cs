@@ -76,6 +76,11 @@ class Launcher {
                 var start = new ProcessStartInfo(app, "-no-remote -profile " + Quote(profile) + " " + String.Join(" ", args.Select(Quote))) {
                     WorkingDirectory = Path.GetDirectoryName(app), UseShellExecute = false
                 };
+                // Use the shipped runtimes even on machines with unrelated
+                // Python/Node installations or inherited developer options.
+                foreach (string name in new[] { "PYTHONHOME", "PYTHONPATH", "NODE_PATH", "NODE_OPTIONS" })
+                    start.EnvironmentVariables.Remove(name);
+                start.EnvironmentVariables["PYTHONNOUSERSITE"] = "1";
                 using(var process = Process.Start(start)) {
                     File.WriteAllText(pidFile, process.Id.ToString());
                     process.WaitForExit();

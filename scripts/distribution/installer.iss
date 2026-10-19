@@ -5,6 +5,9 @@
 #ifndef Release
   #define Release "0.1.0"
 #endif
+#ifndef PackageName
+  #define PackageName "EasySch-" + Release + "-Windows-x64"
+#endif
 [Setup]
 AppId={{9F187A7E-7DB5-43D2-B6A9-B3148DF13A73}
 AppName=EasySch
@@ -17,7 +20,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir={#Output}
-OutputBaseFilename=EasySch-{#Release}-Windows-x64-Setup
+OutputBaseFilename={#PackageName}-Setup
 SetupIconFile={#Payload}\EasySch.ico
 UninstallDisplayIcon={app}\EasySch.exe
 WizardStyle=modern

@@ -13,7 +13,7 @@
   const doc=button.ownerDocument,svg=doc.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.7');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');
   const path=doc.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',kind==='saved'?'M5 12l4 4L19 6':kind==='retry'?'M20 7v5h-5M19.5 12a7.5 7.5 0 1 0-2 5':kind==='loading'?'M12 4a8 8 0 0 1 8 8':'M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4');svg.append(path);button.replaceChildren(svg);
  };
- const translatedAbstract=async text=>{let task=abstractTasks.get(text);if(!task){task=E.quickTranslate(text).then(r=>r.text);OverviewData.boundedMapSet(abstractTasks,text,task,32);task.catch(()=>{if(abstractTasks.get(text)===task)abstractTasks.delete(text);});}return task;};
+ const translatedAbstract=async text=>{let task=abstractTasks.get(text);if(!task){task=E.quickTranslate(text,undefined,{purpose:'material'}).then(r=>r.text);OverviewData.boundedMapSet(abstractTasks,text,task,32);task.catch(()=>{if(abstractTasks.get(text)===task)abstractTasks.delete(text);});}return task;};
  E.registerReaderPanes=()=>{
   E.readerPaneIDs=[];
   for(const [id,label,icon,render] of [

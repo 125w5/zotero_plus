@@ -8,19 +8,19 @@ import {createAssemblyDropFeedback} from './assembly-file-drop.mjs';
 export function installAssemblyMessageDrop({U,canvas,paperPosition,snapshot,attachMaterial,changed,persist,status}){
  let disposed=false,busy=false;const feedback=createAssemblyDropFeedback(canvas);
  const advertised=event=>Array.from(event.dataTransfer?.types||[]).includes(RESEARCH_MESSAGE_MIME);
- const pageFor=event=>{const page=event.target.closest?.('.paper');return page&&canvas.contains(page)&&U.p.sections.some(row=>row.id===page.dataset.section)?page:null;};
+ const pageFor=event=>{const paper=event.target.closest?.('.paper'),page=paper||event.target.closest?.('.writing-digest-chapter[data-framework-section]'),sectionID=page?.dataset.section||page?.dataset.frameworkSection;return page&&canvas.contains(page)&&U.p.sections.some(row=>row.id===sectionID)?{element:page,sectionID,digest:!paper}:null;};
  const clear=()=>{feedback.clear();delete canvas.dataset.messageDrop;for(const node of canvas.querySelectorAll('.block-drop-before,.block-drop-after'))node.classList.remove('block-drop-before','block-drop-after');};
  const over=event=>{
   if(disposed||!advertised(event))return;clear();const page=pageFor(event);if(busy||!page){event.dataTransfer.dropEffect='none';feedback.show(event,busy?'正在保存研究笔记，请稍候。':'请放到论文页面中的具体位置；左右卡片可固定回答。',{rejected:true});return;}
   event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='copy';canvas.dataset.messageDrop='true';
-  feedback.show(event,'在“'+U.p.sections.find(row=>row.id===page.dataset.section).title+'”此处插入回答，保留问题与证据。');
+  feedback.show(event,'在“'+U.p.sections.find(row=>row.id===page.sectionID).title+'”'+(page.digest?'关联回答素材':'此处插入回答')+'，保留问题与证据。');
   const block=event.target.closest('.block');if(block){const rect=block.getBoundingClientRect(),after=event.clientY>rect.top+rect.height/2;block.classList.toggle('block-drop-before',!after);block.classList.toggle('block-drop-after',after);}
  };
  const drop=async event=>{
   const page=pageFor(event);clear();if(disposed||!advertised(event)||!page)return;
   event.preventDefault();event.stopImmediatePropagation();if(busy)return;
   const answer=resolveDroppedAnswer(event.dataTransfer,U.conversations);if(!answer){status('研究消息已不可用，请重新拖动。',true);return;}
-  const projectID=U.p.id,sectionID=page.dataset.section,pos=paperPosition(page,event.clientY),anchor=sectionInsertionAnchor(U.p.blocks,U.p.sections,sectionID,pos.index);
+  const projectID=U.p.id,sectionID=page.sectionID,pos=page.digest?{index:sectionInsertionIndex(U.p.blocks,U.p.sections,sectionID),spaceBefore:0}:paperPosition(page.element,event.clientY),anchor=sectionInsertionAnchor(U.p.blocks,U.p.sections,sectionID,pos.index);
   busy=true;canvas.dataset.messageDropBusy='true';
   try{
    await persist();if(U.saveError)throw U.saveError;

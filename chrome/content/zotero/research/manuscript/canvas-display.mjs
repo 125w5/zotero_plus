@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {U,$,el,button,persist,status} from './main.mjs';
+import {assemblyChatIcon} from './assembly-chat-context.mjs';
 
 export const canvasDisplayMode = project => ['article','digest'].includes(project?.ui?.canvasDisplay) ? project.ui.canvasDisplay : 'materials';
 
@@ -9,6 +10,7 @@ export function syncCanvasDisplay() {
   const active=control.dataset.canvasDisplay===mode;control.setAttribute('aria-pressed',String(active));control.tabIndex=active?0:-1;
  }
  const compact=$('canvas-display-select');if(compact)compact.value=mode;
+ U.selectionAssistant?.sync();
  return mode;
 }
 
@@ -46,7 +48,7 @@ export function installCanvasDisplay() {
  if(!$('canvas-display-mode')){
   const host=el('div');host.id='canvas-display-mode';host.setAttribute('role','group');host.setAttribute('aria-label','画布显示');
   for(const [mode,label]of [['materials','素材'],['digest','写作速读'],['article','正文']]){
-   const control=button(label,()=>setCanvasDisplay(mode),host);control.dataset.canvasDisplay=mode;
+   const control=button('',()=>setCanvasDisplay(mode),host);control.append(assemblyChatIcon(document,mode==='materials'?'file':mode==='digest'?'chat':'paper'),el('span',label));control.dataset.canvasDisplay=mode;
    control.title=mode==='materials'?'查看关联素材与手写内容':mode==='digest'?'通读分章节的写作速读，更新相关论证单元':'查看手写正文、图片、表格和公式';
   }
   const compact=el('select');compact.id='canvas-display-select';compact.setAttribute('aria-label','画布显示方式');for(const [mode,label]of [['materials','素材'],['digest','写作速读'],['article','正文']]){const option=el('option',label);option.value=mode;compact.append(option);}compact.onchange=()=>setCanvasDisplay(compact.value);host.append(compact);

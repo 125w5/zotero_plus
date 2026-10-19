@@ -42,10 +42,18 @@ describe('Research conversation glass surface',function(){
   const root=surface.root;
   assert.notExists(root.querySelector('select'),'研究浮层不再调用原生下拉框');
   const mode=root.querySelector('.conversation-surface-mode');assert.exists(mode.querySelector('svg'));assert.equal(mode.querySelector('span').textContent,'自动');
-  root.querySelector('.conversation-surface-sessions').click();assert.isFalse(root.querySelector('.conversation-surface-session-menu').hidden);root.querySelector('[data-session-id="surface-fixture-two"]').click();assert.equal(selected.at(-1),'surface-fixture-two');
-  root.querySelector('.conversation-surface-model-button').click();await pause();root.querySelector('[data-model="model-two"]').click();root.querySelector('.conversation-surface-strength-button').click();root.querySelector('[data-strength="high"]').click();
+  root.querySelector('.conversation-surface-sessions').click();assert.isFalse(doc.querySelector('.conversation-surface-session-menu').hidden);assert.strictEqual(doc.querySelector('.conversation-surface-session-menu').parentNode,doc.getElementById('easysch-conversation-preferences'));doc.querySelector('[data-session-id="surface-fixture-two"]').click();assert.equal(selected.at(-1),'surface-fixture-two');
+  root.querySelector('.conversation-surface-model-button').click();await pause();doc.querySelector('[data-model="model-two"]').click();root.querySelector('.conversation-surface-strength-button').click();doc.querySelector('[data-strength="high"]').click();
   surface.input.value='检查当前证据';root.querySelector('form').requestSubmit();await pause();assert.equal(sent.at(-1).modelID,'model-two');assert.equal(sent.at(-1).thinkingLevel,'high');
   assert.notEqual(win.getComputedStyle(root.querySelector('.clui-native-shell')).backdropFilter,'none','原生Gecko实际支持本地玻璃层');assert.equal(root.dataset.cluiSize,'conversation','发送使用正常对话高度');
+ });
+ it('places task, model, reasoning and permission menus above the transcript with real viewport hit targets',async()=>{
+  surface.undock({nearLogo:false});surface.show();surface.setExpanded(true,{detail:true});await pause();
+  const root=surface.root,popup=doc.getElementById('easysch-conversation-preferences');
+  for(const selector of ['.conversation-surface-mode','.conversation-surface-model-button','.conversation-surface-strength-button','.conversation-surface-execution']){
+   root.querySelector(selector).click();await pause();assert.isFalse(popup.hidden);const menu=popup.firstElementChild;assert.exists(menu);assert.isFalse(root.contains(menu),'选项位于玻璃框外的共享浮层');const rect=popup.getBoundingClientRect();assert.isAtLeast(rect.left,0);assert.isAtLeast(rect.top,0);assert.isAtMost(rect.right,win.innerWidth);assert.isAtMost(rect.bottom,win.innerHeight);assert.isAbove(Number(win.getComputedStyle(popup).zIndex),Number(win.getComputedStyle(root).zIndex));
+   const target=[...menu.querySelectorAll('button')].find(control=>!control.disabled&&!control.closest('[hidden]')),r=target.getBoundingClientRect(),hit=doc.elementFromPoint(r.left+r.width/2,r.top+r.height/2);assert.isTrue(hit===target||target.contains(hit),'菜单选项没有被消息框遮住');assert.strictEqual(doc.activeElement,target,'菜单焦点应进入当前可见选项，不能落在隐藏的模型分组');if(selector==='.conversation-surface-model-button')await capture('conversation-option-popovers-unclipped');surface.hideOptions();
+  }
  });
  it('uses the shared described research choices inside a real send and waits for explicit confirmation',async()=>{
   surface.undock({nearLogo:false});surface.render(value,[value]);surface.show();sourceOpened=[];let answer,resolved=false,request;

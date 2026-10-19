@@ -29,7 +29,7 @@ async function translateText(text, {E, signal}) {
  if (!E.quickTranslate) throw Error('中文素材翻译暂不可用，请检查翻译设置');
  const output = [];
  for (const chunk of chunks(text)) {
-  aborted(signal);const result = await E.quickTranslate(chunk, signal);
+  aborted(signal);const result = await E.quickTranslate(chunk, signal, {purpose:'material'});
   const translated = String(result?.text || '').trim();
   if (!translated || /[A-Za-z]{3}/u.test(chunk) && !chinese(translated)) throw Error('未获取到中文译文，请重试');
   // Placeholder identity belongs to the stored PDF. Translation cannot invent

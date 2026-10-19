@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 Object.assign(EasySchUI,{
  pptEditor(body){
-  const d=this.pptDraft,M=this.E.studio.model;this.pptSelected=Math.min(this.pptSelected,d.slides.length-1);const s=d.slides[this.pptSelected];
+  const d=this.pptDraft,M=this.E.studio.model,slideType='application/x-easysch-ppt-slide';this.pptSelected=Math.max(0,Math.min(this.pptSelected||0,d.slides.length-1));const s=d.slides[this.pptSelected];
   if(!s){body.append(this.el('p','请先确认大纲或加入自己的内容页'));return;}
   const toolbar=this.el('div');toolbar.className='ppt-editor-toolbar';toolbar.setAttribute('aria-label','幻灯片编辑工具');body.append(toolbar);
   const toolBody=this.el('div',undefined,'ppt-toolbar-group ppt-editor-secondary');toolBody.setAttribute('aria-label','外观与版本');toolbar.append(toolBody);
@@ -19,15 +19,15 @@ Object.assign(EasySchUI,{
   for(const [i,page] of d.slides.entries()){
    const b=this.pptButton('',()=>{this.pptSelected=i;this.renderPPT();},list,'ppt-slide-thumb');b.dataset.pageId=page.id;b.classList.toggle('selected',i===this.pptSelected);b.draggable=true;
    const preview=d.previews?.[page.id];if(preview?.path){const img=this.el('img');img.alt='第 '+(i+1)+' 页预览';this.E.previewImage(preview.path).then(src=>img.src=src);b.append(img);}else b.append(this.el('small',page.diagram?'方法示意图':page.assetIDs?.length?'论文图文页':'论证内容页'));
-   b.append(this.el('span',`${i+1}. ${M.meetingText(page.title)}`));b.ondragstart=e=>e.dataTransfer.setData('text/plain',page.id);b.ondragover=e=>e.preventDefault();b.ondrop=async e=>{e.preventDefault();const id=e.dataTransfer.getData('text/plain');await this.pptPatch(x=>{const from=x.slides.findIndex(v=>v.id===id),to=x.slides.findIndex(v=>v.id===page.id);if(from>=0&&to>=0)x.slides.splice(to,0,x.slides.splice(from,1)[0]);},true);this.pptSelected=i;this.renderPPT();};
+   b.append(this.el('span',`${i+1}. ${M.meetingText(page.title)}`));b.ondragstart=e=>{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData(slideType,page.id);e.dataTransfer.setData('text/plain',page.title);};b.ondragover=e=>{if(Array.from(e.dataTransfer?.types||[]).includes(slideType)){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';}};b.ondrop=async e=>{if(!Array.from(e.dataTransfer?.types||[]).includes(slideType))return;const id=e.dataTransfer.getData(slideType);if(!d.slides.some(row=>row.id===id))return;e.preventDefault();e.stopPropagation();if(id===page.id)return;await this.pptPatch(x=>{const from=x.slides.findIndex(v=>v.id===id),to=x.slides.findIndex(v=>v.id===page.id);if(from>=0&&to>=0)x.slides.splice(to,0,x.slides.splice(from,1)[0]);},true);this.pptSelected=this.pptDraft.slides.findIndex(row=>row.id===id);this.renderPPT();};
   }
   const center=this.el('div');center.className='ppt-editor-center';grid.append(center);
-  const canvas=this.el('div');canvas.id='ppt-page-canvas';canvas.className='ppt-page-canvas';const t=M.themeFor(d);canvas.style.cssText=`background:#${t.bg};color:#${t.text};--ppt-accent:#${t.accent}`;center.append(canvas);this.pptCanvas(canvas,s,d);
+  const canvas=this.el('div');canvas.id='ppt-page-canvas';canvas.className='ppt-page-canvas';canvas.dataset.pageId=s.id;const t=M.themeFor(d);canvas.style.cssText=`background:#${t.bg};color:#${t.text};--ppt-accent:#${t.accent}`;center.append(canvas);this.pptCanvas(canvas,s,d);
   const rendered=d.previews?.[s.id];if(rendered?.path){const details=this.el('details',undefined,'ppt-disclosure');const currentHash=this.E.studio.pageKey(d,s);details.append(this.el('summary',currentHash===rendered.hash?'查看实际渲染效果':'查看上次渲染 · 本页有修改'));const img=this.el('img');img.className='ppt-real-preview';this.E.previewImage(rendered.path).then(src=>img.src=src);details.append(img);center.append(details);}
   center.append(this.el('p',`可见正文约 ${M.density(s)} 字 · ${s.model?'模型 '+s.model:'用户草稿'}${s.cacheHit?' · 来自缓存':''}。画布是编辑预览，导出效果请查看实际渲染。`));
   const pageActionBody=this.el('div',undefined,'ppt-page-edit-actions ppt-inline-actions');pageActionBody.setAttribute('aria-label','当前页面操作');center.append(pageActionBody);
   this.pptButton('在本页后加入我的实验',async()=>{await this.pptPatch(x=>{x.step=4;x.contributionForm={...x.contributionForm,after:s.id};});this.renderPPT();},pageActionBody);
-  this.pptButton('复制本页',async()=>{await this.pptPatch(x=>{const copy=structuredClone(s);copy.id='copy-'+Date.now();x.slides.splice(this.pptSelected+1,0,copy);},true);this.pptSelected++;this.renderPPT();},pageActionBody);
+  this.pptButton('复制本页',async()=>{await this.pptPatch(x=>{const copy=structuredClone(s);copy.id='copy-'+Date.now();delete copy.outlineID;x.slides.splice(this.pptSelected+1,0,copy);},true);this.pptSelected++;this.renderPPT();},pageActionBody);
   this.pptButton('删除本页（可撤销）',async()=>{await this.pptPatch(x=>x.slides.splice(this.pptSelected,1),true);this.renderPPT();},pageActionBody);
   const props=this.el('aside');props.className='ppt-properties';grid.append(props);this.pptProperties(props,s,d);
   if(s.evidenceWarnings?.length)center.append(this.el('p',`${s.evidenceWarnings.length} 条内容未匹配到原文，已标为待验证观点；请在右侧核对后使用。`));
@@ -36,7 +36,7 @@ Object.assign(EasySchUI,{
  pptCanvas(canvas,s,d){
   const display=this.E.studio.model.meetingText;canvas.append(this.el('h2',display(s.title)),this.el('p',display(s.explanation)));const row=this.el('div');row.className='ppt-canvas-body';canvas.append(row);
   if(s.diagram){const graph=this.el('div');graph.id='ppt-graph';row.append(graph);this.pptMountGraph(graph,s).catch(e=>{graph.dataset.error=e.stack||e.message;graph.textContent='示意图未加载：'+e.message;});}
-  else if(s.assetIDs?.length&&s.layout!=='text'){const a=d.assets.find(a=>a.id===s.assetIDs[0]);if(a){const img=this.el('img');img.alt=a.label;this.E.previewImage(a.path).then(src=>img.src=src);row.append(img);}}
+  else if(s.assetIDs?.length&&s.layout!=='text'){const images=this.el('div',undefined,'ppt-canvas-images');for(const id of s.assetIDs.slice(0,s.layout==='comparison'?2:1)){const a=d.assets.find(a=>a.id===id);if(!a)continue;const img=this.el('img');img.alt=a.label;this.E.previewImage(a.path).then(src=>{if(img.isConnected)img.src=src;}).catch(error=>this.status(error.message,true));images.append(img);}row.append(images);}
   else if(s.datasetID){const data=d.datasets.find(v=>v.id===s.datasetID);if(data){const table=this.el('table');for(const [i,label] of data.labels.slice(0,10).entries()){const tr=this.el('tr');tr.append(this.el('th',label));for(const series of data.series)tr.append(this.el('td',String(series.values[i])));table.append(tr);}row.append(table);}}
   const text=this.el('div');text.className='ppt-canvas-text';row.append(text);for(const b of s.blocks){const p=this.el('p');const label=this.el('small',this.E.studio.model.BLOCK_TYPES[b.kind]);label.style.color='#'+this.E.studio.model.TYPE_COLORS[b.kind];if(b.kind==='unverified')p.append(label);p.append(this.el('span',display(b.text)));text.append(p);}
   if(!s.blocks.length)text.append(this.el('p',s.error||'本页尚未生成，请点击“重新生成当前页”'));

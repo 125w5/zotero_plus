@@ -16,6 +16,27 @@ function fixture(){
  E.requestProvider=async(url,options)=>{calls.push({url,options});return JSON.stringify(url.endsWith('/models')?{data:[{id:'gpt-6-luna'},{id:'gpt-image-1'}]}:{data:[{b64_json:png}]});};
  return {E,settings,keys,calls,files,lifecycle};
 }
+test('translation credentials use separate services and never replace the research chat model',async()=>{
+ const {E,settings,keys}=fixture();const endpoint=settings.endpoint;
+ await E.configureProviders({deepseek:'controlled-deepseek-credential',azure:{region:'eastasia',key:'controlled-azure-credential'}});
+ assert.equal(settings.endpoint,endpoint);assert.equal(settings.model,'gpt-6-luna');assert.equal(settings.translationModel,'deepseek-flash');assert.equal(settings.azureTranslatorRegion,'eastasia');
+ assert.equal(keys.get('https://api.cognitive.microsofttranslator.com'),'controlled-azure-credential');assert.equal(JSON.stringify(settings).includes('credential'),false);
+ await assert.rejects(E.configureProviders({azure:{region:'invalid / region',key:'bad'}}),/资源区域/);
+});
+
+test('Azure uses the documented text API with protected math and a cancellable request',async()=>{
+ const {E,settings,keys}=fixture();settings.azureTranslatorRegion='eastasia';keys.set('https://api.cognitive.microsofttranslator.com','controlled-azure-credential');let request;
+ E.requestProvider=async(url,options,timeout)=>{request={url,options,timeout};return JSON.stringify([{translations:[{to:'zh-Hans',text:'阈值 <span class="notranslate">$x&gt;0$</span> 与 ZXQMATH0ZXQ 保持不变。'}]}]);};
+ const controller=new AbortController(),result=await E.translateAzure('Threshold $x>0$ and ZXQMATH0ZXQ remain.',undefined,{signal:controller.signal});
+ assert.equal(result.text,'阈值 $x>0$ 与 ZXQMATH0ZXQ 保持不变。');assert.match(request.url,/api-version=3.0&textType=html&to=zh-Hans/);assert.equal(request.options.signal,controller.signal);assert.equal(request.options.headers['Ocp-Apim-Subscription-Region'],'eastasia');assert.match(JSON.parse(request.options.body)[0].Text,/<span class="notranslate">\$x&gt;0\$<\/span>/);
+ controller.abort();await assert.rejects(E.translateAzure('Cancelled',undefined,{signal:controller.signal}),/取消/);
+});
+
+test('Azure rejects replies which lose native formula identity',async()=>{
+ const {E,settings,keys}=fixture();settings.azureTranslatorRegion='eastasia';keys.set('https://api.cognitive.microsofttranslator.com','controlled-azure-credential');E.requestProvider=async()=>JSON.stringify([{translations:[{to:'zh-Hans',text:'错误译文'}]}]);
+ await assert.rejects(E.translateAzure('Native ZXQMATH0ZXQ formula.'),/公式位置/);
+});
+
 test('TokenNest image import uses its own credential realm and model-only Luna selection preserves the chat credential',async()=>{
  const {E,settings,keys}=fixture(),chat=keys.get(settings.endpoint);
  await E.configureProviders({ai:{endpoint:settings.endpoint,model:'gpt6luna'},image:{_type:'tokennest_channel_conn',url:'https://openai.goldgom.top',key:'sk-'+'fixture-provider-credential-not-a-real-key-3'}});

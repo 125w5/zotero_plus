@@ -1,5 +1,13 @@
 Object.assign(EasySchUI, {
 	initSettings() {
+		this.bind('save-azure', async()=>{
+			await this.E.configureProviders({azure:{region:this.$('azure-region').value.trim(),key:this.$('azure-key').value.trim()}});
+			this.$('azure-key').value='';this.loadProviderStatus();this.status('Azure 选区机翻已保存');
+		});
+		this.bind('save-translation',async()=>{
+			await this.E.configureProviders({translation:{endpoint:this.$('translation-endpoint').value.trim(),model:this.$('translation-model').value.trim(),key:this.$('translation-key').value.trim()}});
+			this.$('translation-key').value='';this.loadProviderStatus();this.status('学术翻译已保存，对话模型保持原设置');
+		});
 		if (this.E.hasBundledProviders) {
 			const area = this.$('provider-status');
 			const row = document.createElement('p');
@@ -20,7 +28,7 @@ Object.assign(EasySchUI, {
         this.bind('test-providers', async () => {
             this.status('正在测试已配置服务（短句翻译与最小模型请求）…');
             let result = await this.E.testProviders();
-            const labels = { ai: '学术 AI', image: '示意图', deepseek: 'DeepSeek', easyscholar: '期刊指标', youdao: '快速翻译' };
+            const labels = { ai: '学术 AI', image: '示意图', deepseek: 'DeepSeek', easyscholar: '期刊指标', youdao: '有道机翻', azure: 'Azure 机翻' };
             this.$('provider-status').textContent = Object.entries(result).map(([k,v]) => (labels[k] || k) + '：' + v).join('；');
             this.status('连接测试已结束，请查看各服务结果');
         });
@@ -82,6 +90,9 @@ Object.assign(EasySchUI, {
 	loadSettings() {
 		this.loadProviderStatus();
 		let config = this.E.settings();
+		this.$('azure-region').value=config.azureTranslatorRegion||'';
+		this.$('translation-endpoint').value=config.translationEndpoint||'https://api.deepseek.com';
+		this.$('translation-model').value=config.translationModel||'deepseek-flash';
 		this.$('youdao-app-id').value = config.youdaoAppID || '';
 		this.$('image-endpoint').value = config.imageEndpoint || '';
 		this.$('image-model').value = config.imageModel || '';
@@ -90,7 +101,7 @@ Object.assign(EasySchUI, {
 	},
     async loadProviderStatus() {
         let flags = await this.E.providerStatus();
-        const labels = { ai: '学术 AI', image: '示意图', deepseek: 'DeepSeek', easyscholar: '期刊指标', youdao: '快速翻译' };
+        const labels = { ai: '学术 AI', image: '示意图', deepseek: 'DeepSeek', easyscholar: '期刊指标', youdao: '有道机翻', azure: 'Azure 机翻' };
         this.$('provider-status').textContent = Object.entries(flags).map(([k,v]) => (labels[k] || k) + '：' + (v ? '已保存凭据' : '未配置')).join('；');
     },
 	loadMetric() {

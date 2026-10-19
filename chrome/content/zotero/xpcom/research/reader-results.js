@@ -4,15 +4,14 @@
  const OverviewData=ChromeUtils.importESModule('chrome://zotero/content/research/shared/paper-overview-data.mjs');
  const cachedTranslation=key=>{const value=translationCache.get(key)||E.store.get('translationCache',key);if(value)OverviewData.boundedMapSet(translationCache,key,value,200);return value;};
  const keepTranslation=async(key,result)=>{OverviewData.boundedMapSet(translationCache,key,result,200);await E.store.update(s=>{s.translationCache||={};s.translationCache[key]=result;const keys=Object.keys(s.translationCache);for(const k of keys.slice(0,Math.max(0,keys.length-200)))delete s.translationCache[k];});return {...result,cacheHit:false};};
- const translateAcademicGPT=async(text,signal)=>{
-  const settings=E.settings(),endpoint=E.core.endpoint(settings.endpoint),key=await E.credentials.get(endpoint);
-  if(!key)throw Error('请在设置中配置 GPT-6 Luna 接口');
-  const model=(await E.resolveModel(settings,{signal})).model;
-  if(model!=='gpt-6-luna')throw Error('请在设置中选择 GPT-6 Luna 模型');
+ const translationConfig=()=>{const settings=E.settings(),address=settings.translationEndpoint||'https://api.deepseek.com';return {endpoint:E.core?.endpoint?.(address)||address,model:settings.translationModel||'deepseek-flash'};};
+ const translateAcademicModel=async(text,signal)=>{
+  const {endpoint,model}=translationConfig(),key=await E.credentials.get(endpoint);
+  if(!key)throw Error('请在设置中保存 DeepSeek Flash 翻译密钥；对话模型配置不受影响');
   const chat=ChromeUtils.importESModule('chrome://zotero/content/research/shared/chat-completion.mjs'),stream=chat.chatRequiresStreaming(endpoint);
   const reply=await E.requestProvider(endpoint+'/chat/completions',{
    method:'POST',signal,headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
-   body:JSON.stringify({model,stream,max_tokens:6000,temperature:0,messages:[
+   body:JSON.stringify({model,stream,max_tokens:6000,temperature:0,...(new URL(endpoint).hostname==='api.deepseek.com'?{thinking:{type:'disabled'}}:{}),messages:[
     {role:'system',content:[
      '你是学术论文机器翻译器。把全部原文译成准确、通顺的简体中文，不写摘要、解释、建议或新结论。保留数字、单位、公式、引用编号、缩写及必要的专业术语；不要留下英文整句。',
      '数学表达式逐字保留变量、大小写、上下标、正负号、不等号、集合关系及数值；例如 p ≫ d 不能变成 p < d，σmin(J) > 0 不能缺少 0。不要猜测或重写公式。',
@@ -24,27 +23,29 @@
    ]})
   },60000,response=>chat.readChatCompletion(response,{stream}));
   if(reply.finishReason==='length')throw Error('译文超出模型输出上限，请缩短选段重试');
-  const translated=reply.text?.trim();if(!translated)throw Error('GPT-6 Luna 未返回译文');
+  const translated=reply.text?.trim();if(!translated)throw Error('翻译模型未返回译文');
   const issue=E.manuscripts?.translationQualityIssue?.(text,translated);
   if(issue)throw Error(issue+'，请重试');
-  return {text:translated,provider:'GPT-6 Luna · 学术翻译',at:new Date().toISOString()};
+  return {text:translated,provider:model+' · 学术翻译',at:new Date().toISOString()};
  };
- E.quickTranslate=async(text,signal,{persist=true,forceAcademic=false,allowModelFallback=true}={})=>{
+ E.quickTranslate=async(text,signal,{persist=true,forceAcademic=false,allowModelFallback=true,purpose='selection'}={})=>{
   if(!text?.trim())throw Error('请先选择原文');if(text.length>5000)throw Error('一次最多翻译 5000 字符，请缩短选段');
-  const youdaoKey=E.assets.key([text,'zh-CHS','youdao-v2']),gptKey=E.assets.key([text,'zh-CN','gpt-6-luna-translation-v2']);
+  const config=translationConfig(),settings=E.settings(),useModel=forceAcademic||purpose==='document'||purpose==='material';
+  const azureKey=E.assets.key([text,'zh-Hans','azure-v1']),youdaoKey=E.assets.key([text,'zh-CHS','youdao-v2']),gptKey=E.assets.key([text,'zh-CN',config.endpoint,config.model,'academic-translation-v3']);
   const qualityIssue=result=>E.manuscripts?.translationQualityIssue?.(text,result?.text);
-  const saved=forceAcademic?null:cachedTranslation(youdaoKey)||(allowModelFallback?cachedTranslation(gptKey):null);
+  const saved=(!useModel&&(cachedTranslation(azureKey)||cachedTranslation(youdaoKey)))||((useModel||allowModelFallback)&&(cachedTranslation(gptKey)||cachedTranslation(E.assets.key([text,'zh-CN','gpt-6-luna-translation-v2']))));
   if(saved&&!qualityIssue(saved))return {...saved,cacheHit:true};
-  let youdaoError;
-  if(!forceAcademic&&E.settings().youdaoAppID){
-   try{const result=await E.translateYoudao(text,'zh-CHS',{signal});if(signal?.aborted)throw Error('已取消');
+  let machineError;
+  if(!useModel&&(settings.azureTranslatorRegion||settings.youdaoAppID)){
+   try{const azure=!!settings.azureTranslatorRegion;
+    const result=azure?await E.translateAzure(text,'zh-Hans',{signal}):await E.translateYoudao(text,'zh-CHS',{signal});if(signal?.aborted)throw Error('已取消');
     const issue=qualityIssue(result);if(issue)throw Error(issue);
-    return persist?keepTranslation(youdaoKey,result):{...result,cacheHit:false};}
-   catch(error){if(signal?.aborted)throw error;youdaoError=error;}
+    return persist?keepTranslation(azure?azureKey:youdaoKey,result):{...result,cacheHit:false};}
+   catch(error){if(signal?.aborted)throw error;machineError=error;}
   }
-  if(!allowModelFallback)throw Error(youdaoError?.message||'机器翻译暂不可用，保留原文');
-  try{const result=await translateAcademicGPT(text,signal);if(signal?.aborted)throw Error('已取消');return persist?keepTranslation(gptKey,result):{...result,cacheHit:false};}
-  catch(error){if(signal?.aborted)throw error;throw Error(youdaoError?`快速机翻失败：${youdaoError.message}；GPT-6 Luna 后备失败：${error.message}`:error.message);}
+  if(!useModel&&!allowModelFallback)throw Error(machineError?.message||'机器翻译暂不可用，请配置 Azure Translator，原文已保留');
+  try{const result=await translateAcademicModel(text,signal);if(signal?.aborted)throw Error('已取消');return persist?keepTranslation(gptKey,result):{...result,cacheHit:false};}
+  catch(error){if(signal?.aborted)throw error;throw Error(machineError?`选区机翻失败：${machineError.message}；学术翻译失败：${error.message}`:error.message);}
  };
  E.selectionTranslationRecord=(selection,translation)=>({id:'translation-'+Date.now(),at:new Date().toISOString(),model:translation?(translation.provider||'机器翻译'):'原文摘录',mode:'translate',warnings:[],sources:[{id:'S1',...selection,label:'选段原文',uri:E.library.uri(Zotero.Items.get(selection.attachmentID),selection.pageIndex)}],result:{sections:[{heading:translation?'':'原文摘录',body:translation?.text||selection.text,sources:['S1'],claim_type:'observation'}],keywords:[],questions:[]}});
  E.saveSelectionTranslation=async(selection,translation,options)=>E.saveReaderNote(selection,E.selectionTranslationRecord(selection,translation),options);
@@ -84,8 +85,8 @@
    '.easysch-page-translation button:hover{background:#89919c22}.easysch-page-translation button:active{background:#89919c44}',
    '.easysch-page-translation .translation-status{color:GrayText;font-size:11px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
    '.easysch-page-translation .translation-retry{flex:none;font-size:11px;color:#596879}',
-   '.easysch-page-translation .translation-scroller{position:relative;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;background:#e8eaed;padding:0 16px 18px;box-sizing:border-box}',
-   '.easysch-page-translation .translation-sheet{position:relative;box-sizing:border-box;overflow:hidden;margin:0 auto 16px;background:#fff;color:#17191b;box-shadow:0 1px 9px #0003;contain:layout paint;content-visibility:auto}',
+   '.easysch-page-translation .translation-scroller{position:relative;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;background:#e8eaed;padding:18px 18px 28px;box-sizing:border-box;scrollbar-gutter:stable}',
+   '.easysch-page-translation .translation-sheet{position:relative;box-sizing:border-box;overflow:hidden;margin:0 auto 10px;background:#fff;color:#17191b;box-shadow:0 1px 9px #0003;contain:layout paint;content-visibility:auto}',
    '.easysch-page-translation .translation-page-image{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}',
    '.easysch-page-translation .translation-box{position:absolute;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;background:#fff;color:#17191b;border:1px solid transparent;border-radius:1px;white-space:normal;overflow-wrap:break-word;word-break:normal;user-select:text;text-rendering:optimizeLegibility;letter-spacing:normal}',
    '.easysch-page-translation .translation-box:hover,.easysch-page-translation .translation-box:focus-within{border-color:#6371848c}',

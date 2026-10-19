@@ -6,18 +6,19 @@ import vm from 'node:vm';
 import {boundedMapSet} from '../../chrome/content/zotero/research/shared/paper-overview-data.mjs';
 
 const source=await readFile(new URL('../../chrome/content/zotero/xpcom/research/reader-results.js',import.meta.url),'utf8');
-function fixture({machine=false,machineFails=false}={}){
- const state={},calls={model:0,resolve:0,machine:0};
+function fixture({machine=false,machineFails=false,azure=false,modelKey=true}={}){
+ const state={},calls={model:0,resolve:0,machine:0,azure:0,requests:[]};
  const E={
   assets:{key:parts=>JSON.stringify(parts)},core:{endpoint:value=>value},
   store:{get:(...path)=>path.reduce((value,key)=>value?.[key],state),update:async mutator=>mutator(state)},
-  settings:()=>({endpoint:'https://controlled.invalid',youdaoAppID:machine?'controlled':''}),
-  credentials:{get:async()=> 'controlled-test-key'},
+  settings:()=>({endpoint:'https://controlled.invalid',azureTranslatorRegion:azure?'eastasia':'',youdaoAppID:machine?'controlled':''}),
+  credentials:{get:async()=>modelKey?'controlled-test-key':''},
   resolveModel:async()=>{calls.resolve++;return {model:'gpt-6-luna'};},
-  requestProvider:async()=>{calls.model++;return {text:'受控学术译文',finishReason:'stop'};},
+  requestProvider:async(url,options)=>{calls.model++;calls.requests.push({url,body:JSON.parse(options.body)});return {text:'受控学术译文',finishReason:'stop'};},
+  translateAzure:async()=>{calls.azure++;return {text:'受控 Azure 译文',provider:'Azure'};},
   translateYoudao:async()=>{calls.machine++;if(machineFails)throw Error('受控机翻失败');return {text:'受控机器译文',provider:'受控机翻'};}
  };
- vm.runInNewContext(source,{Zotero:{Research:E},ChromeUtils:{importESModule:path=>path.endsWith('paper-overview-data.mjs')?{boundedMapSet}:{chatRequiresStreaming:()=>false}}});
+ vm.runInNewContext(source,{URL,Zotero:{Research:E},ChromeUtils:{importESModule:path=>path.endsWith('paper-overview-data.mjs')?{boundedMapSet}:{chatRequiresStreaming:()=>false}}});
  return {E,state,calls};
 }
 test('overview machine-only translation never invokes a model when machine translation is unconfigured',async()=>{
@@ -32,6 +33,21 @@ test('machine-only translation still uses available machine translation and pers
  const {E,calls,state}=fixture({machine:true});const first=await E.quickTranslate('Abstract content',undefined,{allowModelFallback:false}),again=await E.quickTranslate('Abstract content',undefined,{allowModelFallback:false});
  assert.equal(first.text,'受控机器译文');assert.equal(again.cacheHit,true);assert.equal(calls.machine,1);assert.equal(calls.model,0);assert.equal(Object.keys(state.translationCache).length,1);
 });
-test('existing callers retain the controlled academic model fallback by default',async()=>{
- const {E,calls}=fixture();assert.equal((await E.quickTranslate('Abstract content')).text,'受控学术译文');assert.equal(calls.model,1);assert.equal(calls.resolve,1);
+test('academic fallback uses independent DeepSeek Flash without changing the chat model',async()=>{
+ const {E,calls}=fixture();assert.equal((await E.quickTranslate('Abstract content')).text,'受控学术译文');assert.equal(calls.model,1);assert.equal(calls.resolve,0);
+ assert.equal(calls.requests[0].url,'https://api.deepseek.com/chat/completions');assert.equal(calls.requests[0].body.model,'deepseek-flash');assert.deepEqual(calls.requests[0].body.thinking,{type:'disabled'});
+});
+
+test('Azure selection cache excludes model calls and takes precedence over legacy machine service',async()=>{
+ const {E,calls}=fixture({azure:true,machine:true});assert.equal((await E.quickTranslate('Selected text',undefined,{allowModelFallback:false})).text,'受控 Azure 译文');
+ assert.equal((await E.quickTranslate('Selected text',undefined,{allowModelFallback:false})).cacheHit,true);assert.equal(calls.azure,1);assert.equal(calls.machine,0);assert.equal(calls.model,0);
+});
+
+test('full documents and material explicitly use low-cost model even when machine services exist',async()=>{
+ const {E,calls}=fixture({azure:true,machine:true});for(const purpose of ['document','material'])await E.quickTranslate('Source '+purpose,undefined,{purpose});
+ assert.equal(calls.model,2);assert.equal(calls.azure,0);assert.equal(calls.machine,0);
+});
+
+test('missing translation credentials do not silently invoke the research chat model',async()=>{
+ const {E,calls}=fixture({modelKey:false});await assert.rejects(E.quickTranslate('Full document',undefined,{purpose:'document'}),/DeepSeek Flash/);assert.equal(calls.model,0);
 });

@@ -3,14 +3,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {installCLUIChatBehavior,cluiDetailHeight,cluiVisibleMessages,groupCLUIMessages} from '../../chrome/content/zotero/research/shared/clui-surface.mjs';
 
-function fixture({storage=new Map(),viewportHeight=1000}={}){
+function fixture({storage=new Map(),viewportHeight=1000,persistent=false}={}){
  const listeners=new Map(),windowListeners=new Map(),properties=new Map(),win={innerHeight:viewportHeight,localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},addEventListener:(type,fn)=>windowListeners.set(type,fn),removeEventListener:(type,fn)=>{if(windowListeners.get(type)===fn)windowListeners.delete(type);}},doc={defaultView:win,querySelector:()=>true,addEventListener:(type,fn)=>listeners.set(type,fn),removeEventListener:(type,fn)=>{if(listeners.get(type)===fn)listeners.delete(type);},createElementNS:()=>({dataset:{},listeners:new Map(),setAttribute(name,value){this[name]=value;},addEventListener(type,fn){this.listeners.set(type,fn);},focus(){},remove(){this.removed=true;}})},shell={prepend(node){this.grip=node;},getBoundingClientRect:()=>({height:380})},body={rect:{height:336,bottom:820},getBoundingClientRect(){return this.rect;},closest:()=>shell,setAttribute(name,value){this[name]=value;}},root={ownerDocument:doc,dataset:{},style:{setProperty:(key,value)=>properties.set(key,value)},offsetParent:{getBoundingClientRect:()=>({top:100})},contains:target=>target?.inside},changes=[];
- const behavior=installCLUIChatBehavior({root,body,onChange:value=>changes.push(value)});
+ const behavior=installCLUIChatBehavior({root,body,persistent,onChange:value=>changes.push(value)});
  const click=(inside,kind='click',button='')=>listeners.get(kind)?.({target:{inside,closest:()=>button||null},composedPath:()=>inside?[root]:[]});
  return {root,body,doc,win,behavior,click,listeners,windowListeners,changes,properties,storage,grip:shell.grip};
 }
 test('a native CLUI surface starts collapsed, has separate conversation/detail sizes and an outside click only dims',()=>{
  const f=fixture();assert.equal(f.behavior.mode,'compact');assert.equal(f.body.inert,true);f.behavior.setConversation();assert.equal(f.root.dataset.cluiSize,'conversation');f.click(true);assert.equal(f.behavior.mode,'detail');assert.equal(f.body.inert,false);f.click(false);assert.equal(f.root.dataset.dimmed,'true');assert.equal(f.root.dataset.expanded,'true');f.click(false,'dblclick');assert.equal(f.behavior.mode,'compact');assert.equal(f.body.inert,true);f.behavior.destroy();assert.equal(f.listeners.size,0);
+});
+test('a dedicated research workspace stays expanded, selectable and undimmed without document collapse handlers',()=>{
+ const f=fixture({persistent:true});assert.equal(f.behavior.mode,'conversation');assert.equal(f.root.dataset.cluiPersistent,'true');assert.equal(f.body.inert,false);assert.equal(f.grip,undefined);assert.equal(f.listeners.size,0);
+ for(const action of [()=>f.behavior.setExpanded(false),()=>f.behavior.setDetail(),()=>f.click(false),()=>f.click(false,'dblclick')]){action();assert.equal(f.behavior.mode,'conversation');assert.equal(f.root.dataset.dimmed,'false');assert.equal(f.body.inert,false);}f.behavior.destroy();assert.equal(f.windowListeners.size,0);
 });
 test('pinning preserves an expanded conversation on outside double click and explicit toggle buttons do not accidentally reexpand',()=>{
  const f=fixture();f.behavior.setExpanded(true);f.behavior.setPinned(true);f.click(false);f.click(false,'dblclick');assert.equal(f.behavior.mode,'conversation');assert.equal(f.root.dataset.pinned,'true');f.behavior.setPinned(false);f.click(false,'dblclick');assert.equal(f.behavior.mode,'compact');f.click(true,'click','toggle');assert.equal(f.behavior.mode,'compact');f.behavior.destroy();

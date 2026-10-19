@@ -5,7 +5,11 @@
 		engineNode: 'node', engineEntry: 'engine', assetPython: 'python',
 		pandoc: 'pandoc', soffice: 'soffice', poppler: 'poppler'
 	};
-	const settingNames = ['endpoint', 'model', 'youdaoAppID', 'language', 'documentLanguage'];
+	// Keep in sync with the authorized private exporter. Never seed local paths
+	// or user research data, and keep the three model services independent.
+	const settingNames = ['endpoint', 'model', 'imageEndpoint', 'imageModel',
+		'translationEndpoint', 'translationModel', 'azureTranslatorRegion',
+		'youdaoAppID', 'language', 'documentLanguage', 'reasoningParameter'];
 	E.initDistribution = async function () {
 		const directory = Services.dirsvc.get('XREExeF', Ci.nsIFile).parent.path;
 		const file = PathUtils.join(directory, 'easysch-distribution.json');
@@ -36,17 +40,27 @@
 		E.applyBundledProviders = async function ({ reset = false } = {}) {
 			if (!E.hasBundledProviders) return;
 			const data = JSON.parse(await IOUtils.readUTF8(defaultsFile));
-			if (data.version !== 1 || !Array.isArray(data.credentials)) throw new Error('内置接口配置不完整，请重新安装 EasySch。');
-			for (const entry of data.credentials) {
-				const endpoint = E.core.endpoint(entry.endpoint);
-				if (typeof entry.key !== 'string' || !entry.key) continue;
-				if (reset || !await E.credentials.get(endpoint)) await E.credentials.set(endpoint, entry.key);
+			if (data.version !== 1 || !data.settings || !Array.isArray(data.credentials)) throw new Error('内置接口配置不完整，请重新安装 EasySch。');
+			// Validate the whole input before changing even one stored credential.
+			const entries = data.credentials.map(entry => {
+				if (typeof entry?.key !== 'string' || !entry.key || entry.key.length > 16384) throw new Error('内置接口配置不完整，请重新安装 EasySch。');
+				return {endpoint: E.core.endpoint(entry.endpoint), key: entry.key};
+			});
+			const settings = {};
+			for (const key of settingNames) {
+				if (data.settings[key] === undefined) continue;
+				if (typeof data.settings[key] !== 'string' || data.settings[key].length > 2048) throw new Error('内置接口设置无效，请重新安装 EasySch。');
+				if (!data.settings[key].trim()) continue;
+				settings[key] = key.endsWith('Endpoint') || key === 'endpoint' ? E.core.endpoint(data.settings[key]) : data.settings[key];
+			}
+			for (const entry of entries) {
+				if (reset || !await E.credentials.get(entry.endpoint)) await E.credentials.set(entry.endpoint, entry.key);
 			}
 			await E.store.update(s => {
-				const sameModel = !s.settings.endpoint || s.settings.endpoint === data.settings.endpoint;
 				for (const key of settingNames) {
-					if (key === 'model' && !reset && !sameModel) continue;
-					if (data.settings[key] && (reset || !s.settings[key])) s.settings[key] = data.settings[key];
+					const pair = {model: 'endpoint', imageModel: 'imageEndpoint', translationModel: 'translationEndpoint'}[key];
+					if (pair && !reset && s.settings[pair] && s.settings[pair] !== settings[pair]) continue;
+					if (settings[key] && (reset || !s.settings[key])) s.settings[key] = settings[key];
 				}
 			});
 			// Removing a key or changing providers must survive subsequent launches.

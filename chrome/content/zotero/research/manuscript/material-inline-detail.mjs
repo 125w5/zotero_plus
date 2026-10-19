@@ -26,7 +26,7 @@ export function installInlineMaterialDetail(card,material,{E,summary,onOpen,onSa
   source.append(create('p','正在准备中文素材…','material-source-translation-status'));
   let translatedText='',copy;
   const load=async()=>{translatedText='';if(copy)copy.disabled=true;source.replaceChildren(create('p','正在准备中文素材…','material-source-translation-status'));try{const value=await prepareMaterialChinese(material,{E,signal:controller.signal});if(disposed||request!==generation||!source.isConnected)return;source.replaceChildren();
-   disposers.push(renderMaterialSourceView(source,value.material,{E,onLocate,onError}));
+   disposers.push(renderMaterialSourceView(source,value.material,{E,onLocate,onError}));source.materialTranslationContexts=value.translationContexts;source.dataset.materialId=material.id;
    translatedText=source.innerText||source.textContent;if(copy)copy.disabled=!translatedText.trim();
    disposers.push(installMaterialHighlights(source,material,{E,commentsHost:margin.host,translationContexts:value.translationContexts,onLayout:margin.schedule,onSave:async highlights=>{await onSave(highlights);if(disposed||!card.isConnected)return;close();open({select:false});},onError}));margin.schedule();
   }catch(error){if(disposed||request!==generation||controller.signal.aborted)return;renderTranslationFeedback(source,error,{onRetry:load,onOriginal:onLocate?()=>onLocate(material.anchor):null,onError});margin.schedule();}};
@@ -34,10 +34,12 @@ export function installInlineMaterialDetail(card,material,{E,summary,onOpen,onSa
   if(material.anchor?.attachmentID||material.anchor?.url||material.sourceItemID)action(foot,'定位来源',()=>onLocate(material.anchor));
  };
  summary.tabIndex=0;summary.setAttribute('role','button');summary.setAttribute('aria-label','查看详细素材说明');summary.setAttribute('aria-expanded','false');
- const click=e=>{e.stopPropagation();const selection=win.getSelection();if(selection?.toString().trim()&&summary.contains(selection.anchorNode)&&summary.contains(selection.focusNode))return;open();};
+ let pointerStart;
+ const pointer=e=>{if(e.button===0)pointerStart={x:e.clientX,y:e.clientY};};
+ const click=e=>{e.stopPropagation();const moved=pointerStart&&Math.hypot(e.clientX-pointerStart.x,e.clientY-pointerStart.y)>4;pointerStart=null;const selection=win.getSelection();if(moved||selection?.toString().trim()&&summary.contains(selection.anchorNode)&&summary.contains(selection.focusNode))return;open();};
  const keyboard=e=>{if(e.target!==summary||!['Enter',' '].includes(e.key))return;e.preventDefault();e.stopPropagation();open();};
  const contain=e=>e.stopPropagation();
- summary.addEventListener('click',click);summary.addEventListener('keydown',keyboard);card.addEventListener('click',contain);
+ summary.addEventListener('pointerdown',pointer);summary.addEventListener('click',click);summary.addEventListener('keydown',keyboard);card.addEventListener('click',contain);
  refreshCollapsed();if(expanded)open({select:false});
- return()=>{disposed=true;generation++;controller?.abort();for(const dispose of disposers)dispose?.();collapsedDispose?.();margin.dispose();detail?.remove();excerpts.remove();summary.removeEventListener('click',click);summary.removeEventListener('keydown',keyboard);card.removeEventListener('click',contain);};
+ return()=>{disposed=true;generation++;controller?.abort();for(const dispose of disposers)dispose?.();collapsedDispose?.();margin.dispose();detail?.remove();excerpts.remove();summary.removeEventListener('pointerdown',pointer);summary.removeEventListener('click',click);summary.removeEventListener('keydown',keyboard);card.removeEventListener('click',contain);};
 }

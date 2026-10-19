@@ -50,7 +50,17 @@
   pane.collapsed=false;pane.context.mode='notes';pane.context._selectNotesContext(note.libraryID);
   const context=pane.context._getNotesContext(note.libraryID);context._getCurrentEditor()?.saveSync();context._setPinnedNote(note);pane.updateAddToNote();return context;
  };
- E.noteLinkForAnnotation=(attachmentID,key)=>Object.values(E.store.get('readerNoteLinks')||{}).find(x=>x.attachmentID===attachmentID&&x.annotationKey===key&&Zotero.Items.get(x.noteID)?.deleted===false);
+ let noteLinkRevision=-1,noteLinkIndex=new Map();
+ E.noteLinkForAnnotation=(attachmentID,key)=>{
+  const revision=E.store.branchRevision?.('readerNoteLinks')??E.store.revision;
+  if(revision===undefined||revision!==noteLinkRevision){
+   noteLinkRevision=revision;noteLinkIndex=new Map();
+   for(const link of Object.values(E.store.get('readerNoteLinks')||{})){
+    const lookup=link.attachmentID+':'+link.annotationKey,entries=noteLinkIndex.get(lookup)||[];entries.push(link);noteLinkIndex.set(lookup,entries);
+   }
+  }
+  return noteLinkIndex.get(attachmentID+':'+key)?.find(link=>Zotero.Items.get(link.noteID)?.deleted===false);
+ };
  E.rememberNoteLink=async(annotation,note,extra={})=>{
   const link={noteID:note.id,annotationID:annotation.id,annotationKey:annotation.key,attachmentID:annotation.parentID,pageIndex:JSON.parse(annotation.annotationPosition).pageIndex,...extra};
   await E.store.update(s=>{s.readerNoteLinks||={};s.readerNoteLinks[note.id+':'+annotation.key]=link;});return link;
@@ -146,8 +156,11 @@
  E.installNoteTools=editor=>{
   const doc=editor.ownerDocument,head=editor.querySelector('.custom-head');if(!head||editor.mode!=='edit')return;
   E.prepareNoteStyles(editor).catch(Zotero.logError);
-  head.querySelector('.easysch-note-insert')?.remove();head.classList.remove('empty');
-  const bar=doc.createElementNS('http://www.w3.org/1999/xhtml','div'),add=doc.createElementNS('http://www.w3.org/1999/xhtml','button'),status=doc.createElementNS('http://www.w3.org/1999/xhtml','small');bar.className='easysch-note-insert';bar.style.cssText='display:flex;align-items:center;gap:8px;padding:5px 8px;min-height:32px;box-sizing:border-box;font:13px/1.5 var(--ui-font,system-ui);border-bottom:1px solid var(--ui-border,#dfe4e9);background:var(--ui-tray,#f3f5f7)';add.type='button';add.textContent='＋ 插入';add.title='图片、Excel / CSV 表格或公式';add.style.cssText='font:inherit;color:inherit;border:1px solid var(--ui-border,#dfe4e9);border-radius:7px;min-height:28px;padding:3px 9px;background:var(--ui-card,#fff);box-shadow:0 1px 3px #1725360a;cursor:pointer';status.setAttribute('role','status');status.style.cssText='color:GrayText;overflow-wrap:anywhere;font:12px/1.5 var(--ui-font,system-ui)';bar.append(add,status);head.append(bar);
+  head.querySelector('.easysch-note-insert')?.remove();if(!head.children.length)head.classList.add('empty');
+  const instance=editor.getCurrentInstance(),noteDoc=Cu.unwaiveXrays(instance?._iframeWindow||editor._iframe?.contentWindow)?.document;
+  const toolbar=noteDoc?.querySelector('.toolbar .start')||noteDoc?.querySelector('.toolbar');if(!toolbar)return;
+  noteDoc.querySelector('.easysch-note-insert')?.remove();
+  const bar=noteDoc.createElement('span'),add=noteDoc.createElement('button'),status=noteDoc.createElement('small');bar.className='easysch-note-insert';bar.style.cssText='display:inline-flex;align-items:center;gap:4px;flex:none;font:12px/1.5 system-ui';add.type='button';add.textContent='＋';add.title='插入图片、Excel / CSV、表格或公式';add.setAttribute('aria-label',add.title);add.style.cssText='display:grid;place-items:center;font:18px/1 system-ui;color:inherit;border:0;border-radius:6px;width:28px;height:28px;padding:0;background:transparent;cursor:pointer';status.setAttribute('role','status');status.style.cssText='position:fixed;right:12px;bottom:12px;max-width:calc(100% - 24px);z-index:40;white-space:normal;font:12px/1.6 system-ui;color:CanvasText;background:Canvas;border-radius:8px;box-shadow:0 3px 14px #0002';bar.append(add,status);toolbar.append(bar);
   add.onclick=()=>{
    const menu=doc.createXULElement('menupopup');editor.querySelector('popupset').append(menu);
    for(const [label,kind]of [['图片…','image'],['导入 Excel / CSV…','data'],['创建表格','table'],['公式','math']]){

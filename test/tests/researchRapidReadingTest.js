@@ -233,9 +233,9 @@ describe('Rapid reading and native PDF margin comments', function () {
  });
 
  it('releases an actual borrowed conversation when docking finishes after rapid reading was closed',async()=>{
-  const original=E.dockReaderAcademicChat;let release,borrowed;E.dockReaderAcademicChat=async(...args)=>{borrowed=await original(...args);await new Promise(resolve=>release=resolve);return borrowed;};
+  const original=E.dockReaderAcademicChat,prior={...surface.state};let release,borrowed;E.dockReaderAcademicChat=async(...args)=>{borrowed=await original(...args);await new Promise(resolve=>release=resolve);return borrowed;};
   try{
-   const opening=E.openReaderRapidReading(reader);await wait(()=>release&&surface.state.locked,'实际借用右列尚未返回');outer.document.querySelector('.easysch-rapid-header button').click();release();rapid=await opening;assert.isFalse(rapid.root.isConnected);assert.isFalse(surface.state.locked);assert.isFalse(win.document.getElementById('zotero-context-pane').hasAttribute('inert'));assert.isFalse(win.document.getElementById('easysch-reader-ai-orb').hidden);
+   const opening=E.openReaderRapidReading(reader);await wait(()=>release&&surface.state.locked,'实际借用右列尚未返回');outer.document.querySelector('.easysch-rapid-header button').click();release();rapid=await opening;assert.isFalse(rapid.root.isConnected);assert.isFalse(surface.state.locked);assert.isFalse(win.document.getElementById('zotero-context-pane').hasAttribute('inert'));for(const key of ['open','dock','iconDock','tab','size','pinned','embedded','locked'])assert.strictEqual(surface.state[key],prior[key],'过期借用恢复进入前的 '+key);assert.closeTo(surface.state.x,prior.x,2,'底部输入栏在原位置恢复');assert.closeTo(surface.state.y,prior.y,2,'底部输入栏允许布局动画完成时的像素对齐');assert.equal(win.document.getElementById('easysch-reader-ai-orb').hidden,prior.open,'底部输入栏恢复时不显示重复Logo');
   }finally{release?.();E.dockReaderAcademicChat=original;borrowed?.dispose();}
  });
 
