@@ -11,7 +11,8 @@ EasySch 的新增源码标注 AGPL-3.0-or-later；Zotero 源码及其原有许�
 | python-docx / openpyxl / lxml | 可编辑 Word、实验数据 | site-packages 中各发行版许可；https://github.com/python-openxml/python-docx 、https://foss.heptapod.net/openpyxl/openpyxl 、https://github.com/lxml/lxml |
 | Pandoc 3.11 | 文档与公式转换 | runtime/pandoc/COPYRIGHT.txt 与 COPYING.rtf；https://github.com/jgm/pandoc/tree/3.11 |
 | LibreOffice | DOCX/PPTX 预览转换 | runtime/libreoffice/LICENSE.html、license.txt、NOTICE；https://git.libreoffice.org/core |
-| Poppler | PDF 页面渲染 | runtime/poppler 附带声明（GPL）；https://gitlab.freedesktop.org/poppler/poppler |
+| Poppler | PDF 页面渲染 | GPL；Windows 依赖集来自 conda-forge Poppler 构建，版本见 runtime/poppler/manifest.json；https://gitlab.freedesktop.org/poppler/poppler 与 https://github.com/conda-forge/poppler-feedstock |
+| Microsoft Visual C++ 14 运行库 | Gecko、Python/PyMuPDF、LibreOffice 等原生组件的运行依赖 | 随 Poppler Windows 依赖集提供，并按需部署到程序目录；licenses/Microsoft-Visual-C-Runtime.rtf 为 Microsoft 官方再发行包的原始许可，licenses/README.md 记录下载、签名与校验来源；https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files |
 | 研究引擎 npm 依赖 | PPTX、结构图、文档解析 | runtime/research-engine/package-lock.json 锁定版本，各 node_modules 保留许可证 |
 | Pi Agent / Pi AI 0.73.1 | 研究助手状态、流式取消、受限工具循环 | MIT；badlogic/pi-mono 提交 781152fc24841dc54b22284514604048ebe5e2c9；vendor/PI-AGENT-LICENSE.txt；docs/references/pi-agent-0.73.1.md |
 | TypeBox 1.3.36 | Pi 工具的 JSON Schema 参数校验 | MIT；vendor/TYPEBOX-LICENSE.txt；https://github.com/sinclairzx81/typebox |

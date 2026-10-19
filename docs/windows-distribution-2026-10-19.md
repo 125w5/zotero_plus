@@ -15,11 +15,11 @@
 
 默认安装到 `%LOCALAPPDATA%\Programs\EasySch`。首次启动使用独立的 `%LOCALAPPDATA%\EasySch\Profile` 与 `%LOCALAPPDATA%\EasySch\Library`，卸载保留研究数据。运行时路径随安装目录解析，可移动完整解压目录后继续使用。
 
-包内提供 Node、独立 CPython 与 PDF/Excel/Word 依赖、Pandoc、LibreOffice、Poppler，不要求目标电脑安装开发环境。文件预览和导出由这些工具完成，Microsoft Office 本身不包含在包中。
+包内提供 Node、独立 CPython 与 PDF/Excel/Word 依赖、Pandoc、LibreOffice、Poppler，以及应用本地的 x64 Visual C++ 运行库，不要求目标电脑安装开发环境。文件预览和导出由这些工具完成，Microsoft Office 本身不包含在包中。未使用的 LibreOffice 32 位扫描仪桥接不随包提供。
 
 ## 验证范围
 
-每个正式包在压缩前自动执行隔离运行时检查：仅保留 Windows 系统 PATH、清除外部 Python/Node 配置，实际读取中文 CSV/XLSX、提取 PDF、生成含可编辑公式的 DOCX、生成 PPTX 并渲染图片。主应用原生验收及联网最小测试见同目录的工作区验收说明。
+每个正式包在压缩前自动执行八项隔离运行时检查：静态检查 PE 导入的 Visual C++ DLL 必须在包内且架构匹配（禁止借用 System32），仅保留 Windows 系统 PATH、清除外部 Python/Node 配置，实际读取中文 CSV/XLSX、提取 PDF、生成含可编辑公式的 DOCX、生成 PPTX 并渲染图片。主应用原生验收及联网最小测试见同目录的工作区验收说明。
 
 验收使用本机隔离环境，并非另一台全新 Windows 实机或纯净虚拟机。真实接口检查确认短文本对话与翻译可回复、图像模型列表可用；未生成收费图片，也不代表完整论文生成质量或所有在线下载服务均已验证。
 

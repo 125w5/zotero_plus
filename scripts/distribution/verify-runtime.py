@@ -1,11 +1,98 @@
 """Exercise the shipped Windows tools with a clean PATH and no network/API calls."""
 import argparse
 import json
+import mmap
 import os
+import re
+import struct
 import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
+
+
+def pe_imports(path):
+    """Read normal/delayed imports without loading DLLs from the checking PC."""
+    with path.open('rb') as source, mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as data:
+        if data[:2] != b'MZ':
+            return None, []
+        pe = struct.unpack_from('<I', data, 60)[0]
+        if data[pe:pe + 4] != b'PE\0\0':
+            return None, []
+        machine, sections = struct.unpack_from('<HH', data, pe + 4)
+        optional_size = struct.unpack_from('<H', data, pe + 20)[0]
+        optional = pe + 24
+        magic = struct.unpack_from('<H', data, optional)[0]
+        if magic not in (0x10b, 0x20b):
+            raise RuntimeError('Unsupported PE optional header: ' + path.name)
+        directory = optional + (112 if magic == 0x20b else 96)
+        image_base = struct.unpack_from('<Q' if magic == 0x20b else '<I', data,
+                                        optional + (24 if magic == 0x20b else 28))[0]
+        mappings = []
+        for index in range(sections):
+            offset = optional + optional_size + 40 * index
+            virtual_size, virtual, raw_size, raw = struct.unpack_from('<IIII', data, offset + 8)
+            mappings.append((virtual, max(virtual_size, raw_size), raw))
+
+        def address(rva):
+            for virtual, size, raw in mappings:
+                if virtual <= rva < virtual + size:
+                    return raw + rva - virtual
+            raise RuntimeError('Unmapped PE import address: ' + path.name)
+
+        imports = []
+        for table, stride, name_offset in [(1, 20, 12), (13, 32, 4)]:
+            rva, size = struct.unpack_from('<II', data, directory + table * 8)
+            if not rva:
+                continue
+            offset = address(rva)
+            for entry in range(offset, offset + size, stride):
+                if not any(data[entry:entry + stride]):
+                    break
+                name = struct.unpack_from('<I', data, entry + name_offset)[0]
+                if table == 13 and not struct.unpack_from('<I', data, entry)[0] & 1:
+                    name -= image_base
+                start = address(name)
+                imports.append(data[start:data.find(b'\0', start)].decode('ascii').lower())
+        return machine, imports
+
+
+def verify_app_local_crt(payload):
+    """System32 must never mask a missing redistributable in a shipped runtime."""
+    domains = [(payload / 'client', payload / 'client'),
+               (payload / 'runtime/python', payload / 'runtime/python'),
+               (payload / 'runtime/node', payload / 'runtime/node'),
+               (payload / 'runtime/research-engine', payload / 'runtime/node'),
+               (payload / 'runtime/pandoc', payload / 'runtime/pandoc'),
+               (payload / 'runtime/libreoffice', payload / 'runtime/libreoffice/program'),
+               (payload / 'runtime/poppler', payload / 'runtime/poppler/Library/bin')]
+    pattern = re.compile(r'(?:msvcp|vcruntime|concrt|vcomp|vcamp|vccorlib)140(?:_[a-z0-9_]+)?\.dll', re.I)
+    missing, checked, references = [], 0, 0
+    directory_files = {}
+    for root, host in domains:
+        for binary in root.rglob('*'):
+            if not binary.is_file() or binary.suffix.lower() not in ('.exe', '.com', '.dll', '.pyd', '.node', '.bin'):
+                continue
+            machine, imports = pe_imports(binary)
+            if machine is None:
+                continue
+            checked += 1
+            for dependency in filter(pattern.fullmatch, imports):
+                references += 1
+                directories = [binary.parent] if binary.suffix.lower() in ('.exe', '.com', '.bin') else [binary.parent, host]
+                found = None
+                for directory in directories:
+                    if directory not in directory_files:
+                        directory_files[directory] = {entry.name.lower(): entry for entry in directory.glob('*.dll')}
+                    found = directory_files[directory].get(dependency)
+                    if found:
+                        break
+                if found is None or pe_imports(found)[0] != machine:
+                    missing.append(str(binary.relative_to(payload)) + ' -> ' + dependency)
+    if missing:
+        raise RuntimeError('Missing or wrong-architecture app-local Visual C++ runtime (System32 is excluded): '
+                           + '; '.join(missing[:12]))
+    return {'binaries': checked, 'crtImports': references, 'system32Fallback': False}
 
 
 def verify(payload, include_tests=False):
@@ -60,6 +147,8 @@ def verify(payload, include_tests=False):
         if not include_tests and (test_entries or 'zotero-unit' in archive.read('chrome.manifest').decode()):
             raise RuntimeError('A production payload still exposes native test entry points.')
     report['checks'].append('Runtime paths stay inside the package; no user library/profile copied; production test entries removed.')
+    report['appLocalRuntime'] = verify_app_local_crt(payload)
+    report['checks'].append('PE imports resolve to matching-architecture app-local Visual C++ DLLs, without System32 fallback.')
     node_version = run([tools['node'], '--version']).strip()
     if int(node_version.lstrip('v').split('.')[0]) < 22:
         raise RuntimeError('The bundled Node version is below the supported engine version.')

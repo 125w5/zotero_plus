@@ -1,6 +1,7 @@
 """Assemble a relocatable Windows payload. Never copies user libraries or profiles."""
 import argparse
 import json
+import re
 import shutil
 import sys
 import zipfile
@@ -51,12 +52,30 @@ def main(args):
                  'vcruntime140.dll', 'vcruntime140_1.dll', 'LICENSE.txt']:
         shutil.copy2(args.python_home / name, python / name)
     copy_tree(args.python_home / 'DLLs', python / 'DLLs')
-    copy_tree(args.python_home / 'Lib', python / 'Lib', ('site-packages', 'test', 'tests', 'idlelib', 'ensurepip'))
+    copy_tree(args.python_home / 'Lib', python / 'Lib', ('site-packages', 'test', 'tests', 'idlelib', 'ensurepip', 'venv'))
     copy_tree(tools / 'pdf-assets-env/Lib/site-packages', python / 'Lib/site-packages',
               ('pip', 'pip-*.dist-info', 'setuptools', 'setuptools-*.dist-info', 'test', 'tests'))
     copy_tree(tools / 'pandoc/pandoc-3.11', runtime / 'pandoc')
-    copy_tree(tools / 'libreoffice', runtime / 'libreoffice', ('LibreOffice.msi',))
+    # The 32-bit scanner bridge is not used for document conversion and cannot
+    # share a directory with the x64 application-local CRT.
+    copy_tree(tools / 'libreoffice', runtime / 'libreoffice',
+              ('LibreOffice.msi', 'twain32shim.exe', 'spsupp_x86.dll', 'shlxthdl', 'System', 'pip', 'setuptools'))
     copy_tree(tools / 'poppler', runtime / 'poppler')
+    # The extracted LibreOffice MSI does not carry its machine-installed VC
+    # runtime. Deploy the complete x64 VC14 family already supplied by Poppler
+    # beside each executable, rather than relying on a developer's System32.
+    crt_source = runtime / 'poppler/Library/bin'
+    crt_files = sorted(path for path in crt_source.glob('*.dll')
+                       if re.fullmatch(r'(?:msvcp|vcruntime|concrt|vcomp|vcamp|vccorlib)140(?:_[a-z0-9_]+)?\.dll', path.name, re.I))
+    required_crt = {'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'}
+    if not required_crt.issubset({path.name.lower() for path in crt_files}):
+        raise ValueError('Poppler is missing the redistributable x64 Visual C++ runtime family.')
+    crt_directories = [output / 'client', runtime / 'node', python, runtime / 'pandoc', runtime / 'libreoffice/program']
+    crt_directories.extend((runtime / 'libreoffice/program').glob('python-core-*/bin'))
+    for directory in crt_directories:
+        for source in crt_files:
+            shutil.copy2(source, directory / source.name)
+    copy_tree(repo / 'scripts/distribution/licenses', output / 'licenses')
     config = {'version': 1, 'release': args.release, 'configuration': 'preconfigured' if args.credentials else 'standard', 'runtime': {
         'node': 'runtime/node/node.exe', 'engine': 'runtime/research-engine/src/cli.mjs',
         'python': 'runtime/python/python.exe', 'pandoc': 'runtime/pandoc/pandoc.exe',
