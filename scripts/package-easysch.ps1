@@ -43,7 +43,22 @@ if (!$SkipRuntimeCheck) {
 }
 if ($StageOnly) { Write-Output ('Staged: ' + $Payload); exit 0 }
 $compiler = Join-Path $toolsDir 'inno-setup/ISCC.exe'
-& $compiler ('/DPayload=' + $Payload) ('/DRelease=' + $Release) ('/DPackageName=' + $packageName) ('/DPackageFlavor=' + $flavor) ('/DOutput=' + (Join-Path $repo 'dist')) (Join-Path $PSScriptRoot 'distribution/installer.iss')
-if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
+# Inno cannot open every dependency when a developer's checkout prefix makes
+# the absolute source path exceed MAX_PATH. A temporary DOS drive keeps the
+# complete payload intact and does not change the relative installation paths.
+$usedDrives = @(Get-PSDrive -PSProvider FileSystem | ForEach-Object { $_.Name })
+$compilerDrive = [char[]](90..68) | ForEach-Object { [string]$_ } | Where-Object {
+    $_ -notin $usedDrives -and ![IO.Directory]::Exists($_ + ':\')
+} | Select-Object -First 1
+if (!$compilerDrive) { throw 'Installer compilation needs one unused drive letter for a temporary short source path.' }
+& subst.exe ($compilerDrive + ':') $Payload
+if ($LASTEXITCODE -ne 0) { throw 'Unable to create the temporary installer source drive.' }
+try {
+    & $compiler ('/DPayload=' + $compilerDrive + ':') ('/DRelease=' + $Release) ('/DPackageName=' + $packageName) ('/DPackageFlavor=' + $flavor) ('/DOutput=' + (Join-Path $repo 'dist')) (Join-Path $PSScriptRoot 'distribution/installer.iss')
+    if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
+} finally {
+    & subst.exe ($compilerDrive + ':') /D
+    if ($LASTEXITCODE -ne 0) { Write-Warning ('Remove the temporary installer drive ' + $compilerDrive + ': after packaging.') }
+}
 $installer = Join-Path $repo ('dist/' + $packageName + '-Setup.exe')
 Get-FileHash -LiteralPath $installer -Algorithm SHA256 | Select-Object Hash,Path
