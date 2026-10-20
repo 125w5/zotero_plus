@@ -28,6 +28,13 @@ export function validatePlan(value,sources){
 export function changedHypotheses(before,after){const old=new Map((before?.hypotheses||[]).map(h=>[h.id,h]));return [...new Set([...after.hypotheses.filter(h=>JSON.stringify(h)!==JSON.stringify(old.get(h.id))).map(h=>h.id),...(before?.hypotheses||[]).filter(h=>!after.hypotheses.some(x=>x.id===h.id)).map(h=>h.id)])];}
 export function affectedExperiments(plan,ids){return plan.experiments.filter(e=>ids.includes(e.hypothesisID)).map(e=>e.id);}
 
+// Keep an explicit, bounded decision state. The discussion log remains visible
+// to the user, but is not replayed as a growing substitute for research memory.
+export function activePlanDecisions(decisions=[],versionID){
+ const latest=new Map();for(const value of decisions){if(versionID&&value.versionID&&value.versionID!==versionID)continue;const key=text(value.id||value.decision);if(!key)continue;latest.set(key,value);}
+ return [...latest.values()].filter(value=>!['revoked','rejected','superseded','deleted'].includes(value.status)).slice(-20).map(value=>({decision:text(value.decision),reason:text(value.reason),objection:text(value.objection),...(value.status?{status:value.status}:{})}));
+}
+
 // Model quote labels are temporary; bind generated prose to stable source IDs.
 // Preserve verbatim quotes and the saved plan object.
 export function bindPlanCitations(plan,sources){

@@ -29,7 +29,7 @@ export function renderAssemblyWritingResult(U,host,b,{el,button,snapshot,changed
  if(!doc.getElementById('assembly-writing-result-styles')){const style=el('link');style.id='assembly-writing-result-styles';style.rel='stylesheet';style.href=new URL('./assembly-writing-result.css',import.meta.url).href;doc.head.append(style);}
  const root=el('section',undefined,'assembly-writing-result');root.dataset.blockId=b.id;host.append(root);
  const preview=latestWritingPreview(p,b.id,b.sectionID),supported=['paragraph','heading','list','placeholder'].includes(b.type);
- if(supported)renderAssemblyFramework(U,root,b,{el,button,persist,status,isCurrent,materialDetails});
+ if(supported&&!(p.ui.assemblyFlowVersion>=2))renderAssemblyFramework(U,root,b,{el,button,persist,status,isCurrent,materialDetails});
  // Empty modules are writing plans. They are never expanded into prose just
  // because the user enters the assembly stage or selects a material.
  if(supported&&!b.text?.trim()&&!preview)return {root};

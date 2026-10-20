@@ -45,7 +45,7 @@ test('feature entry and scope refresh move the folder listener from replaced tre
 
 test('completed native folder selection changes current sources without leaving search, research or PPT',async()=>{
  const f=fixture(),seen=[];f.E.library={workspaceScope:async rows=>rows.map(row=>({id:'attachment:'+(row.ref?.id||1),kind:'text',title:row.ref?.name||'我的文库'}))};f.ui.setLibraryScope=async scope=>seen.push(scope);
- for(const mode of ['search','discovery','agent','ppt']){await f.state.show(mode);const id=seen.length+100;f.setCollection([{id:'C'+id,ref:{id,name:'文件夹 '+id,libraryID:1},isCollection:()=>true,getName:()=> '文件夹 '+id}]);await new Promise(resolve=>setTimeout(resolve,0));assert.equal(f.state.mode,mode);assert.equal(f.ui.activeView,mode==='discovery'?'home':mode);assert.equal(seen.at(-1).key,'C'+id);assert.equal(seen.at(-1).collectionID,id);assert.equal(seen.at(-1).files[0].kind,'text');assert.equal(f.state.frame.inert,false);}
+ for(const mode of ['search','discovery','agent','ppt']){await f.state.show(mode);const id=seen.length+100;f.setCollection([{id:'C'+id,ref:{id,name:'文件夹 '+id,libraryID:1},isCollection:()=>true,getName:()=> '文件夹 '+id}]);await new Promise(resolve=>setTimeout(resolve,0));assert.equal(f.state.mode,mode==='discovery'?'search':mode);assert.equal(f.ui.activeView,mode==='discovery'?'search':mode);assert.equal(seen.at(-1).key,'C'+id);assert.equal(seen.at(-1).collectionID,id);assert.equal(seen.at(-1).files[0].kind,'text');assert.equal(f.state.frame.inert,false);}
  assert.equal(f.collectionListenerCount,1);f.state.dispose();assert.equal(f.collectionListenerCount,0);
 });
 
@@ -79,12 +79,12 @@ test('manuscript and PPT use one retained native-page frame without a dialog or 
 test('returning to the native library during pending initialization does not repaint the workspace',async()=>{
  const f=fixture({ready:false});const pending=f.state.show('writing'),frame=f.state.frame;assert.equal(frame.inert,true);assert.equal(frame.style.visibility,'hidden');
  await f.state.show('local');f.ui.ready=true;assert.equal(await pending,null);assert.equal(f.state.mode,'local');assert.equal(frame.inert,true);assert.equal(frame.style.visibility,'hidden');
- await f.state.show('search');assert.strictEqual(f.state.frame,frame);assert.equal(f.state.mode,'search');assert.equal(f.ui.activeView,'search');await f.state.show('discovery');assert.equal(f.ui.activeView,'home');assert.equal(f.state.mode,'discovery');f.state.dispose();
+ await f.state.show('search');assert.strictEqual(f.state.frame,frame);assert.equal(f.state.mode,'search');assert.equal(f.ui.activeView,'search');await f.state.show('discovery');assert.equal(f.ui.activeView,'search');assert.equal(f.state.mode,'search');f.state.dispose();
 });
 
 test('recommendation conversation transition and its return stay in the native page',async()=>{
  const f=fixture(),modes=[];f.state.subscribe(mode=>modes.push(mode));await f.state.show('discovery');const frame=f.state.frame;
- f.ui.openAgentWorkbench('检索方法的证据');assert.equal(f.state.mode,'agent');assert.equal(f.ui.activeView,'agent');assert.deepEqual(f.calls.at(-1),['agent','检索方法的证据']);f.ui.show('home');assert.equal(f.state.mode,'discovery');assert.strictEqual(f.state.frame,frame);assert.deepEqual(f.tabs,['zotero-pane']);assert.deepEqual(modes.slice(-2),['agent','discovery']);f.state.dispose();
+ f.ui.openAgentWorkbench('检索方法的证据');assert.equal(f.state.mode,'agent');assert.equal(f.ui.activeView,'agent');assert.deepEqual(f.calls.at(-1),['agent','检索方法的证据']);f.ui.show('home');assert.equal(f.state.mode,'search');assert.strictEqual(f.state.frame,frame);assert.deepEqual(f.tabs,['zotero-pane']);assert.deepEqual(modes.slice(-2),['agent','search']);f.state.dispose();
 });
 
 test('ready route changes do not conceal a cached workspace or repaint its loading shell',async()=>{
@@ -129,4 +129,20 @@ test('native public opening paths route manuscript, PPT and research chat into t
  for(const file of ['workflow.js','app.js','ppt-studio.js'])vm.runInContext(await readFile(new URL('../../chrome/content/zotero/xpcom/research/'+file,import.meta.url),'utf8'),context,{filename:file});
  await E.openWorkflow('writing',{paperID:12});await E.openWorkflow('search');await E.openResearchAgent({paperID:12});await E.studio.open({reader:{itemID:24},newDraft:true,scope:{mode:'all'}});
  assert.deepEqual(routes.map(r=>[r[0],r[1]]),[[main,'writing'],[main,'search'],[main,'agent'],[main,'ppt']]);assert.equal(routes[0][2].selection.paperID,12);assert.equal(routes[3][2].pptOptions.papers[0].id,12);assert.equal(routes[3][2].pptOptions.newDraft,true);
+});
+
+test('a feasibility search context routes to discovery filters rather than a missing paper selection',async()=>{
+ const f=fixture(),received=[];f.ui.setSelection=async()=>{throw Error('不应按论文选区处理');};f.ui.applyDiscoveryContext=async value=>received.push(value);
+ const context={projectID:'project-1',collectionID:12,query:'CNN signal classification',researchScope:{domain:'communications',primaryKeyword:'CNN',secondaryKeyword:'modulation'}};
+ await f.state.show('search',{selection:context});assert.deepEqual(received,[context]);assert.equal(f.state.mode,'search');assert.equal(f.state.frame.inert,false);f.state.dispose();
+});
+
+test('double clicking a native folder restores its paper list while a single selection stays in the feature',async()=>{
+ const f=fixture(),collections=f.doc.getElementById('zotero-collections-tree');await f.state.show('search');await f.setCollection([{id:'Cfolder'}]);assert.equal(f.state.mode,'search');
+ const open=collections.listeners.get('dblclick');assert.equal(typeof open,'function');open({button:0,target:{closest:()=>({})}});await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.mode,'local');assert.equal(f.state.itemScope,'papers');assert.equal(f.state.frame.inert,true);f.state.dispose();assert.equal(collections.listeners.has('dblclick'),false);
+});
+
+test('library toolbar opens corpus and real Zotero import from the library',async()=>{
+ const f=fixture(),calls=[],bar=f.doc.getElementById('zotero-items-pane-container').children[0];f.E.openResearchResources=async win=>calls.push(['corpus',win]);f.E.importZoteroLibrary=async win=>calls.push(['import',win]);
+ for(const title of ['语料库','导入 Zotero'])await bar.children.find(node=>node.textContent===title).onclick();assert.deepEqual(calls,[['corpus',f.win],['import',f.win]]);f.state.dispose();
 });

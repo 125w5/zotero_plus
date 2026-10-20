@@ -12,8 +12,14 @@ export function quoteRange(source,quote,{prefix='',suffix=''}={}){
   matches.push({start:hay.offsets[at],end:hay.offsets[at+needle.length-1]+1});
  }return matches.length===1?matches[0]:null;
 }
+// Displayed prose can omit a neighbouring math token or a PDF formatting run.
+// A unique exact quote remains a safe anchor even when that display context
+// differs. Repeated phrases still require matching context; never pick one.
+export function selectionQuoteRange(source,quote,context={}){
+ return quoteRange(source,quote,context)||quoteRange(source,quote);
+}
 export function createMaterialHighlight(material,quote,{prefix='',suffix='',comment='',id='highlight-'+Date.now(),color='blue',style='highlight'}={}){
- const source=sourceText(material),range=quoteRange(source,quote,{prefix,suffix});if(!range)throw Error('选段无法唯一定位，请多选择一点连续原文；不会拆分或猜测来源');
+ const source=sourceText(material),range=selectionQuoteRange(source,quote,{prefix,suffix});if(!range)throw Error('这段文字出现多次，请连同前后文一起选择');
  if(range.end-range.start>4000)throw Error('局部标注最多4000字符，完整素材仍保留');
  if(typeof comment!=='string'||comment.length>4000)throw Error('批注最多4000字符');
  return {id,...appearance({color,style}),quote:source.slice(range.start,range.end),start:range.start,end:range.end,prefix:source.slice(Math.max(0,range.start-48),range.start),suffix:source.slice(range.end,range.end+48),comment,sourceHash:writingSnapshotHash(source),sourceVersion:material.sourceVersion||'',at:new Date().toISOString()};
@@ -36,7 +42,7 @@ function contextBelongs(material,context) {
 }
 export function createTranslatedMaterialHighlight(material,quote,{context,prefix='',suffix='',comment='',id='highlight-'+Date.now(),color='blue',style='highlight'}={}) {
  if(!context||context.textHash!==writingSnapshotHash(context.text)||context.sourceHash!==writingSnapshotHash(context.sourceText))throw Error('中文素材的原文关联已变化，请重新展开素材');
- const range=quoteRange(context.text,quote,{prefix,suffix});if(!range)throw Error('选段无法唯一定位，请多选择一点连续译文');
+ const range=selectionQuoteRange(context.text,quote,{prefix,suffix});if(!range)throw Error('这段文字出现多次，请连同前后文一起选择');
  if(range.end-range.start>4000||typeof comment!=='string'||comment.length>4000)throw Error('局部标注和批注最多4000字符');
  const originalContext={text:context.sourceText,sourceAnchor:sourceAnchor(context.sourceAnchor),materialSourceHash:context.materialSourceHash,scope:'source-block'};
  if(!contextBelongs(material,originalContext))throw Error('中文素材与当前原文不一致，请重新展开素材');
@@ -130,7 +136,7 @@ export function captureMaterialSelections(host,range,translationContexts=[]){
 }
 export function installMaterialHighlights(host,material,{E,onSave,onError=()=>{},commentsHost,translationContexts=[],commentsOnly=false,onLayout=()=>{}}){
  const doc=host.ownerDocument,win=doc.defaultView,create=(tag,text,cls)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
- const list=create('div',undefined,'material-local-comments');if(commentsHost)commentsHost.append(list);else host.after(list);let disposed=false,draft;
+ const list=create('div',undefined,'material-local-comments');if(commentsHost)commentsHost.append(list);else host.after(list);let disposed=false,draft,selectionKey='',selectTimer;const permanentMarks=[],originalContexts=[];
  const button=(parent,label,action)=>{const node=create('button',label,'quiet-action');node.type='button';node.onclick=()=>Promise.resolve().then(action).catch(onError);parent.append(node);return node;};
  const contextHost=context=>Array.from(host.querySelectorAll('[data-translation-context-id]')).find(node=>node.dataset.translationContextId===context.id)||host;
  const paint=highlight=>{
@@ -141,10 +147,10 @@ export function installMaterialHighlights(host,material,{E,onSave,onError=()=>{}
    if(context){
     if(highlight.translation){translationChanged=context.textHash!==highlight.translation.textHash;if(!translationChanged)marks=markQuote(contextHost(context),{...highlight,...highlight.translation});}
     else if(context.text===context.sourceText)marks=markQuote(contextHost(context),highlight);
-    else {const target=contextHost(context);target.dataset.originalHighlightId=highlight.id;target.style.setProperty('--highlight-color',MATERIAL_HIGHLIGHT_COLORS[highlight.color]||MATERIAL_HIGHLIGHT_COLORS.blue);target.classList.add('material-original-highlight-context');}
+    else {const target=contextHost(context);target.dataset.originalHighlightId=highlight.id;target.style.setProperty('--highlight-color',MATERIAL_HIGHLIGHT_COLORS[highlight.color]||MATERIAL_HIGHLIGHT_COLORS.blue);target.classList.add('material-original-highlight-context');originalContexts.push(target);}
    }
   }else if(!commentsOnly&&resolved)marks=markQuote(host,highlight);
-  return {resolved,marks,translationChanged};
+  permanentMarks.push(...marks);return {resolved,marks,translationChanged};
  };
  for(const group of materialHighlightGroups(material.highlights||[])){
   const highlight=group[0],painted=group.map(paint),display=materialHighlightDisplay(highlight);
@@ -154,20 +160,22 @@ export function installMaterialHighlights(host,material,{E,onSave,onError=()=>{}
  onLayout(list);
  let previewMarks=[];
  const removePreview=()=>{for(const mark of previewMarks){const parent=mark.parentNode;mark.replaceWith(...mark.childNodes);parent?.normalize();}previewMarks=[];};
- const clear=()=>{removePreview();draft?.remove();draft=null;onLayout(list);};
+ const clear=()=>{selectionKey='';removePreview();draft?.remove();draft=null;onLayout(list);};
  const select=()=>{
   if(commentsOnly||!onSave)return;const selection=win.getSelection();if(!selection?.rangeCount||!selection.toString().trim()||!host.contains(selection.anchorNode)||!host.contains(selection.focusNode))return;
   const range=selection.getRangeAt(0);if(range.cloneContents().querySelector('.katex,img'))return;
   const selected=captureMaterialSelections(host,range,translationContexts);
   if(!selected.length)return;
-  try{createMaterialHighlightGroup(material,selected);}catch(error){onError(error);return;}
+  const key=JSON.stringify(selected.map(row=>[row.context?.id,row.quote,row.prefix,row.suffix]));if(key===selectionKey)return;selectionKey=key;
+  try{createMaterialHighlightGroup(material,selected);}catch(error){clear();selectionKey=key;draft=create('p',error.message,'material-highlight-draft material-selection-hint');draft.setAttribute('role','status');list.prepend(draft);onLayout(list);return;}
   const quoted=selected.map(row=>row.quote).join('\n');
-  clear();const popup=draft=create('div',undefined,'material-highlight-draft');list.prepend(popup);popup.append(create('blockquote',quoted));let color='blue',style='highlight';const palette=create('div',undefined,'material-highlight-palette'),styles=create('div',undefined,'material-highlight-styles');palette.setAttribute('aria-label','标注颜色');styles.setAttribute('aria-label','标注样式');popup.append(palette,styles);
+  clear();selectionKey=key;const popup=draft=create('div',undefined,'material-highlight-draft');list.prepend(popup);popup.append(create('blockquote',quoted));let color='blue',style='highlight';const palette=create('div',undefined,'material-highlight-palette'),styles=create('div',undefined,'material-highlight-styles');palette.setAttribute('aria-label','标注颜色');styles.setAttribute('aria-label','标注样式');popup.append(palette,styles);
   const preview=()=>{removePreview();for(const row of selected){const marks=markQuote(row.context?contextHost(row.context):host,{...row,id:'preview',color,style});for(const mark of marks)mark.dataset.preview='true';previewMarks.push(...marks);}selection.removeAllRanges();};
   for(const [value,tone] of Object.entries(MATERIAL_HIGHLIGHT_COLORS)){const labels={blue:'蓝色',yellow:'黄色',green:'绿色',pink:'粉色',purple:'紫色'},choice=button(palette,'',()=>{color=value;for(const n of palette.children)n.setAttribute('aria-pressed',String(n===choice));preview();});choice.className='material-highlight-color';choice.dataset.color=value;choice.style.setProperty('--highlight-color',tone);choice.setAttribute('aria-label',labels[value]);choice.setAttribute('aria-pressed',String(value===color));}
   for(const [value,label] of [['highlight','高亮'],['underline','下划线']]){const choice=button(styles,label,()=>{style=value;for(const n of styles.children)n.setAttribute('aria-pressed',String(n===choice));preview();});choice.dataset.style=value;choice.setAttribute('aria-pressed',String(value===style));}
   const input=create('textarea');input.rows=2;input.placeholder='记录这段素材如何用于论文';input.setAttribute('aria-label','局部批注');popup.append(input);
   button(popup,'保存标注',async()=>{const highlights=createMaterialHighlightGroup(material,selected,{comment:input.value,color,style});if((material.highlights||[]).length+highlights.length>100)throw Error('每块素材最多100条局部标注');if(disposed)return;await onSave([...(material.highlights||[]),...highlights]);clear();});button(popup,'取消',clear);preview();onLayout(list);
  };
- host.addEventListener('mouseup',select);host.addEventListener('keyup',select);return()=>{disposed=true;host.removeEventListener('mouseup',select);host.removeEventListener('keyup',select);clear();list.remove();onLayout(list);};
+ const queueSelect=event=>{if(event.type==='keyup'&&!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return;win.clearTimeout(selectTimer);selectTimer=win.setTimeout(select,0);};
+ host.addEventListener('mouseup',queueSelect);host.addEventListener('keyup',queueSelect);return()=>{disposed=true;win.clearTimeout(selectTimer);host.removeEventListener('mouseup',queueSelect);host.removeEventListener('keyup',queueSelect);clear();for(const mark of permanentMarks){const parent=mark.parentNode;if(parent){mark.replaceWith(...mark.childNodes);parent.normalize();}}for(const target of originalContexts){delete target.dataset.originalHighlightId;target.classList.remove('material-original-highlight-context');target.style.removeProperty('--highlight-color');}list.remove();onLayout(list);};
 }

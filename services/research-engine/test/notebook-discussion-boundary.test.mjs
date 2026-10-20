@@ -11,8 +11,9 @@ import * as Prompts from '../../../chrome/content/zotero/research/shared/academi
 import * as Context from '../../../chrome/content/zotero/research/shared/source-context.mjs';
 import * as Topic from '../../../chrome/content/zotero/research/shared/research-topics.mjs';
 import * as Policy from '../../../chrome/content/zotero/research/shared/research-ai-policy.mjs';
+import * as Domain from '../../../chrome/content/zotero/research/shared/research-domain.mjs';
 const script=await readFile(new URL('../../../chrome/content/zotero/xpcom/research/notebook.js',import.meta.url),'utf8');
-const modules={'material-catalog':C,'academic-plan':P,'academic-prompts':Prompts,'source-context':Context,'research-topics':Topic,'research-ai-policy':Policy};
+const modules={'material-catalog':C,'academic-plan':P,'academic-prompts':Prompts,'source-context':Context,'research-topics':Topic,'research-ai-policy':Policy,'research-domain':Domain};
 const real={id:'paper',kind:'paragraph',title:'迁移方法真实论文',summary:'迁移方法证据',sourceText:'Actual paper evidence about transfer.',revision:1,anchor:{paperItemID:101,attachmentID:7,pageIndex:2}};
 const discussion={id:'discussion',kind:'note',title:'迁移方法讨论',summary:'迁移方法的待核验建议',sourceText:'模型推断：迁移实验可能有效，尚未实验。',sourceType:'ai-discussion',conversationID:'s',messageID:'m',revision:1};
 const legacy={id:'legacy',kind:'note',title:'迁移方法旧讨论',summary:'迁移方法思路',sourceText:'旧模型曾声称已完成迁移实验。',conversationID:'old-s',messageID:'old-m',revision:1};
@@ -59,12 +60,12 @@ test('evaluation and prior source restoration never promote AI discussions to cl
  const previous={id:'v1',plan:plan(oldSources.map(s=>({sourceID:s.id,quote:s.text}))),sources:oldSources,sourceRevisions:{},number:1},f=fixture({previous}),before=JSON.stringify(f.N.state(f.id).versions[0]),assets=JSON.stringify(f.project.materials);
  const version=await f.N.evaluate(f.id,'迁移方法',()=>{}),query=f.calls[0],assessment=f.calls[1];
  assert.deepEqual(query.input.local.map(s=>s.id),['paper','previous-paper']);
- assert.deepEqual(query.input.discussionContext.map(s=>s.id).sort(),['discussion','legacy','registered']);
+ assert.deepEqual(query.input.discussionContext,[],'评估只使用当前方案与有效决定，不重放已保存的讨论轨迹');
  assert.deepEqual(assessment.input.sources.map(s=>s.id),['paper','previous-paper','web-https://example.org/paper']);
  assert.deepEqual(assessment.input.previous.closest.map(s=>s.sourceID),['previous-paper']);
  assert.ok(assessment.input.discussionContext.every(s=>!('quoteID'in s)&&s.evidence===false));
  assert.equal(version.plan.closest[0].sourceID,'paper');assert.equal(version.plan.experiments[0].status,'planned');
- assert.equal(version.sources.length,3);assert.equal(version.discussionContext.length,3);
+ assert.equal(version.sources.length,3);assert.equal(version.discussionContext.length,0);
  assert.equal(JSON.stringify(f.N.state(f.id).versions[0]),before);assert.equal(JSON.stringify(f.project.materials),assets);
 });
 test('evaluation rejects fabricated discussion evidence and leaves prior versions unchanged',async()=>{
@@ -93,4 +94,13 @@ test('a changed preparation input rejects late AI plans without saving a stale v
 });
 test('fresh local note candidates use stable item versions, not nonexistent material revisions',async()=>{
  const f=fixture();f.papers.set(501,{id:501,deleted:false,dateModified:'first'});f.E.manuscripts.candidates=async()=>[{...real,id:'transient-note',sourceItemID:501,sourceText:'Fresh note text about transfer.',paperItemID:101}];const version=await f.N.evaluate(f.id,'迁移方法',()=>{});assert.equal(version.sourceRevisions['transient-note'],undefined);assert.equal(version.sourceItemVersions[501],'first');assert.deepEqual(Array.from(f.N.stale(version)),[]);assert.equal(f.N.assessmentCurrent(f.id,version),true);f.papers.get(501).dateModified='later';assert.deepEqual(Array.from(f.N.stale(version)),['item:501']);assert.equal(f.N.assessmentCurrent(f.id,version),false);
+});
+
+test('research field and double keywords filter local and online inputs and survive assembly',async()=>{
+ const f=fixture({materials:[{...real,title:'AMC wireless modulation at low SNR',summary:'无线调制低信噪比',sourceText:'AMC wireless modulation at low SNR needs independent channel evaluation.'},{...discussion,id:'foreign',sourceType:'paper',title:'CNN image classification',sourceText:'Convolutional image segmentation',paperItemID:101}]}),scope={domain:'communications',primaryKeyword:'AMC',secondaryKeyword:'low SNR',fuzzy:true};
+ f.E.searchPaperPage=async(query,options)=>{assert.deepEqual(options.researchScope,{...scope,excludedKeywords:[],acronymMeaning:''});assert.match(query,/AMC/);assert.match(query,/low SNR/);return {provider:'controlled',records:[{title:'AMC wireless at low SNR',abstract:'AMC modulation in wireless channels at low SNR',url:'https://example.org/matched'},{title:'CNN classification',abstract:'Computer vision image recognition',url:'https://example.org/foreign'}]};};
+ await f.N.savePreparation(f.id,{researchScope:scope});const version=await f.N.evaluate(f.id,'研究无线调制',()=>{}),input=f.calls.find(row=>row.input?.sourceSelection).input;
+ assert.equal(input.researchScope.domain,'communications');assert.ok(input.sources.every(row=>!row.title.includes('CNN')));assert.ok(input.sources.some(row=>row.url==='https://example.org/matched'));assert.equal(input.discussionContext.length,0);
+ await f.N.enterAssembly(f.id,{versionID:version.id});assert.equal(f.project.researchPreparation.researchScope.secondaryKeyword,'low SNR');assert.equal(f.project.researchPreparation.planVersionID,version.id);
+ await f.N.savePreparation(f.id,{researchScope:{...scope,secondaryKeyword:'high SNR'}});assert.equal(f.N.assessmentCurrent(f.id,version),false);
 });

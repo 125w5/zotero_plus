@@ -152,12 +152,13 @@ Object.assign(EasySchUI, {
 		document.querySelector('main').append(home, agent);
 		this.installAgentFileWorkspace(sources,home);
 		const nav = document.querySelector('.workbench-group');
-		for (const [id, label] of [['agent', '研究对话'], ['home', '论文推荐']]) {
+		for (const [id, label] of [['agent', '研究对话']]) {
 			const button = this.agentButton(label, () => id === 'agent' ? this.openAgentWorkbench() : this.show('home'));
 			button.dataset.tab = id; nav?.querySelector('summary')?.after(button);
 		}
 		const originalShow = this.show.bind(this);
 		this.show = tab => {
+			if(tab==='home'||tab==='discovery')tab='search';
 			if (tab === 'agent') { this.openAgentWorkbench(); return; }
 			if (tab === 'search') { this.agentHomeEntry = 'search'; document.body.classList.remove('agent-active'); originalShow('search'); this.$('search-query').focus(); return; }
 			document.body.classList.remove('agent-active');

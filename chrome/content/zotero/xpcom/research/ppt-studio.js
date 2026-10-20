@@ -91,9 +91,9 @@
   const page={id:'user-'+contribution.id,title:entry.title||'我的理解与实验',explanation:entry.summary||'汇报者补充内容',layout:entry.assetID||entry.datasetID?'balanced':'text',blocks:parts.map(text=>({kind:entry.kind||'my_interpretation',text,evidenceIDs:[],quote:''})),notes:entry.notes||'',assetIDs:entry.assetID?[entry.assetID]:[],datasetID:entry.datasetID,chartType:entry.chartType||'bar',status:'user',section:'我的内容'};
   const index=d.slides.findIndex(s=>s.id===afterID);d.slides.splice(index<0?d.slides.length:index+1,0,page);
  },{snapshot:true});
- S.open=async({papers,reader,newDraft=false,scope}={})=>{
+ S.open=async({papers,reader,newDraft=false,scope,draftID}={})=>{
   if(reader){const attachment=await Zotero.Items.getAsync(reader.itemID);papers=[E.library.describe(attachment.parentItem||attachment)];}
-  return E.openLibraryWorkspace(Zotero.getMainWindow(),'ppt',{pptOptions:{papers:papers||E.library.selection(),newDraft,scope}});
+  return E.openLibraryWorkspace(Zotero.getMainWindow(),'ppt',{pptOptions:{papers:papers||E.library.selection(),newDraft,scope,draftID}});
  };
  S.addEntries=win=>{
   const doc=win.document,bar=doc.getElementById('zotero-items-toolbar')||doc.getElementById('zotero-toolbar');

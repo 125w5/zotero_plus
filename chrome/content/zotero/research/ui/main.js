@@ -26,6 +26,7 @@ var EasySchUI = {
 		await this.E.store.update(s => { let p = s.projects[key] ||= { title: '未命名研究', draft: '', tasks: [] }; update(p); });
 	},
 	show(tab) {
+		if (tab === 'home' || tab === 'discovery') tab = 'search';
 		if (this.activeView !== tab) this.status('');
 		this.activeView = tab;
 		for (let view of document.querySelectorAll('.view')) view.hidden = view.id !== 'view-' + tab;
@@ -79,7 +80,7 @@ var EasySchUI = {
 		if (window.frameElement?.researchLibraryMode) {
 			document.body.classList.add('library-discovery');this.current=this.E.library.selection()[0]||null;
 			const requested=window.frameElement.researchLibraryView||'discovery';
-			if(requested==='agent')this.openAgentWorkbench();else if(requested!=='local')this.show(requested==='discovery'?'home':requested);
+			if(requested==='agent')this.openAgentWorkbench();else if(requested!=='local')this.show(requested);
 			return;
 		}
 		if (window.frameElement?.researchOverlayMode) { document.body.classList.add('workflow-overlay-content');this.current=this.E.library.selection()[0]||null;this.show('writing');return; }

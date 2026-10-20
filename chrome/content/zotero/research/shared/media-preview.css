@@ -18,3 +18,13 @@
 @keyframes material-backdrop-in{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){.research-media-hover,.research-media-modal,.research-media-backdrop{animation:none}.research-media-trigger{transition:none}}
 [data-appearance=dark] .research-media-hover,[data-appearance=dark] .research-media-modal{background:#252b35f2;color:#d9dee9;border-color:#4a5365a6}
+/* Match the reader's raised cards; clip one opaque surface, not stacked blur
+   layers whose rounded corners can expose the compositor's dark backdrop. */
+.research-media-modal{isolation:isolate;width:min(1120px,calc(100vw - 64px));padding:0;border-radius:16px;border-color:var(--es-read-line,#dbe3ed);background:var(--es-read-surface,var(--material-background,#fff));background-clip:padding-box;overflow:hidden;backdrop-filter:none;box-shadow:0 20px 70px #182c432b}
+.research-media-modal-header{display:flex;align-items:center;gap:12px;min-height:51px;padding:0 10px 0 18px;border-bottom:1px solid var(--es-read-line,#dbe3ed);background:var(--es-read-tray,var(--material-sidepane,#f5f7fa))}
+.research-media-modal-header strong{flex:1;min-width:0;font:550 13px/1.5 system-ui,'Microsoft YaHei',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--es-read-ink,#34465a)}
+.research-media-modal-content{padding:24px;max-width:none;max-height:calc(100vh - 135px);background:var(--es-read-surface,var(--material-background,#fff));overflow:auto}
+.research-media-modal-content img{max-height:calc(100vh - 185px)!important;margin-inline:auto!important;border-radius:4px}
+.research-media-modal-header .research-media-close{position:static;width:34px!important;height:34px!important;min-width:34px!important;border-radius:9px!important;background:transparent!important;color:var(--es-read-muted,#68788c)!important;font-size:24px!important}
+.research-media-modal-header .research-media-close:hover{background:var(--es-read-selection,#e9f2ff)!important}
+:is([data-appearance=dark],[data-easysch-appearance=dark],[data-easysch-reading-appearance=dark]) .research-media-modal{background:var(--es-read-surface,#252b33);color:var(--es-read-ink,#e2e7ed)}

@@ -1,19 +1,19 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 .reader-evidence-backdrop,.reader-evidence-backdrop *{box-sizing:border-box;}
-.reader-evidence-backdrop{position:fixed;inset:0;z-index:2147483010;display:flex;align-items:center;justify-content:center;padding:24px;background:#17233042;backdrop-filter:blur(10px);font:14px/1.75 system-ui,'Microsoft YaHei',sans-serif;color:var(--easysch-ink,var(--fill-primary,#20242a));animation:evidence-view-enter 160ms ease-out;}
-.reader-evidence-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,38%);grid-template-rows:44px minmax(0,1fr);position:relative;width:100%;height:100%;min-width:0;min-height:0;border:1px solid #ffffffab;border-radius:17px;overflow:hidden;background:var(--material-background,#fff);box-shadow:0 26px 80px #0b192e42,0 7px 20px #0b192e21,inset 0 1px #fff;}
-.reader-evidence-header{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 12px 0 19px;border-bottom:1px solid var(--fill-quinary,#dfe5eb);background:linear-gradient(180deg,#f9fafbdd,#f4f6f8a6);backdrop-filter:blur(18px);}
+.reader-evidence-backdrop{position:fixed;inset:0;z-index:2147483010;display:flex;align-items:center;justify-content:center;padding:28px;background:#26354a38;backdrop-filter:blur(12px);font:14px/1.75 system-ui,'Microsoft YaHei',sans-serif;color:var(--es-read-ink,var(--fill-primary,#20242a));animation:evidence-view-enter 160ms ease-out;}
+.reader-evidence-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(330px,35%);grid-template-rows:54px minmax(0,1fr);position:relative;isolation:isolate;width:min(1360px,100%);height:min(900px,100%);min-width:0;min-height:0;border:1px solid var(--es-read-line,#dbe3ed);border-radius:18px;overflow:hidden;background:var(--es-read-surface,var(--material-background,#fff));background-clip:padding-box;box-shadow:0 22px 65px #15283b26,0 5px 16px #15283b12;}
+.reader-evidence-header{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 12px 0 19px;border-bottom:1px solid var(--es-read-line,#dfe5eb);background:var(--es-read-tray,var(--material-sidepane,#f5f7fa));}
 .reader-evidence-header h2{font:500 14px/1.5 system-ui,'Microsoft YaHei',sans-serif;margin:0;}
 .reader-evidence-page{font-size:11px;color:var(--fill-secondary,#88919c);}
 .reader-evidence-actions{margin-left:auto;display:flex;gap:3px;align-items:center;}
-.reader-evidence-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:29px;min-height:29px;padding:5px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--fill-secondary,#74818f);font:12px/1.5 system-ui,'Microsoft YaHei',sans-serif;cursor:pointer;transition:background 140ms,box-shadow 140ms,transform 140ms;}
+.reader-evidence-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:34px;min-height:34px;padding:7px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--es-read-muted,var(--fill-secondary,#74818f));font:12px/1.5 system-ui,'Microsoft YaHei',sans-serif;cursor:pointer;transition:background 140ms,box-shadow 140ms,transform 140ms;}
 .reader-evidence-button svg{display:block;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
 .reader-evidence-button:hover{border-color:var(--fill-quinary,#d7dfe8);background:var(--material-background,#fff);box-shadow:0 2px 5px #26395012,inset 0 1px #fff;}
 .reader-evidence-button:active{transform:translateY(1px);box-shadow:inset 0 1px 3px #26395016;}
 .reader-evidence-button:focus-visible,.reader-evidence-paper:focus-visible{outline:2px solid #8ca0b5;outline-offset:2px;}
 .reader-evidence-button:disabled{opacity:.5;cursor:wait;}
 .reader-evidence-image-region{display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:28px;overflow:auto;background:var(--easysch-panel,var(--material-mix-quinary,#f3f5f7));}
-.reader-evidence-original{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;background:#fff;box-shadow:0 3px 14px #25364b17;cursor:pointer;}
+.reader-evidence-original{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;background:#fff;box-shadow:0 3px 14px #25364b17;border-radius:5px;}
 .reader-evidence-sidebar{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--material-background,#fff);border-left:1px solid var(--fill-quinary,#dbe2ea);}
 .reader-evidence-reading{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:18px 20px;}
 .reader-evidence-source{padding:0 0 15px;border-bottom:1px solid var(--fill-quinary,#e1e7ed);margin-bottom:17px;}
@@ -24,6 +24,13 @@
 .reader-evidence-caption :is(sup,sub){font-size:.72em;line-height:0;}
 .reader-evidence-caption sup{vertical-align:super;}.reader-evidence-caption sub{vertical-align:sub;}
 .reader-evidence-explanation{min-width:0;overflow-wrap:anywhere;}
+.reader-evidence-caption-disclosure{margin-top:10px;color:var(--es-read-muted,var(--fill-secondary,#74818f));font-size:12px}
+.reader-evidence-caption-disclosure>summary{cursor:pointer;padding:4px 0}
+.reader-evidence-full{border:1px solid var(--es-read-line,#dbe3ed);border-radius:11px;background:var(--es-read-surface,var(--material-background,#fff));overflow:hidden;margin:12px 0}
+.reader-evidence-full-toggle{padding:10px 12px;color:var(--es-read-muted,var(--fill-secondary,#64758a));font:550 13px/1.6 system-ui,'Microsoft YaHei',sans-serif;cursor:pointer;background:var(--es-read-tray,var(--material-sidepane,#f5f7fa))}
+.reader-evidence-full[open]>.reader-evidence-richtext,.reader-evidence-full>.reader-evidence-explanation-section{padding:0 13px}
+.reader-evidence-full[open]>.reader-evidence-richtext{padding-top:12px}
+.reader-evidence-full>.reader-evidence-explanation-section:last-child{padding-bottom:12px}
 .reader-evidence-equation{position:relative;margin:0 0 18px;padding:14px 33px 14px 12px;border:1px solid var(--fill-quinary,#e2e6eb);border-radius:10px;background:var(--material-sidepane,#f8f9fb);box-shadow:inset 0 1px #fff;overflow-x:auto;}
 .reader-evidence-equation .katex-display{margin:.25em 0;font-size:1.06em;}
 .reader-evidence-equation .reader-evidence-copy{position:absolute;right:3px;top:3px;}

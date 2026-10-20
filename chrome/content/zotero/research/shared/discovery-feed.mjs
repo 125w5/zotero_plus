@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {abstractExcerpt} from './paper-overview-data.mjs';
 import {discoveryContinuation,parseDiscoveryContinuation,discoverySourceScope,matchDiscoverySource,crossrefFeedRecord,europePMCFeedRecord,crossrefFeedURL,europePMCFeedURL} from './discovery-providers.mjs';
+import {normalizeResearchScope,buildResearchQuery,matchesResearchScope} from './research-domain.mjs';
+import {installJournalSubscriptions} from './discovery-journals.mjs';
+export {installJournalSubscriptionTimer} from './discovery-journals.mjs';
+export {normalizeResearchScope,buildResearchQuery,matchesResearchScope} from './research-domain.mjs';
 
 export const DISCOVERY_DISCIPLINES=[
  ['engineering','工程技术','Engineering'],['information','信息科学','Computer science'],['materials','材料科学','Materials science'],
@@ -15,7 +19,7 @@ export function discoveryPreferences(value={}){
 export function openAlexFeedRecord(p){
  const words=[];for(const[word,positions]of Object.entries(p.abstract_inverted_index||{}))for(const i of positions)words[i]=word;
  const locations=[p.best_oa_location,p.primary_location,...(p.locations||[])],location=locations.find(l=>l?.pdf_url&&/^https:\/\//i.test(l.pdf_url)&&(l.is_oa===true||l===p.best_oa_location))||p.best_oa_location||p.primary_location,source=p.primary_location?.source||location?.source;
- return{id:p.id,title:p.title||p.display_name,abstract:words.join(' '),doi:(p.doi||'').replace(/^https?:\/\/doi.org\//,''),url:location?.landing_page_url||p.doi||p.id,pdf:location?.pdf_url||'',journal:source?.display_name||'',issn:source?.issn_l||'',sourceID:source?.id||'',sourceName:source?.display_name||'',sourceType:source?.type||'',source:'OpenAlex',date:p.publication_date||String(p.publication_year||''),citationCount:p.cited_by_count??null,oa:p.open_access?.is_oa===true||location?.is_oa===true||!!p.best_oa_location,retracted:p.is_retracted===true,authors:(p.authorships||[]).map(a=>({lastName:a.author?.display_name||'',fieldMode:1}))};
+ return{id:p.id,title:p.title||p.display_name,abstract:words.join(' '),keywords:(p.keywords||[]).map(row=>row.display_name).filter(Boolean).slice(0,8),doi:(p.doi||'').replace(/^https?:\/\/doi.org\//,''),url:location?.landing_page_url||p.doi||p.id,pdf:location?.pdf_url||'',journal:source?.display_name||'',issn:source?.issn_l||'',sourceID:source?.id||'',sourceName:source?.display_name||'',sourceType:source?.type||'',source:'OpenAlex',date:p.publication_date||String(p.publication_year||''),citationCount:p.cited_by_count??null,oa:p.open_access?.is_oa===true||location?.is_oa===true||!!p.best_oa_location,retracted:p.is_retracted===true,authors:(p.authorships||[]).map(a=>({lastName:a.author?.display_name||'',fieldMode:1}))};
 }
 export function discoveryFilters(value={}){
  return{journalOnly:value.journalOnly===true,sourceIDs:[...new Set((value.sourceIDs||[]).map(id=>String(id).replace(/^https:\/\/openalex\.org\//,'')).filter(id=>/^S\d+$/.test(id)))],topOnly:value.topOnly===true,sort:['impact','citations','date','relevance'].includes(value.sort)?value.sort:'',years:['1','5'].includes(String(value.years))?String(value.years):''};
@@ -58,6 +62,7 @@ export function discoveryFeedError(error,provider='在线来源'){
 }
 
 export function installDiscoveryFeed(E,{Zotero}){
+ installJournalSubscriptions(E);
  const pending=new Map(),sourceTasks=new Map(),summaries=new Map(),cooldowns=new Map();let fieldTask;
  E.markDiscoveryPDFFailure=async(url,error)=>{if(!/^https:\/\//i.test(url||''))return;await E.store.update(s=>{s.discoveryPDFFailures||={};s.discoveryPDFFailures[url]={at:Date.now(),reason:String(error?.message||error).slice(0,500)};for(const key of Object.keys(s.discoveryPDFFailures).slice(0,-100))delete s.discoveryPDFFailures[key];});};
  E.clearDiscoveryPDFFailure=async url=>{if(E.store.get().discoveryPDFFailures?.[url])await E.store.update(s=>delete s.discoveryPDFFailures[url]);};
@@ -75,10 +80,11 @@ export function installDiscoveryFeed(E,{Zotero}){
   for(const row of ordered){const item=items.find(item=>item.id===row.paperItemID),attachment=await E.library.localPDF(item);if(attachment)available.push(enrichDiscoveryRecord({...row,attachmentID:attachment.id,localPDF:true},E));}
   return applyDiscoveryFilters(available,filters);
  };
- E.recommendationFeed=async({mode='trends',preferences={},query='',page=1,cursor,filters={},limit=20,signal,refresh=false,provider=''}={})=>{
+ E.recommendationFeed=async({mode='trends',preferences={},query='',page=1,cursor,filters={},limit=20,signal,refresh=false,provider='',researchScope={}}={})=>{
+  const scope=normalizeResearchScope(researchScope);query=buildResearchQuery(scope,query);
   query=String(query||'').trim();page=Math.max(1,Math.floor(Number(page)||1));limit=Math.min(100,Math.max(5,Math.floor(Number(limit)||20)));
   const settings=discoveryPreferences(preferences);if(mode==='subscriptions'&&!query&&!settings.topics.length&&!settings.disciplineIDs.length&&!settings.sources.length)return{records:[],hasMore:false,needsPersonalization:true,mode};
-  const choice=discoveryFilters(filters),key='pdf-feed-v4:'+JSON.stringify([mode,settings,query,page,cursor,choice,limit,provider]),cache=E.store.get().discoveryFeeds?.[key],now=Date.now();
+  const choice=discoveryFilters(filters),key='pdf-feed-v5:'+JSON.stringify([mode,settings,query,page,cursor,choice,limit,provider,scope]),cache=E.store.get().discoveryFeeds?.[key],now=Date.now();
   if(!refresh&&cache&&now-cache.at<3600000)return{...cache.result,records:applyDiscoveryFilters((cache.sourceRecords||cache.result.records).map(row=>enrichDiscoveryRecord(row,E)),choice),cacheHit:true};
   if(pending.has(key))return pending.get(key);
   const task=(async()=>{
@@ -103,7 +109,7 @@ export function installDiscoveryFeed(E,{Zotero}){
       }else{
        const data=JSON.parse(await E.requestProvider(europePMCFeedURL({mode,query:fallbackQuery,filters:choice,sources,cursor:nextCursor,limit}),{signal},10000));if(!Array.isArray(data.resultList?.result))throw Error('来源返回格式不正确');raw=data.resultList.result.map(europePMCFeedRecord).filter(Boolean);rawCount=data.resultList.result.length;newCursor=data.nextCursorMark;hasMore=!!rawCount&&!!newCursor&&newCursor!==nextCursor&&(nextPage-1)*limit+rawCount<(data.hitCount||0);
       }
-      check();const enriched=raw.map(row=>name==='openalex'?row:matchDiscoverySource(row,sources)).filter(Boolean).map(row=>enrichDiscoveryRecord(row,E)).filter(row=>{const id=String(row.doi||row.url||row.id).toLowerCase();if(!row.title||!id||seen.has(id)||row.retracted)return false;seen.add(id);return true;});journalRows.push(...enriched);records.push(...applyDiscoveryFilters(enriched,choice));nextPage++;nextCursor=newCursor;
+      check();const enriched=raw.map(row=>name==='openalex'?row:matchDiscoverySource(row,sources)).filter(Boolean).map(row=>enrichDiscoveryRecord(row,E)).filter(row=>{const id=String(row.doi||row.url||row.id).toLowerCase();if(!row.title||!id||seen.has(id)||row.retracted||!matchesResearchScope(row,scope))return false;seen.add(id);return true;});journalRows.push(...enriched);records.push(...applyDiscoveryFilters(enriched,choice));nextPage++;nextCursor=newCursor;
       if(records.length||!hasMore)break;
      }
      const result={records:applyDiscoveryFilters(records,choice),hasMore,nextCursor:hasMore?(name==='openalex'?nextCursor||null:discoveryContinuation(name,nextCursor,nextPage)):null,nextPage,page,mode,provider:labels[name],providerID:name,filters:choice,filterOptions:{journals:discoveryJournalOptions(journalRows)},limitations:[...discoveryFilterLimitations(choice),...notes,...(name==='europepmc'?['当前备用来源 Europe PMC 主要覆盖生命科学与医学。']:[]),...(name!=='openalex'?['已使用 '+labels[name]+' 的开放 PDF 题录。']:[])],providerErrors:errors,at:new Date().toISOString(),cacheHit:false,disciplineFilter:name==='openalex'&&fieldIDs.length?'provider-field':settings.disciplineIDs.length?'keyword':'none'},entry={result,sourceRecords:journalRows};
@@ -111,7 +117,7 @@ export function installDiscoveryFeed(E,{Zotero}){
     }catch(error){check();if(error.name==='AbortError')throw error;const failure=discoveryFeedError(error,labels[name]);errors.push(failure);cooldowns.set(name,{until:Date.now()+(failure.limited?60000:15000),failure});}
    }
    if(emptyResult){emptyResult.result.providerErrors=errors;return await save(emptyResult);}
-   const cachedRows=cache?applyDiscoveryFilters((cache.sourceRecords||cache.result.records).map(row=>enrichDiscoveryRecord(row,E)),choice):[],fallback=cachedRows.length?cachedRows:await localRows(topic,choice,sources),retryAt=Math.min(...providers.map(name=>cooldowns.get(name)?.until).filter(value=>value>Date.now()));
+   const cachedRows=cache?applyDiscoveryFilters((cache.sourceRecords||cache.result.records).map(row=>enrichDiscoveryRecord(row,E)),choice):[],fallback=cachedRows.length?cachedRows:(await localRows(topic,choice,sources)).filter(row=>matchesResearchScope(row,scope)),retryAt=Math.min(...providers.map(name=>cooldowns.get(name)?.until).filter(value=>value>Date.now()));
    return{records:fallback,hasMore:false,nextCursor:null,page,mode,filters:choice,filterOptions:cache?.result.filterOptions||{journals:[]},limitations:[...discoveryFilterLimitations(choice),...notes],fallback:cachedRows.length?'cache':'library',error:errors.map(error=>error.message).join(' ')||'当前筛选条件暂无可用的在线来源。',providerErrors:errors,retryAt:Number.isFinite(retryAt)?retryAt:0,cacheHit:!!cache};
   })();pending.set(key,task);try{return await task;}finally{pending.delete(key);}
  };
@@ -125,6 +131,17 @@ export function installDiscoveryFeed(E,{Zotero}){
   if(!row.abstract)return null;const excerpt=abstractExcerpt(row.abstract,{limit:320});if(/[\u3400-\u9fff]/.test(excerpt.text))return{...excerpt,language:'zh',translated:false};
   const key=excerpt.text,cache=E.store.get().discoveryBriefs?.[key];if(cache)return{...excerpt,text:cache.text,language:'zh',translated:true};if(summaries.has(key))return summaries.get(key);
   const task=(async()=>{try{const reply=await E.quickTranslate(excerpt.text,undefined,{persist:false,allowModelFallback:false});if(!reply?.text?.trim())throw Error('译文为空');const result={...excerpt,text:reply.text.trim(),language:'zh',translated:true};await E.store.update(s=>{s.discoveryBriefs||={};s.discoveryBriefs[key]={text:result.text,at:Date.now()};for(const old of Object.keys(s.discoveryBriefs).slice(0,-100))delete s.discoveryBriefs[old];});return result;}catch{return{...excerpt,language:'en',translated:false};}})();summaries.set(key,task);try{return await task;}finally{summaries.delete(key);}
+ };
+ let chineseTail=Promise.resolve();const chineseJobs=new Map();
+ E.discoveryChinese=async(row,{signal}={})=>{
+  const title=String(row.title||'').trim(),excerpt=abstractExcerpt(row.abstract||'',{limit:900}).text||'';
+  if(/[\u3400-\u9fff]/.test(title)&&(!excerpt||/[\u3400-\u9fff]/.test(excerpt)))return{title,summary:excerpt,translated:false};
+  const key=title+'\n'+excerpt,saved=E.store.get().discoveryChinese?.[key];if(saved)return saved;if(chineseJobs.has(key))return chineseJobs.get(key);
+  const task=chineseTail.catch(()=>{}).then(async()=>{if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});
+   const marker='ZXQBLOCK0ZXQ',reply=await E.quickTranslate(title+(excerpt?'\n'+marker+'\n'+excerpt:''),signal,{purpose:'material',persist:false}),parts=String(reply?.text||'').split(marker);
+   if(!parts[0]?.trim()||excerpt&&parts.length!==2)throw Error('中文翻译未保留标题与摘要边界，原文已保留');
+   const value={title:parts[0].trim(),summary:excerpt?parts[1].trim():'',translated:true};await E.store.update(s=>{s.discoveryChinese||={};s.discoveryChinese[key]=value;for(const old of Object.keys(s.discoveryChinese).slice(0,-200))delete s.discoveryChinese[old];});return value;
+  });chineseJobs.set(key,task);chineseTail=task.catch(()=>{});try{return await task;}finally{chineseJobs.delete(key);}
  };
  E.discoveryPreview=async row=>{
   let item=row.paperItemID&&await Zotero.Items.getAsync(row.paperItemID);if(!item&&typeof row.id==='number')item=await Zotero.Items.getAsync(row.id);

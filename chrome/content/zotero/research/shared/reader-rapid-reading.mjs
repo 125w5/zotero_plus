@@ -9,7 +9,7 @@ export function readingStyle(doc,{Zotero}){
  const win=doc.defaultView;let unloaded=!!win.closed;const onUnload=()=>{unloaded=true;};win.addEventListener('unload',onUnload,{once:true});
  // Reader and note-editor frames cannot load chrome stylesheets themselves.
  // Read once with the application principal and install the same CSS in each frame.
- stylesheetText||=Promise.all(['reader-reading-surface.css','reader-rail.css'].map(file=>Zotero.HTTP.request('GET',URI+file))).then(responses=>responses.map(response=>response.responseText).join('\n')).catch(error=>{stylesheetText=null;throw error;});
+ stylesheetText||=Promise.all(['reader-surface-tokens.css','reader-reading-surface.css','reader-rail.css'].map(file=>Zotero.HTTP.request('GET',URI+file))).then(responses=>responses.map(response=>response.responseText).join('\n')).catch(error=>{stylesheetText=null;throw error;});
  const task=stylesheetText.then(css=>{
   if(unloaded||win.closed)throw Error('阅读器已关闭');
   const style=doc.createElementNS(HTML,'style');style.dataset.easyschReadingStyle='true';style.textContent=css;(doc.head||doc.documentElement).append(style);

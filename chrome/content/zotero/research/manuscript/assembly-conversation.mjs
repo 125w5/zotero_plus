@@ -9,6 +9,7 @@ import {captureAssemblyWritingRequest,runAssemblyWritingRequest} from './assembl
 import {assemblyFrameworkIntent,requestAssemblyFramework} from './assembly-framework.mjs';
 import {captureFramework} from '../shared/writing-framework.mjs';
 import {installMediaPreview,disposeMediaPreviews} from '../shared/media-preview.mjs';
+import {assertDraftBatchCurrent,wholeDraftRevisionIntent} from '../shared/assembly-direction.mjs';
 
 export function assemblySelectedSource(project,context,previewID='',assets={}){
  const bound=context?.materialIDs||[];
@@ -71,8 +72,9 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
   await draftSaver.flush();
   if(U.busy||U.frameworkBusy||(U.aiSending&&!fromComposer))throw Error('当前研究任务尚未结束，请等待或停止。');
   const selectionCapture=U.selectionAssistant?.captureForPrompt(prompt);
-  const frameworkCapture=!selectionCapture&&assemblyFrameworkIntent(prompt)?captureFramework(U.p,{instruction:prompt,materialIDs:U.p.ui.frameworkSources?.[U.p.ui.sectionID]}):null;
-  const writingCapture=frameworkCapture||selectionCapture?null:captureAssemblyWritingRequest(U.p,prompt);if(!writingCapture&&!selectionCapture)E.aiPolicy?.assertResearchPrompt(prompt);const session=S.get(sessionID);if(!session)throw Error('研究对话已不可用，请重新选择。');
+  const globalWriting=U.p.ui.assemblyFlowVersion>=2&&wholeDraftRevisionIntent(prompt,{selection:selectionCapture});
+  const frameworkCapture=!(U.p.ui.assemblyFlowVersion>=2)&&!selectionCapture&&assemblyFrameworkIntent(prompt)?captureFramework(U.p,{instruction:prompt,materialIDs:U.p.ui.frameworkSources?.[U.p.ui.sectionID]}):null;
+  const writingCapture=globalWriting||frameworkCapture||selectionCapture?null:captureAssemblyWritingRequest(U.p,prompt);if(!globalWriting&&!writingCapture&&!selectionCapture)E.aiPolicy?.assertResearchPrompt(prompt);const session=S.get(sessionID);if(!session)throw Error('研究对话已不可用，请重新选择。');
   U.busy=true;U.activeResearchSessionID=sessionID;U.updateAssemblyTaskState?.('running',sessionID);U.abort=new AbortController();const signal=U.abort.signal;
   try{
    mode=mode||session.mode||'auto';modelID=modelID??session.modelID??'';thinkingLevel=thinkingLevel??session.thinkingLevel??'off';
@@ -84,7 +86,12 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
    await S.update(sessionID,{projectID:U.p.id,draft:'',mode,modelID,thinkingLevel,executionMode,currentTask:task,...(assemblyContext?{assemblyContext}:{}),...(session.isDraft?{title:task}:{})},{origin:'assembly'});
    await S.append(sessionID,{role:'user',text:prompt,attachments:session.attachments||[],currentTask:task,...(assemblyContext?{assemblyContext}:{})},{origin:'assembly'});
    let result;
-   if(selectionCapture)result=await U.selectionAssistant.request(selectionCapture,prompt,{sessionID,modelID,thinkingLevel,executionMode,signal,onProgress,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false});
+   if(globalWriting){
+    if(executionMode!=='auto'&&await (onToolPermission||U.requestToolPermission)?.({toolName:'preview_manuscript_revision',label:'准备整篇修改候选',description:'读取本篇章节与各段关联素材，生成可比较的修改；确认后才应用。',sessionID,signal})!==true)throw Error('本次整篇修改未执行');
+    await persist({flush:true});if(U.saveError)throw U.saveError;const batch=await U.A.prepareDraft(U.p.id,{instruction:prompt,global:true,signal,status:onProgress,modelID,thinkingLevel});assertDraftBatchCurrent(U.p,batch);U.p.draftBatch=batch;U.p.ui.step=2;U.p.ui.rightOpen=true;U.renderEditor();U.workflow?.render();applyPanels();await persist({flush:true});if(U.saveError)throw U.saveError;
+    result={text:'已逐段准备整篇修改候选。请在中间画布比较红色删除和绿色新增，选择各段版本后保留整篇更改，也可以保留原文。',sources:[],steps:[{tool:'preview_manuscript_revision',label:'整篇修改候选已准备',status:'complete'}]};
+   }
+   else if(selectionCapture)result=await U.selectionAssistant.request(selectionCapture,prompt,{sessionID,modelID,thinkingLevel,executionMode,signal,onProgress,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false});
    else if(frameworkCapture){const frame=await requestAssemblyFramework(U,{instruction:prompt,sectionID:frameworkCapture.sectionID,capture:frameworkCapture,fromChat:true,sessionID,modelID,thinkingLevel,executionMode,signal,onProgress,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false});const ids=new Set(frame.nodes.flatMap(row=>row.evidence.map(item=>item.sourceID)));result={text:'已按“'+frame.sectionTitle+'”整理 '+frame.nodes.length+' 个段落任务，保存在写作速读中。按论证单元连贯说明已写内容、拟补素材、结构与文字调整；没有生成或覆盖论文正文。',sources:U.p.materials.filter(row=>ids.has(row.id)).map(row=>({id:row.id,materialID:row.id,title:row.title,sourceText:row.sourceText,anchor:row.anchor})),model:frame.model,steps:[{tool:'prepare_writing_framework',label:'章节框架已保存',status:'complete'}]};}
    else if(writingCapture){result=await runAssemblyWritingRequest(U,{prompt,capture:writingCapture,sessionID,modelID,thinkingLevel,executionMode,signal,onProgress,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false},{persist,status});}
    else if(E.runWorkbenchTask){result=await E.runWorkbenchTask({prompt,mode:mode==='source'?'auto':mode,projectID:U.p.id,sessionID,assemblyContext,executionMode,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false,onResearchQuestion:request=>(onResearchQuestion||U.requestResearchQuestion)?.({...request,sessionID})??{answer:''},selectedSource,attachments:session.attachments||[],history:S.get(sessionID).messages,modelID,thinkingLevel,signal,onProgress});}

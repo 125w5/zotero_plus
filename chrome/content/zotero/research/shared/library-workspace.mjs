@@ -3,6 +3,7 @@ import {prepareReaderPaneStyles} from './reader-pane-styles.mjs';
 import {readNativeLibraryScope,libraryScopeKey} from './library-scope.mjs';
 const PAGES = new Set(['discovery', 'search', 'agent', 'writing', 'ppt', 'schedule', 'settings', 'graph', 'notebook']);
 const HTML = 'http://www.w3.org/1999/xhtml';
+export const libraryPage=page=>['home','discovery'].includes(page)?'search':page;
 
 // One persistent workspace lives beside the original native item tree. Returning
 // to the library restores that same tree, its selection and its own pane widths.
@@ -18,6 +19,8 @@ export function installLibraryWorkspace(E, win, { Zotero } = {}) {
  unlinked.title='装配项目和未归属于论文的笔记、附件；原有资料及关联保持不变';
  for(const button of [local,unlinked]){button.setAttribute('role','tab');bar.append(button);}
  all.title='选择当前列表中的全部文献';all.setAttribute('aria-label',all.title);all.dataset.libraryAction='select-all';all.append(node('span','☑'));bar.append(all);container.prepend(bar);
+ const corpus=node('button','语料库'),importLibrary=node('button','导入 Zotero');for(const control of [corpus,importLibrary]){control.type='button';bar.append(control);}
+ corpus.onclick=()=>E.openResearchResources(win).catch(Zotero.logError);importLibrary.onclick=()=>E.importZoteroLibrary(win).catch(error=>{Zotero.logError(error);win.Services?.prompt?.alert(win,'导入文库',error.message);});
  const panel=node('section',undefined,'library-workspace-discovery');panel.hidden=true;container.append(panel);
  const native=['zotero-items-pane','zotero-toolbar-item-tree','zotero-advanced-search-pane-deck','zotero-item-pane','zotero-items-splitter'].map(id=>doc.getElementById(id)).filter(Boolean);
  const hiddenState=new Map(),listeners=new Set(),projectFrames=new Map(),preparedProjects=new WeakSet(),scopeCache=new Map();
@@ -54,7 +57,7 @@ export function installLibraryWorkspace(E, win, { Zotero } = {}) {
   // Local workflow routing retains forms and keeps PPT inside this host. The
   // compatibility flag does not create a dialog or install a modal surface.
   const originalShow=ui.show,originalAgent=ui.openAgentWorkbench;
-  ui.show=function(page,...args){const result=originalShow.call(this,page,...args);if(state.mode!=='local')apply(page==='home'?'discovery':PAGES.has(page)?page:state.mode);return result;};
+  ui.show=function(page,...args){page=libraryPage(page);const result=originalShow.call(this,page,...args);if(state.mode!=='local')apply(PAGES.has(page)?page:state.mode);return result;};
   ui.openAgentWorkbench=function(...args){const result=originalAgent.apply(this,args);if(state.mode!=='local')apply('agent');return result;};
   frame.contentDocument.defaultView.addEventListener('pagehide',()=>{
    if(disposed||ui!==value)return;ready=null;ui=null;conceal(frame);const mode=state.mode;
@@ -86,7 +89,7 @@ export function installLibraryWorkspace(E, win, { Zotero } = {}) {
   return ready;
  }
  async function show(mode='local',{selection,pptOptions,projectID}={}){
-  if(disposed)return null;mode=PAGES.has(mode)?mode:'local';if(mode==='notebook')return showProject(projectID);
+  if(disposed)return null;mode=libraryPage(mode);mode=PAGES.has(mode)?mode:'local';if(mode==='notebook')return showProject(projectID);
   bindCollectionSelection();
   scopeController?.abort();scopeRequest++;
   const token=++request;win.Zotero_Tabs.select('zotero-pane');
@@ -104,10 +107,10 @@ export function installLibraryWorkspace(E, win, { Zotero } = {}) {
   // A model-list refresh or a local form save must not blank the whole host.
   const cached=ui?.ready?ui:null;if(cached){reveal(frame);hideLoading();}else{conceal(frame);showLoading(mode);}
   let value;try{value=cached||await load();if(disposed||token!==request)return null;
-   if(selection)await value.setSelection(selection);if(disposed||token!==request)return null;
+   if(selection){if(mode==='search'&&!selection.paperID)await value.applyDiscoveryContext?.(selection);else await value.setSelection(selection);}if(disposed||token!==request)return null;
    if(mode==='ppt'&&(pptOptions||!value.pptDraft))await value.openPPTStudio(pptOptions||{});
    else if(mode==='agent')value.openAgentWorkbench();
-   else if(value.activeView!==(mode==='discovery'?'home':mode))value.show(mode==='discovery'?'home':mode);
+   else if(value.activeView!==mode)value.show(mode);
    if(disposed||token!==request)return null;apply(mode);reveal(frame);loading.hidden=true;panel.setAttribute('aria-busy','false');
    if(!selection)await refreshScope();if(disposed||token!==request)return null;
    if(mode==='search')value.$?.('search-query')?.focus();return value;
@@ -170,6 +173,7 @@ export function installLibraryWorkspace(E, win, { Zotero } = {}) {
  bindCollectionSelection();
  const scopeObserver=Zotero.Notifier?.registerObserver({notify(){scopeCache.clear();scopeController?.abort();scopeRequest++;win.clearTimeout(scopeRefreshTimer);if(!disposed&&state.mode!=='local'&&state.mode!=='notebook')scopeRefreshTimer=win.setTimeout(selectCollection,120);}},['item','collection-item','collection'],'research-current-sources');
  const selectFallback=event=>{if(!selectionBinding&&event.target.closest?.('.row,[role=row]'))win.setTimeout(selectCollection,0);};collections?.addEventListener('click',selectFallback);
- function dispose(){if(disposed)return;disposed=true;++request;++scopeRequest;scopeController?.abort();scopeCache.clear();win.clearTimeout(scopeRefreshTimer);if(scopeObserver)Zotero.Notifier.unregisterObserver(scopeObserver);stopLoading?.();offProjects?.();apply('local');listeners.clear();selectionBinding?.removeListener(selectCollection);collections?.removeEventListener('click',selectFallback);for(const target of projectFrames.values())target.contentWindow?.NotebookUI?.dispose?.();if(nativeTree){if(previousScope===undefined)delete nativeTree.researchItemScope;else nativeTree.researchItemScope=previousScope;}bar.remove();panel.remove();style.remove();delete container.dataset.libraryMode;delete container.dataset.libraryEmbedded;delete doc.documentElement.dataset.libraryWorkspace;if(win._researchLibraryWorkspace===state)delete win._researchLibraryWorkspace;}
+ const openCollection=event=>{if(event.button!==undefined&&event.button!==0)return;if(!event.target.closest?.('.row,[role=row]'))return;showItemScope('papers').catch(Zotero.logError);};collections?.addEventListener('dblclick',openCollection);
+ function dispose(){if(disposed)return;disposed=true;++request;++scopeRequest;scopeController?.abort();scopeCache.clear();win.clearTimeout(scopeRefreshTimer);if(scopeObserver)Zotero.Notifier.unregisterObserver(scopeObserver);stopLoading?.();offProjects?.();apply('local');listeners.clear();selectionBinding?.removeListener(selectCollection);collections?.removeEventListener('click',selectFallback);collections?.removeEventListener('dblclick',openCollection);for(const target of projectFrames.values())target.contentWindow?.NotebookUI?.dispose?.();if(nativeTree){if(previousScope===undefined)delete nativeTree.researchItemScope;else nativeTree.researchItemScope=previousScope;}bar.remove();panel.remove();style.remove();delete container.dataset.libraryMode;delete container.dataset.libraryEmbedded;delete doc.documentElement.dataset.libraryWorkspace;if(win._researchLibraryWorkspace===state)delete win._researchLibraryWorkspace;}
  win.addEventListener('unload',dispose,{once:true});apply('local');return state;
 }

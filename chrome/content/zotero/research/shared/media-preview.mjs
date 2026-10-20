@@ -42,7 +42,7 @@ export function installMediaPreview(target, {src, alt = '图片预览', content,
 	const modalKey = event => {
 		if (!dialog) return;
 		if (event.key === 'Escape') {event.preventDefault(); event.stopPropagation(); closeModal();}
-		else if (event.key === 'Tab') {event.preventDefault(); dialog.querySelector('.research-media-close')?.focus();}
+  else if (event.key === 'Tab') {const controls=[...dialog.querySelectorAll('button:not(:disabled)')],at=controls.indexOf(doc.activeElement);if(!controls.length)return;event.preventDefault();controls[(at+(event.shiftKey?-1:1)+controls.length)%controls.length].focus();}
 	};
 	const closeModal = () => {backdrop?.remove(); dialog = backdrop = null; win.removeEventListener('keydown', modalKey, true); if (restoreFocus?.isConnected) restoreFocus.focus(); restoreFocus = null;};
 	const openModal = () => {
@@ -52,9 +52,10 @@ export function installMediaPreview(target, {src, alt = '图片预览', content,
 		// explicit namespace; native <dialog>.showModal is unreliable there.
 		backdrop = create('div'); backdrop.className = 'research-media-backdrop';
 		dialog = create('div'); dialog.className = 'research-media-modal'; dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-label', alt); dialog.close = closeModal;
-		const body = create('div'); body.className = 'research-media-modal-content'; fill(body); dialog.append(body);
+  const header=create('header');header.className='research-media-modal-header';const title=create('strong');title.textContent=alt;header.append(title);dialog.append(header);
+  const body = create('div'); body.className = 'research-media-modal-content'; fill(body); dialog.append(body);
 		const close = create('button'); close.type = 'button'; close.className = 'research-media-close'; close.textContent = '×'; close.title = '关闭预览 · Esc'; close.setAttribute('aria-label', '关闭预览'); close.onclick = closeModal; dialog.append(close);
-		backdrop.append(dialog); backdrop.addEventListener('click', closeModal);
+  header.append(close);backdrop.append(dialog); backdrop.addEventListener('click', event=>{if(event.target===backdrop)closeModal();});
 		(doc.body || doc.documentElement).append(backdrop); restoreFocus = doc.activeElement; close.focus(); win.addEventListener('keydown', modalKey, true);
 	};
 	const enter = () => {

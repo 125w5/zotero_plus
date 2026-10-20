@@ -27,6 +27,14 @@ describe('Reader interaction repairs 2026-09-19',function(){
  });
  after(async()=>{E.manuscripts.prepareTranslation=prepareTranslation;E.manuscripts.indexArticle=indexArticle;await E.store.flush();await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));try{if(win&&!win.closed){try{await win.Zotero_Tabs.closeAll();await wait(()=>!Zotero.Reader._readers.some(value=>value._window===win),'原生交互测试阅读器清理');}finally{win.close();}}}finally{E.assets.queueImages=queueImages;}});
  afterEach(async function(){report.tests||=[];report.tests.push({name:this.currentTest.title,state:this.currentTest.state,error:this.currentTest.err?.message});await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));});
+ it('shares reader surface colors while explicit reading appearance wins over application and native themes',async()=>{
+  const {readingStyle}=ChromeUtils.importESModule('chrome://zotero/content/research/shared/reader-rapid-reading.mjs'),doc=reader._iframeWindow.document,root=doc.documentElement,names=['data-easysch-reading-appearance','data-easysch-appearance','data-appearance','data-theme','systemdark'],prior=names.map(name=>root.getAttribute(name));
+  await readingStyle(doc,{Zotero});
+  try{for(const row of [{reading:'light',app:'dark',native:'dark',expected:'#fff'},{reading:'dark',app:'light',native:'light',expected:'#252b33'},{app:'light',native:'dark',expected:'#fff'},{app:'dark',native:'light',expected:'#252b33'}]){
+   names.forEach(name=>root.removeAttribute(name));if(row.reading)root.setAttribute(names[0],row.reading);root.setAttribute(names[1],row.app);root.setAttribute('data-theme',row.native);const style=doc.defaultView.getComputedStyle(root);assert.equal(style.getPropertyValue('--es-read-surface').trim(),row.expected);assert.equal(style.getPropertyValue('--es-read-radius').trim(),'10px');
+  }report.native.push('首页/装配/阅读器共享同源颜色，阅读外观优先，显式浅色不被系统深色覆盖');}
+  finally{names.forEach((name,i)=>prior[i]===null?root.removeAttribute(name):root.setAttribute(name,prior[i]));}
+ });
  it('keeps formula superscripts together and separates lines and columns',()=>{
   const G=ChromeUtils.importESModule('chrome://zotero/content/research/shared/annotation-geometry.mjs');
   const rects=G.lineRects([[10,100,50,112],[50,108,57,116],[58,100,80,112],[300,100,360,112],[10,80,80,92]]);assert.lengthOf(rects,3);

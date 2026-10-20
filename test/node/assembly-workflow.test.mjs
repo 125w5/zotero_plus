@@ -9,13 +9,15 @@ class Element {
  constructor(tag,doc){this.tagName=tag;this.ownerDocument=doc;this.children=[];this.dataset={};this.attributes=new Map();this.hidden=false;this.textContent='';const classes=new Set();this.classList={toggle:(name,on)=>on?classes.add(name):classes.delete(name),contains:name=>classes.has(name)};}
  append(...nodes){for(const node of nodes){node.parentElement=this;this.children.push(node);}}
  replaceChildren(...nodes){this.children=[];this.append(...nodes);}
+ before(){}
+ get firstChild(){return this.children[0]||null;}
  setAttribute(name,value){this.attributes.set(name,String(value));}
  focus(){}
 }
 function fixture({ready=false,check=async()=>[]}={}){
  const p=M.createProject('人工正文'),doc={body:{dataset:{}},querySelector:()=>null,defaultView:{AbortController,matchMedia:()=>({matches:true})}},elements=new Map();
  const el=(tag,text,cls)=>{const node=new Element(tag,doc);node.className=cls||'';if(text!==undefined)node.textContent=text;return node;};
- for(const id of ['steps','workflow-panel','details','cancel-task','canvas','material-search','workspace'])elements.set(id,el('div'));
+ for(const id of ['steps','workflow-panel','details','cancel-task','canvas','material-search','workspace','recommendation'])elements.set(id,el('div'));
  const button=(text,action,host,cls)=>{const node=el('button',text,cls);node.onclick=action;host?.append(node);return node;};
  let scans=0,checks=0,saved=null;
  p.materials=[M.material({title:'真实来源',sourceText:'源文内容',kind:'quote'})];
@@ -29,7 +31,7 @@ function fixture({ready=false,check=async()=>[]}={}){
  return {p,U,workflow,find,get scans(){return scans;},get checks(){return checks;},resetScans(){scans=0;}};
 }
 
-test('material selection, writing and insertion renders never serialize full source text',()=>{
+test('material assembly, unstarted direction discussion and draft renders never serialize full source text',()=>{
  const f=fixture({ready:true});
  for(const step of [0,1,2]){f.p.ui.step=step;f.workflow.render();assert.equal(f.scans,0,'stage '+step+' must not hash source corpus');}
  assert.equal(f.checks,0);assert.equal(f.p.blocks[0].text,'人工正文保留');

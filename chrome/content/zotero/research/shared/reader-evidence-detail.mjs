@@ -2,6 +2,7 @@
 import {formulaSourceKey,normalizeFormulaInput} from './formula-research.mjs';
 import {evidenceCaption} from './evidence-reading-context.mjs';
 import {prepareReaderPaneStyles} from './reader-pane-styles.mjs';
+import {evidenceSummary} from './evidence-summary.mjs';
 
 const HTML='http://www.w3.org/1999/xhtml',SVG='http://www.w3.org/2000/svg',viewers=new WeakMap();
 const ICONS={close:'m6 6 12 12M6 18 18 6',locate:'M12 3v4m0 10v4M3 12h4m10 0h4M18 12a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z',note:'M14 3H5v18h14V8l-5-5ZM14 3v5h5M8 12h8M8 16h5',explain:'M4 4h16v12H9l-5 4Z',copy:'M8 8h12v13H8ZM16 8V3H3v13h5'};
@@ -28,18 +29,18 @@ export async function openReaderEvidenceDetail(E,reader,asset,{doc=reader?._wind
  node('span','reader-evidence-page',header,Number.isInteger(asset.pageIndex)?'第 '+(asset.page||asset.pageIndex+1)+' 页':'');
  const actions=node('div','reader-evidence-actions',header),status=node('p','reader-evidence-status',dialog);status.hidden=true;status.setAttribute('role','status');
  const button=(name,label,fn,parent=actions)=>{const value=node('button','reader-evidence-button',parent);value.type='button';value.title=label;value.setAttribute('aria-label',label);const svg=doc.createElementNS(SVG,'svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');const path=doc.createElementNS(SVG,'path');path.setAttribute('d',ICONS[name]||ICONS.close);svg.append(path);value.append(svg);value.onclick=fn;return value;};
- const imageRegion=node('div','reader-evidence-image-region',dialog),image=node('img','reader-evidence-original',imageRegion);image.alt=asset.caption||asset.label||'论文原图';image.draggable=false;image.title='双击定位原文';
+ const imageRegion=node('div','reader-evidence-image-region',dialog),image=node('img','reader-evidence-original',imageRegion);image.alt=asset.caption||asset.label||'论文原图';image.draggable=false;image.title='完整原图';
  const right=node('aside','reader-evidence-sidebar',dialog),reading=node('div','reader-evidence-reading',right),source=node('section','reader-evidence-source',reading);
  const attachment=win.Zotero?.Items?.get(asset.attachmentID||reader.itemID),paperTitle=asset.paperTitle||(attachment?.parentItem||attachment)?.getField?.('title')||'当前论文';
  node('h3','reader-evidence-section-label',source,'来源');const paper=node('button','reader-evidence-paper',source,paperTitle);paper.type='button';paper.title='定位本文原图';
- const caption=node('p','reader-evidence-caption',source);appendEvidenceCaption(caption,asset);caption.hidden=!caption.textContent.trim();
+ const captionDisclosure=node('details','reader-evidence-caption-disclosure',source);node('summary','',captionDisclosure,'原始图注');const caption=node('p','reader-evidence-caption',captionDisclosure);appendEvidenceCaption(caption,asset);captionDisclosure.hidden=!caption.textContent.trim();
  const explanation=node('section','reader-evidence-explanation',reading);explanation.setAttribute('aria-label','论文图表解释');
  const chatHost=node('div','reader-evidence-chat',right);chatHost.setAttribute('aria-label','当前论文的共享对话');
  let disposed=false,chatLease,offMaterials,offImages,formulaController,tabObserver,explanationKey='',originFocus=origin||doc.activeElement;
  const setStatus=(text,error=false)=>{if(disposed)return;status.textContent=text||'';status.hidden=!text;status.dataset.error=String(error);};
  const close=()=>{if(disposed)return;disposed=true;formulaController?.abort();offMaterials?.();offImages?.();if(tabObserver)win.Zotero?.Notifier?.unregisterObserver(tabObserver);doc.removeEventListener('keydown',escape);root.removeEventListener('easysch-conversation-close-request',close);win.removeEventListener('pagehide',pagehide);chatLease?.dispose();root.remove();if(viewers.get(doc)===control)viewers.delete(doc);if(originFocus?.isConnected&&(!reader.tabID||win.Zotero_Tabs?.selectedID===reader.tabID))originFocus.focus({preventScroll:true});};
  const locate=async()=>{try{await reader.navigate({pageIndex:asset.pageIndex,position:E.assets.position(asset)});close();}catch(error){setStatus('原文定位失败：'+error.message,true);}};
- paper.onclick=locate;image.ondblclick=event=>{event.preventDefault();locate();};
+ paper.onclick=locate;
  const noteButton=button('note','保存完整原图与解读为笔记',async()=>{if(noteButton.disabled)return;noteButton.disabled=true;try{const saved=await E.saveAssetNote(asset,{reader});if(disposed)return;chatLease?.surface?.show();chatLease?.surface?.refresh();setStatus(saved.warning||'已保存为笔记');}catch(error){setStatus(error.message,true);}finally{noteButton.disabled=false;}});
  button('locate','定位原文',locate);button('close','关闭（Esc）',close);
  const renderText=(host,text,sources=[])=>{if(E.renderContent)E.renderContent(host,text,{sources,onSource:value=>E.library.openSource({...value,...value.anchor})});else host.textContent=text;};
@@ -60,8 +61,11 @@ export async function openReaderEvidenceDetail(E,reader,asset,{doc=reader?._wind
     }catch(error){if(!disposed)setStatus(error.message,true);}finally{formulaController=null;explain.disabled=false;}
    },explanation);node('span','reader-evidence-action-label',explain,formula?'重新解释':'解释公式');
   }else{
-   const summary=material?.summary?.trim();if(summary&&(material.userEdited||detail||['verified','confirmed'].includes(material.verification)||!['pending','running','failed'].includes(material.generationStatus))){const overview=node('div','reader-evidence-summary',explanation);renderText(overview,summary,detail?.sources||[]);}
-   for(const section of detail?.result?.sections||[]){const group=node('section','reader-evidence-explanation-section',explanation);if(section.heading)node('h3','',group,section.heading);renderText(node('div','reader-evidence-richtext',group),section.body||'',detail.sources||[]);}
+   const summary=evidenceSummary(material,{limit:130});if(summary){const overview=node('div','reader-evidence-summary',explanation);renderText(overview,summary,detail?.sources||[]);}
+   if(detail?.result?.sections?.length||material?.summary?.trim()&&material.summary.trim()!==summary){const full=node('details','reader-evidence-full',explanation);node('summary','reader-evidence-full-toggle',full,'详细解读');
+    if(material?.summary?.trim())renderText(node('div','reader-evidence-richtext',full),material.summary,detail?.sources||[]);
+    for(const section of detail?.result?.sections||[]){const group=node('section','reader-evidence-explanation-section',full);if(section.heading)node('h3','',group,section.heading);renderText(node('div','reader-evidence-richtext',group),section.body||'',detail.sources||[]);}
+   }
    if(!explanation.childElementCount){const text=material?.generationError?'图表说明暂未完成':'暂无已保存的图表解读';node('p','reader-evidence-empty',explanation,text);}
   }
  };

@@ -54,6 +54,11 @@ test('selected editing carries only its chapter plan and rejects changed require
  for(const change of [p=>p.blocks[0].requirements='不能提前报告结果',p=>p.sections[0].writingPurpose='说明研究缺口',p=>p.sections[0].title='结果',p=>p.title='改为另一研究问题']){const p=fixture(),selection=capture(p);change(p);assert.throws(()=>assertSelectionTargetCurrent(p,selection),/计划或要求已经变化/);}
 });
 
+test('selected rewrite shares the effective feasibility preparation and rejects changes to scope or confirmed decisions',()=>{
+ const p=fixture();p.researchScope={domain:'communications',primaryKeyword:'CNN',secondaryKeyword:'modulation'};p.researchPreparation={researchGoal:'比较信道条件',resourceConstraints:'两周',confirmedDecisions:[{decision:'按设备独立划分',reason:'防止数据泄漏'}],openQuestions:['测试条件是否独立？'],plan:{minimumValidation:'先验证基线'}};const target=capture(p),context=selectionRequestContext(p,target);assert.equal(context.preparation.researchScope.secondaryKeyword,'modulation');assert.equal(context.preparation.confirmedDecisions[0].decision,'按设备独立划分');assert.deepEqual(context.preparation.openQuestions,['测试条件是否独立？']);
+ for(const mutate of [q=>q.researchScope.domain='physics',q=>q.researchPreparation.confirmedDecisions[0].decision='改用随机划分',q=>q.researchPreparation.openQuestions.push('增加实验')]){const q=structuredClone(p);mutate(q);assert.throws(()=>assertSelectionTargetCurrent(q,target),/计划或要求已经变化/);}
+});
+
 test('full source text and secondary PDF anchors participate in asynchronous selection validation',()=>{
  for(const change of [p=>p.materials[0].fullSourceText='另一份完整原文',p=>p.materials[0].sourceBlocks=[{sourceText:'新文本',sourceAnchor:{pageIndex:4}}],p=>p.materials[0].anchors=[{pageIndex:9}]]){const p=fixture(),target=capture(p);change(p);assert.throws(()=>assertSelectionTargetCurrent(p,target),/来源已经变化/);}
  const p=fixture();p.materials[0].fullSourceText='x'.repeat(10020);const context=selectionRequestContext(p,capture(p));assert.equal(context.sources[0].text.length,10000);assert.equal(context.sources[0].truncated,true);

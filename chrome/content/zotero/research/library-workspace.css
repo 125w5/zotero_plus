@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
+@import url('shared/reader-surface-tokens.css');
 /* XUL's hidden property is not a reliable display contract when native
    flex/toolbar rules provide their own display. Own the exclusive view state
    explicitly; the original tree and its inline splitter state stay intact. */
@@ -9,11 +10,11 @@
 #zotero-items-pane-container[data-library-embedded=true]>:is(#zotero-items-pane,#zotero-toolbar-item-tree,#zotero-advanced-search-pane-deck){display:none!important;visibility:hidden!important}
 #zotero-items-pane-container[data-library-embedded=true]>.library-workspace-discovery{display:flex!important;flex:1 1 0;min-height:0;height:0;overflow:hidden}
 :root[data-library-workspace=embedded] :is(#zotero-item-pane,#zotero-items-splitter){display:none!important;visibility:hidden!important}
-.library-workspace-tabs{display:flex;align-items:center;gap:4px;flex:none;min-height:38px;padding:4px 10px;border-bottom:1px solid #dfe4eb;background:linear-gradient(#ffffffeb,#f5f7faeb);font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;box-sizing:border-box}
-.library-workspace-tabs button{appearance:none;border:1px solid transparent;border-radius:7px;background:transparent;color:#67717e;padding:5px 12px;min-height:29px;cursor:pointer;font:inherit;transition:background .14s,box-shadow .14s,transform .14s}
-.library-workspace-tabs button:hover{background:#e9edf4;color:#354252}
+.library-workspace-tabs{display:flex;align-items:center;gap:4px;flex:none;min-height:38px;padding:4px 10px;border-bottom:1px solid var(--es-read-line);background:var(--es-read-tray);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;box-sizing:border-box}
+.library-workspace-tabs button{appearance:none;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--es-read-muted);padding:5px 12px;min-height:32px;cursor:pointer;font:inherit;transition:background .14s,box-shadow .14s,transform .14s}
+.library-workspace-tabs button:hover{background:color-mix(in srgb,var(--es-read-muted) 8%,var(--es-read-surface));color:var(--es-read-ink)}
 .library-workspace-tabs button:active{transform:translateY(1px)}
-.library-workspace-tabs button[aria-selected=true]{color:#263a50;background:#fff;border-color:#d5dde7;box-shadow:0 1px 3px #15243a12,inset 0 1px 0 #fff}
+.library-workspace-tabs button[aria-selected=true]{color:var(--es-read-ink);background:var(--es-read-selection);border-color:var(--es-read-line);box-shadow:none}
 .library-workspace-tabs .library-workspace-chat{margin-left:auto;font-size:11px}
 .library-workspace-tabs[hidden]{display:none!important}
 .library-workspace-tabs .library-workspace-select-all{margin-left:auto;padding:4px 8px;min-width:30px;font-size:17px;line-height:1;color:var(--easysch-muted,#687482)}

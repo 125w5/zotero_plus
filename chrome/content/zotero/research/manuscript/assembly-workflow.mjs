@@ -1,7 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {ASSESSMENT_VERSION,assessmentSignature,isCurrentAssessment} from '../shared/manuscript-assessment.mjs';
-export const ASSEMBLY_STAGES=['素材选择','装配正文','插入图表','验证导出'];
-export function installAssemblyWorkflow(U,{el,button,persist,applyPanels,renderNavigation,selectBlock,verifyBlock,status,prepareWriting,insertFigure,exportDocuments,findEvidence}){
+import {ASSEMBLY_FLOW_STAGES,migrateAssemblyFlow} from '../shared/assembly-direction.mjs';
+import {installDirectionWorkspace} from './direction-workspace.mjs';
+export const ASSEMBLY_STAGES=ASSEMBLY_FLOW_STAGES;
+export function installAssemblyWorkflow(U,{el,button,persist,snapshot,changed,applyPanels,renderNavigation,selectBlock,verifyBlock,status,insertFigure,exportDocuments,findEvidence}){
+ migrateAssemblyFlow(U.p);
  const doc=U.$('steps').ownerDocument,panel=U.$('workflow-panel');panel.tabIndex=-1;
  let generation=0,lastSignature='',issues=null,checking=false,assessing=false,error='',updatingNavigation=false;
  const state=()=>Number.isInteger(U.p.ui.step)&&U.p.ui.step>=0&&U.p.ui.step<4?U.p.ui.step:0;
@@ -12,19 +15,14 @@ export function installAssemblyWorkflow(U,{el,button,persist,applyPanels,renderN
  const hasContent=()=>U.p.blocks.some(b=>b.text?.trim()||b.type==='table'&&b.table?.rows?.length||b.type==='image'&&b.imagePath);
  function renderSteps(snapshot){
   const nav=U.$('steps');nav.hidden=false;nav.setAttribute('aria-label','论文装配流程');doc.body.dataset.assemblyStage=String(state());
-  if(!nav.children.length)ASSEMBLY_STAGES.forEach((label,index)=>{const control=button('',()=>setStep(index,{run:true}),nav,'assembly-step');control.dataset.step=String(index);control.append(el('span',String(index+1),'assembly-step-number'),el('span',label));control.title=['选择论文、笔记与真实素材','分章节整理段落任务、支撑素材和证据缺口，正文保留','在当前章节插入可编辑公式、图片或表格','检查全文、评估剩余工作并导出两份 Word'][index];});
-  const done=[U.p.materials.length>0,hasContent(),U.p.blocks.some(b=>['image','formula','table'].includes(b.type)),snapshot?.current===true];
+  if(!nav.children.length)ASSEMBLY_STAGES.forEach((label,index)=>{const control=button('',()=>setStep(index),nav,'assembly-step');control.dataset.step=String(index);control.append(el('span',String(index+1),'assembly-step-number'),el('span',label));control.title=['导入语料与论文，按章节关联素材','结合可行性方案逐个确认方向，再生成初稿候选','选段与右侧 AI 对话微调，也可整篇修改','核验全文，按期刊样式导出正文与执行方案'][index];});
+  const done=[U.p.materials.length>0,!!U.p.directionDiscussion&&Object.keys(U.p.directionDiscussion.answers||{}).length===U.p.directionDiscussion.questions.length,hasContent(),snapshot?.current===true];
   for(const control of nav.children){const index=Number(control.dataset.step);control.classList.toggle('active',index===state());control.classList.toggle('done',done[index]);control.setAttribute('aria-current',index===state()?'step':'false');}
  }
  const paragraph=(host,text,cls)=>{const node=el('p',undefined,cls);if(U.E.renderContent)U.E.renderContent(node,text);else node.textContent=text;host.append(node);};
  function renderPanel(snapshot){
-  const current=state(),visible=current>=2;panel.hidden=!visible;U.$('details').hidden=visible;if(!visible)return;panel.replaceChildren();
-  const heading=el('div',undefined,'workflow-heading');heading.append(el('h3',ASSEMBLY_STAGES[current]));button('返回正文',()=>setStep(1),heading,'quiet-action');panel.append(heading);
-  if(current===2){
-   paragraph(panel,'插入到当前章节，保留原图、数据与 LaTeX 源码。','muted');const actions=el('div',undefined,'workflow-insert-actions');
-   for(const [type,label]of [['image','图片'],['table','表格'],['formula','公式']]){const control=button(label,()=>{closePanel();return insertFigure?.(type);},actions);control.dataset.insertType=type;}
-   panel.append(actions);button('从已有素材查找图表',()=>{closePanel();return findEvidence?.();},panel,'quiet-action');button('完成插入，验证全文',()=>setStep(3),panel,'workflow-next');return;
-  }
+  const current=state(),visible=current===3;panel.hidden=!visible;U.$('details').hidden=visible;if(!visible)return;panel.replaceChildren();
+  const heading=el('div',undefined,'workflow-heading');heading.append(el('h3',ASSEMBLY_STAGES[current]));button('返回细调',()=>setStep(2),heading,'quiet-action');panel.append(heading);
   const summary=el('div',checking?'正在检查结构与文件…':issues===null?'尚未检查':issues.length?issues.length+' 项需要处理':'结构与文件检查通过','workflow-check-summary');summary.setAttribute('role','status');panel.append(summary);
   const verify=button('重新检查',()=>refresh(true),summary,'quiet-action');verify.disabled=checking;
   if(issues?.length){const list=el('div',undefined,'workflow-issues');for(const issue of issues){const control=button(issue.message,()=>{if(issue.blockID){closePanel();selectBlock(issue.blockID,{scroll:true});}else U.$('canvas').focus();},list,'workflow-issue');control.dataset.blockId=issue.blockID||'';}panel.append(list);}
@@ -43,7 +41,7 @@ export function installAssemblyWorkflow(U,{el,button,persist,applyPanels,renderN
   const format=el('details',undefined,'workflow-format');format.append(el('summary','Word 样式'));paragraph(format,U.p.template.referenceDoc?'已使用自定义 Word 样式':'使用当前论文模板','muted');button('选择 reference.docx',async()=>{const file=await U.E.pick(doc.defaultView,'选择 Word 样式参考文档','file','docx');if(file){U.p.template.referenceDoc=file;await persist();render();}},format);panel.append(format);
   const output=button('导出正文与执行方案 Word',()=>exportDocuments?.(),panel,'workflow-export-bundle');output.disabled=!snapshot.current||checking||!!issues?.length||U.busy||assessing;
  }
- const renderView=snapshot=>{renderSteps(snapshot);renderPanel(snapshot);};
+ const renderView=snapshot=>{renderSteps(snapshot);renderPanel(snapshot);U.directionWorkspace?.render();};
  const renderCurrent=()=>renderView(state()===3?assessmentSnapshot():undefined);
  async function refresh(force=false,snapshot){
   if(state()!==3){renderView();return;}
@@ -60,19 +58,20 @@ export function installAssemblyWorkflow(U,{el,button,persist,applyPanels,renderN
  }
  async function executePlanStep(step){
   if(!currentAssessment())throw Error('评估已过期，请重新评估后继续执行方案');if(step.blockIDs?.length)selectBlock(step.blockIDs[0],{scroll:true});
-  if(step.tool==='export_check')return refresh(true);if(step.tool==='figure_insert')return setStep(2);
+  if(step.tool==='export_check')return refresh(true);if(step.tool==='figure_insert'){await setStep(2);return insertFigure?.('image');}
   closePanel();if(step.tool==='evidence_search')return findEvidence?.(step.action);
   if(step.tool==='source_verify'){const block=U.p.blocks.find(b=>step.blockIDs.includes(b.id));if(block?.materials?.length)return verifyBlock(block);return findEvidence?.(step.action);}
   doc.querySelector('[data-id="'+U.p.ui.blockID+'"] .editable')?.focus?.();status(step.action);
  }
- async function setStep(value,{focus=true,run=false}={}){
+ async function setStep(value,{focus=true}={}){
   if(!Number.isInteger(value)||value<0||value>3)return;const previous=state();U.p.ui.step=value;U.p.ui.leftOpen=true;
-  if(value<2)U.p.ui.left=value===0?'materials':'structure';if(value>=2)U.p.ui.rightOpen=true;applyPanels();updatingNavigation=true;try{renderNavigation();}finally{updatingNavigation=false;}
+  U.p.ui.left=value===0?'materials':'structure';if(value>=2)U.p.ui.rightOpen=true;applyPanels();updatingNavigation=true;try{renderNavigation();}finally{updatingNavigation=false;}
+  if(previous!==value){U.renderEditor?.();U.selectionAssistant?.sync();}
   if(previous!==value&&!doc.defaultView.matchMedia('(prefers-reduced-motion:reduce)').matches)U.$('workspace').animate?.([{opacity:.86,transform:'translateY(3px)'},{opacity:1,transform:'none'}],{duration:170,easing:'cubic-bezier(.2,.7,.3,1)'});
-  await refresh();await persist();if(focus){const target=value===0?U.$('material-search'):value===1?doc.querySelector('[data-id="'+U.p.ui.blockID+'"] .editable')||U.$('canvas'):panel;target?.focus?.({preventScroll:true});}
-  if(value===1&&run){if(U.busy)throw Error('当前任务仍在执行');await prepareWriting?.();}
+  await refresh();await persist();if(focus){const target=value===0?U.$('material-search'):value===1?U.$('direction-workspace'):value===2?U.$('selection-assistant'):panel;target?.focus?.({preventScroll:true});}
  }
  const render=()=>{if(updatingNavigation)return;if(state()===3)refresh().catch(failure=>status(failure.message,true));else renderView();};
- const closePanel=()=>{U.p.ui.step=1;panel.hidden=true;U.$('details').hidden=false;renderSteps();};
+ const closePanel=()=>{if(state()===3)void setStep(2,{focus:false}).catch(failure=>status(failure.message,true));};
+ installDirectionWorkspace(U,{el,button,persist,snapshot,changed,status,setStep});
  return {render,setStep,refresh,assessWhole,executePlanStep,closePanel,get issues(){return issues;}};
 }

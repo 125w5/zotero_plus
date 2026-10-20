@@ -1,6 +1,6 @@
 import {searchFilter} from './shared/compact-ui.mjs';
 import {observeListEnd} from './shared/infinite-scroll.mjs';
-import {openPaperSearch} from './paper-search.mjs';
+import {researchScopeFromProject} from './shared/research-domain.mjs';
 import {materialViewSwitch,materialDisplay} from './shared/material-display.mjs';
 import {renderTopicNavigation} from './shared/topic-navigation.mjs';
 import {applyTopics} from './shared/research-topics.mjs';
@@ -10,12 +10,11 @@ import {materialPreview,recentResults,installSearchKeys} from './shared/material
 export function notebookBrowser({E,N,A,id,$,el,button,status,run}) {
  let anchor=null,visibleLimit=60;const state=()=>N.project(id).ui.catalog||{topic:id,selection:[],sort:'relevance'};
  let paperScope;
- const paperActions=el('div');paperActions.className='preparation-paper-actions';$('project-paper-summary').after(paperActions);const paperSearch=el('section');paperSearch.className='preparation-paper-search';paperActions.after(paperSearch);const collect=button('搜集项目论文',()=>openPaperSearch(E,N.project(id).researchGoal||N.project(id).title,{projectID:id,status,host:paperSearch}),paperActions);collect.dataset.action='collect-project-papers';button('刷新论文',()=>refreshPaperSelection().catch(error=>status(error.message)),paperActions);
+ const paperActions=el('div');paperActions.className='preparation-paper-actions';$('project-paper-summary').after(paperActions);const collect=button('搜集文献',()=>E.openWorkflow('search',{projectID:id,collectionID:paperScope?.collectionID,query:N.project(id).researchGoal||N.project(id).title,researchScope:researchScopeFromProject(N.project(id))}),paperActions);collect.dataset.action='collect-project-papers';button('导入语料',()=>E.openResearchResources(window.parent,{projectID:id}),paperActions);button('刷新',()=>refreshPaperSelection().catch(error=>status(error.message)),paperActions);
  async function refreshPaperSelection(){
   const folders=await N.paperFolders(),folder=await N.ensureProjectCollection(id);paperScope=folder;const select=$('project-paper-folder');select.replaceChildren();for(const row of folders.collections){const option=el('option',row.path||row.name);option.value=String(row.id);select.append(option);}if(!folders.collections.some(row=>row.id===folder.collectionID)){const option=el('option',folder.name);option.value=String(folder.collectionID);select.append(option);}select.value=String(folder.collectionID);
-  const list=$('project-paper-list'),selected=new Set(folder.selectedPaperIDs);list.replaceChildren();for(const paper of folder.papers){const label=el('label'),box=el('input');box.type='checkbox';box.value=String(paper.id);box.checked=selected.has(paper.id);box.dataset.paperId=String(paper.id);box.onchange=()=>N.setPaperScope(id,{paperIDs:[...list.querySelectorAll('input:checked')].map(node=>Number(node.value))}).then(refreshPaperSelection).catch(error=>status(error.message));label.append(box,el('span',paper.title));list.append(label);}
-  $('project-paper-summary').textContent=folder.papers.length?folder.name+' · 已选 '+folder.selectedPaperIDs.length+' / '+folder.papers.length+' 篇；下载的论文会保存在此文件夹。':folder.name+' · 尚无论文。可先在文献搜集中下载到此文件夹；评估会联网检索，并标明本地文献缺口。';
-  if(!folder.papers.length)list.append(el('p','文件夹目前没有论文，后续下载后可刷新并选择。'));
+  $('project-paper-list').replaceChildren();
+  $('project-paper-summary').textContent=folder.papers.length?folder.selectedPaperIDs.length+' 篇文献 · 按研究范围筛选':'尚无本地论文，评估时按研究范围联网检索';
  }
  $('project-paper-folder').onchange=()=>N.setPaperScope(id,{collectionID:Number($('project-paper-folder').value)}).then(refreshPaperSelection).catch(error=>status(error.message));
  $('project-new-folder').onclick=()=>N.ensureProjectCollection(id,{newCollectionName:N.project(id).title+' · 文献'}).then(refreshPaperSelection).catch(error=>status(error.message));

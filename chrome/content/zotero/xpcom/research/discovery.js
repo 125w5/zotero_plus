@@ -67,6 +67,7 @@
  };
  Zotero.addShutdownListener(async()=>{
   stopping=true;for(const controller of referenceControllers)controller.abort();
+  await E.stopJournalSubscriptions?.();
   await Promise.allSettled([...referenceTasks.values()].map(task=>task.promise).concat([...metadataTasks.values()]));
   await E.store?.flush?.();
  });
@@ -92,19 +93,19 @@
 	E.discoverySearch=async(query,{signal,provider='semantic'}={})=>{if(provider==='crossref'){const data=JSON.parse(await E.requestProvider('https://api.crossref.org/works?query='+encodeURIComponent(query)+'&rows=8&filter=has-abstract:true',{signal}));const parser=new (Zotero.getMainWindow().DOMParser)();return (data.message?.items||[]).map(p=>({id:p.DOI,doi:p.DOI,title:p.title?.[0]||'',abstract:parser.parseFromString(p.abstract||'','text/html').body.textContent,url:p.URL||'https://doi.org/'+p.DOI,date:String(p.published?.['date-parts']?.[0]?.[0]||''),source:'Crossref'}));}const data=JSON.parse(await E.requestProvider(graph+'paper/search?query='+encodeURIComponent(query)+'&limit=8&fields='+fields,{signal}));return (data.data||[]).map(normalize);};
  // Metadata-first open-access browsing. Page cursors stay with their provider.
  const pageTasks=new Map();let pageTail=Promise.resolve(),pageLast=0;
- E.searchPaperPage=async(query,{provider='',page=1,cursor,filters={},limit=20,signal}={})=>{
-  query=String(query).trim();if(!query)throw Error('请输入研究主题');limit=Math.min(40,Math.max(5,limit));page=Math.max(1,page);
-  const choice=Feed.discoveryFilters(filters),restricted=choice.journalOnly||choice.sourceIDs.length||choice.topOnly,key='pdf-search-v4:'+JSON.stringify([query,provider,page,cursor,choice,limit]);let task=pageTasks.get(key);
+ E.searchPaperPage=async(query,{provider='',page=1,cursor,filters={},limit=40,signal,researchScope,domain}={})=>{
+  const scope=Feed.normalizeResearchScope(researchScope||domain||{}),inputQuery=String(query||'').trim();query=Feed.buildResearchQuery(scope,inputQuery);if(!query)throw Error('请输入研究主题');limit=Math.min(100,Math.max(5,limit));page=Math.max(1,page);
+  const choice=Feed.discoveryFilters(filters),restricted=choice.journalOnly||choice.sourceIDs.length||choice.topOnly,key='pdf-search-v5:'+JSON.stringify([query,provider,page,cursor,choice,limit,scope]);let task=pageTasks.get(key);
   if(!task){task=(async()=>{const cache=E.store.get().paperSearchPages?.[key];if(cache&&Date.now()-cache.at<3600000)return{...cache.result,records:Feed.applyDiscoveryFilters(cache.result.records.map(row=>Feed.enrichDiscoveryRecord(row,E)),choice),cacheHit:true};
    const turn=pageTail.then(async()=>{await Zotero.Promise.delay(Math.max(0,pageLast+1000-Date.now()));pageLast=Date.now();});pageTail=turn.catch(()=>{});await turn;
    let result,fallback,errors=[];for(const name of provider?[provider]:restricted?['openalex']:['openalex','semantic','arxiv'])try{
     const offset=(page-1)*limit;let rows=[],more=false;
     if(['openalex','crossref','europepmc'].includes(name)){
-     const feed=await E.recommendationFeed({mode:'latest',query,page,cursor,limit,signal,provider:name,filters:{...choice,sort:choice.sort||'relevance'}});if(feed.error&&!feed.records.length)throw Error(feed.error);result={...feed,provider:feed.providerID||name,providerName:feed.provider||'本地文库',query,limitations:[...errors,...(feed.limitations||[])]};if(!feed.error||provider||restricted)break;fallback=result;result=undefined;errors.push(feed.error);continue;
+     const feed=await E.recommendationFeed({mode:'latest',query:inputQuery,researchScope:scope,page,cursor,limit,signal,provider:name,filters:{...choice,sort:choice.sort||'relevance'}});if(feed.error&&!feed.records.length)throw Error(feed.error);result={...feed,provider:feed.providerID||name,providerName:feed.provider||'本地文库',query,limitations:[...errors,...(feed.limitations||[])]};if(!feed.error||provider||restricted)break;fallback=result;result=undefined;errors.push(feed.error);continue;
     }else if(name==='semantic'){
      const data=JSON.parse(await E.requestProvider(graph+'paper/search?query='+encodeURIComponent(query)+'&openAccessPdf&offset='+offset+'&limit='+limit+'&fields='+fields+',citationCount',{signal},20000));rows=(data.data||[]).map(p=>({...normalize(p),oa:true,citationCount:p.citationCount??null,retracted:null}));more=data.next!=null;
     }else if(name==='arxiv'){const data=await E.arxivSearchPage(query,{page,limit,signal});rows=data.records.map(p=>({...p,oa:true,retracted:null,citationCount:null,sourceType:'repository'}));more=data.hasMore;}else throw Error('不支持的文献来源');
-    const seen=new Set();rows=Feed.applyDiscoveryFilters(rows.map(row=>Feed.enrichDiscoveryRecord(row,E)),choice).filter(r=>{const id=String(r.doi||r.url||r.id).toLowerCase();if(!r.title||!id||seen.has(id))return false;seen.add(id);return true;});
+    const seen=new Set();rows=Feed.applyDiscoveryFilters(rows.map(row=>Feed.enrichDiscoveryRecord(row,E)),choice).filter(r=>{const id=String(r.doi||r.url||r.id).toLowerCase();if(!r.title||!id||seen.has(id)||!Feed.matchesResearchScope(r,scope))return false;seen.add(id);return true;});
     result={records:rows,provider:name,page,nextPage:page+1,nextCursor:null,hasMore:more,cacheHit:false,filters:choice,filterOptions:{journals:Feed.discoveryJournalOptions(rows)},limitations:[...errors,...Feed.discoveryFilterLimitations(choice)],query};if(rows.length||provider)break;
    }catch(e){if(signal?.aborted||e.name==='AbortError')throw e;errors.push(name+'：'+e.message);}
    if(fallback&&!result?.records.length)result={...fallback,limitations:[...new Set([...(fallback.limitations||[]),...errors])]};if(!result)throw Error('联网检索失败：'+errors.join('；'));await E.store.update(s=>{s.paperSearchPages||={};s.paperSearchPages[key]={at:Date.now(),result};const keys=Object.keys(s.paperSearchPages);for(const k of keys.slice(0,Math.max(0,keys.length-80)))delete s.paperSearchPages[k];});return result;
@@ -122,7 +123,7 @@
    const saved=await E.importAcademic(record,{select:false,...target}),item=await Zotero.Items.getAsync(saved.id);let attachment=await E.library.localPDF(item);if(attachment)return{itemID:item.id,attachmentID:attachment.id,reused:true,...target};
    if(!record.pdf||!/^https:\/\//.test(record.pdf))throw Error('题录已保留，暂无直接公开 PDF；可打开来源页面。');
    if(Zotero.Libraries?.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件');if(signal?.aborted)throw Error('已取消');onProgress({stage:'download',text:'正在下载 PDF…'});
-   let response;try{response=await Zotero.HTTP.request('GET',record.pdf,{responseType:'arraybuffer',timeout:45000,followRedirects:true,successCodes:false});}catch(_){throw Error('公开 PDF 下载失败或超时，题录已保留');}
+   let response,xhr;const abort=()=>xhr?.abort();try{signal?.addEventListener('abort',abort,{once:true});response=await Zotero.HTTP.request('GET',record.pdf,{responseType:'arraybuffer',timeout:15000,followRedirects:true,successCodes:false,requestObserver:request=>{xhr=request;if(signal?.aborted)request.abort();}});}catch(_){throw Error(signal?.aborted?'已取消下载':'PDF 下载失败：15 秒内未完成或连接中断，题录已保留，可重试');}finally{signal?.removeEventListener('abort',abort);}
    if(signal?.aborted)throw Error('已取消');if(response.status<200||response.status>=300){const error=Error('公开 PDF 下载失败（HTTP '+response.status+'），题录已保留');if([401,403,404,410].includes(response.status))await E.markDiscoveryPDFFailure?.(record.pdf,error);throw error;}const bytes=new Uint8Array(response.response);try{ChromeUtils.importESModule('chrome://zotero/content/research/shared/arxiv.mjs').assertPDF(bytes);}catch(error){await E.markDiscoveryPDFFailure?.(record.pdf,error);throw error;}
    onProgress({stage:'save',text:'正在保存 PDF…'});
    const path=PathUtils.join(Zotero.getTempDirectory().path,'easysch-oa-'+Zotero.Utilities.randomString(12)+'.pdf');try{await IOUtils.write(path,bytes);attachment=await Zotero.Attachments.importFromFile({file:Zotero.File.pathToFile(path),parentItemID:item.id,contentType:'application/pdf',title:record.title});attachment.setField('url',record.pdf);await attachment.saveTx({skipSelect:true});}finally{await IOUtils.remove(path,{ignoreAbsent:true});}
@@ -219,4 +220,7 @@
   const result=await task;if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);if(signal?.aborted)throw Error('已取消');onProgress({stage:'saved',text:'PDF 已保存'});if(open)await Zotero.Reader.open(result.attachmentID);return{...result,...target};
  };
  Feed.installDiscoveryFeed(E,{Zotero});
+ // Subscription checks stay inside the running application. No external
+ // scheduler or browser tab is required, and disabled subscriptions do no I/O.
+ Feed.installJournalSubscriptionTimer(E,{createController:()=>new (Zotero.getMainWindow().AbortController)(),onError:error=>Zotero.logError?.(error)});
 })(Zotero.Research);

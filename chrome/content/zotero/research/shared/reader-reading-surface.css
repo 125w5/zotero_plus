@@ -1,6 +1,4 @@
 /* One typography and material system for native left rail, notes and reading. */
-:root{--es-read-ink:#20242a;--es-read-muted:#59636f;--es-read-tray:#f3f5f7;--es-read-surface:#fff;--es-read-line:#dbe1e8;--es-read-radius:12px;--es-read-shadow:#1625360a;--es-read-highlight:#ffffffc4}
-:root[data-easysch-reading-appearance=dark]{--es-read-ink:#e2e7ed;--es-read-muted:#a2adbc;--es-read-tray:#282f39;--es-read-surface:#252b33;--es-read-line:#444f5e;--es-read-shadow:#0003;--es-read-highlight:#ffffff0c}
 #sidebarContainer,#sidebarContent{background:var(--es-read-tray)!important;color:var(--es-read-ink);font:13px/1.55 system-ui,'Microsoft YaHei',sans-serif}
 #sidebarContainer{border-right:1px solid var(--es-read-line)}
 #sidebarContainer .sidebar-toolbar{height:38px;border-bottom:1px solid var(--es-read-line);background:linear-gradient(180deg,var(--es-read-surface),var(--es-read-tray))}

@@ -83,7 +83,7 @@
   const node=(tag,cls,text)=>{const value=doc.createElementNS('http://www.w3.org/1999/xhtml',tag);if(cls)value.className=cls;if(text!==undefined)value.textContent=text;return value;};
   const group=node('section','native-workbench');nav.append(group);
   const error=e=>Zotero.logError(e);
-  for(const [title,page]of [['研究对话','agent'],['文献搜集','search'],['论文推荐','discovery'],['论文装配','writing'],['组会 PPT','ppt']]){const b=node('button',undefined,title);b.type='button';b.title=title;b.dataset.page=page;b.onclick=async()=>{try{await workspace.show(page);}catch(e){error(e);}};group.append(b);}
+  for(const [title,page]of [['研究对话','agent'],['文献检索','search'],['论文装配','writing'],['组会 PPT','ppt']]){const b=node('button',undefined,title);b.type='button';b.title=title;b.dataset.page=page;b.onclick=async()=>{try{await workspace.show(page);}catch(e){error(e);}};group.append(b);}
   const offMode=workspace.subscribe(mode=>{const page=mode==='local'?'research':mode==='notebook'?'writing':mode;for(const b of group.querySelectorAll('[data-page]')){const active=b.dataset.page===page;b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');}});
   let disposed=false;nav._dispose=()=>{if(disposed)return;disposed=true;offMode();};win.addEventListener('unload',nav._dispose,{once:true});host.prepend(nav);
   const collections=win.ZoteroPane.collectionsView;

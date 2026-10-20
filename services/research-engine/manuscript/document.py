@@ -8,6 +8,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.section import WD_SECTION_START
 from lxml import etree
 
 def element(tag, **attrs):
@@ -178,6 +179,47 @@ def academic_default_styles(doc, is_plan=False):
                     run.font.name = 'Times New Roman'
                     run._r.get_or_add_rPr().get_or_add_rFonts().set(qn('w:eastAsia'), '宋体')
 
+
+JOURNAL_LAYOUTS = {
+    'research': dict(font='Times New Roman', fontSize=11, lineSpacing=1.5, columns=1, margin=25.4),
+    'nature': dict(font='Arial', fontSize=11, lineSpacing=2, columns=1, margin=25.4),
+    'physical-review': dict(font='Times New Roman', fontSize=12, lineSpacing=2, columns=1, margin=25.4),
+    'ieee': dict(font='Times New Roman', fontSize=10, lineSpacing=1, columns=2, margin=19),
+}
+
+
+def section_columns(section, count):
+    cols = section._sectPr.find(qn('w:cols'))
+    if cols is None:
+        cols = element('w:cols')
+        section._sectPr.append(cols)
+    for child in list(cols):
+        cols.remove(child)
+    cols.set(qn('w:num'), str(count))
+    cols.set(qn('w:equalWidth'), '1')
+    cols.set(qn('w:space'), '425')  # 7.5 mm between columns
+
+
+def apply_journal_layout(doc, value):
+    """Apply only known presets. A custom reference.docx remains authoritative."""
+    if not value:
+        return None
+    layout = JOURNAL_LAYOUTS.get(value.get('id'))
+    if not layout:
+        raise ValueError('未知期刊稿件格式，请重新选择')
+    for name in ['Normal', 'Title', 'Caption', 'List Bullet', 'List Number'] + ['Heading '+str(i) for i in range(1, 10)]:
+        style = doc.styles[name]
+        style.font.name = layout['font']
+        style.font.size = Pt(layout['fontSize'] if name in ('Normal', 'Caption', 'List Bullet', 'List Number') else 18 if name == 'Title' else 13 if name == 'Heading 1' else 12)
+        style.paragraph_format.line_spacing = layout['lineSpacing']
+        if name in ('Normal', 'Caption', 'List Bullet', 'List Number'):
+            style.paragraph_format.space_after = Pt(0)
+    for section in doc.sections:
+        section.page_width, section.page_height = Mm(210), Mm(297)
+        section.top_margin = section.bottom_margin = section.left_margin = section.right_margin = Mm(layout['margin'])
+        section_columns(section, layout['columns'])
+    return layout
+
 def dataset(file):
     p=Path(file)
     if p.suffix.lower()=='.csv':
@@ -204,8 +246,12 @@ def formula(latex,pandoc,folder):
     if not nodes: raise ValueError('公式没有生成可编辑 OMML：'+latex)
     return [deepcopy(n) for n in nodes]
 
-def write_table(doc,b,number,math_context=None):
-    spec=b['table']; rows=spec['rows']; cols=len(rows[0])
+def write_table(doc,b,number,math_context=None,available_width=None):
+    spec=deepcopy(b['table']); rows=spec['rows']; cols=len(rows[0])
+    if available_width and sum(spec['widths']) > available_width:
+        factor=available_width/sum(spec['widths'])
+        spec['widths']=[width*factor for width in spec['widths']]
+        spec['width']=available_width
     p=doc.add_paragraph(style='Caption')
     bookmark='table_'+re.sub(r'\W','_',b['id']); p._p.append(element('w:bookmarkStart',id=number,name=bookmark))
     p.add_run('表 ');field(p,' SEQ Table \\* ARABIC ',number);write_runs(p,[], ' '+spec.get('caption',''),math_context);p._p.append(element('w:bookmarkEnd',id=number))
@@ -246,10 +292,16 @@ def export(req):
     doc=Document(reference)
     if not req.get('referenceDoc'):
         academic_default_styles(doc, req.get('operation') == 'manuscript-plan-export')
+    layout=apply_journal_layout(doc, req['project'].get('journalFormat')) if not req.get('referenceDoc') else None
+    available_width=((210-2*layout['margin']-(7.5 if layout['columns']>1 else 0))/layout['columns']) if layout else None
     # Retain styles/headers/footers/section properties; discard template example body.
     for node in list(doc.element.body):
         if node.tag!=qn('w:sectPr'):doc.element.body.remove(node)
     p=req['project'];doc.add_heading(p['title'],0);table_number=0
+    if layout and layout['columns']>1:
+        # A full-width title precedes a continuous two-column article body.
+        section_columns(doc.sections[0],1)
+        section_columns(doc.add_section(WD_SECTION_START.CONTINUOUS),layout['columns'])
     math_context=dict(pandoc=req.get('pandoc'),folder=folder,warnings=[])
     for section in p['sections']:
         blocks=[b for b in p['blocks'] if b['sectionID']==section['id'] and not (b.get('emptyStarter') and not b.get('text','').strip() and not b.get('materials'))]
@@ -275,9 +327,12 @@ def export(req):
                 width=b.get('width',140);height=b.get('height')
                 if not isinstance(width,(int,float)) or not 0<width<=158:raise ValueError('图片宽度无效')
                 if height is not None and (not isinstance(height,(int,float)) or not 0<height<=240):raise ValueError('图片高度无效')
+                if available_width and width>available_width:
+                    if height is not None:height*=available_width/width
+                    width=available_width
                 doc.add_picture(str(path),width=Mm(width),**({'height':Mm(height)} if height is not None else {}))
                 if text:write_runs(doc.add_paragraph(style='Caption'),b.get('runs'),text,math_context)
-            elif kind=='table':table_number+=1;write_table(doc,b,table_number,math_context)
+            elif kind=='table':table_number+=1;write_table(doc,b,table_number,math_context,available_width)
             elif kind=='citation':
                 cited=req.get('citationText',{}).get(str(b.get('citationItemID')))
                 if not cited:raise ValueError('引用尚未由 Zotero 格式化')

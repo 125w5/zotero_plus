@@ -1,0 +1,6 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.assembly-export-actions{display:flex;align-items:center;gap:7px;min-width:0}
+.journal-format-picker{min-height:32px;max-width:198px;width:176px;padding:5px 28px 5px 10px;border:1px solid var(--es-read-line,var(--line,#dfe3e9));border-radius:8px;background:var(--es-read-surface,var(--surface,#fff));color:var(--es-read-ink,var(--text,#24282f));font:12px/1.5 system-ui,'Microsoft YaHei',sans-serif}
+.journal-format-picker:hover{background:var(--es-read-tray,var(--soft,#f5f6f8))}
+@media(max-width:1200px){.journal-format-picker{width:140px;font-size:11px}.assembly-export-actions{gap:4px}}
+@media(max-width:850px){.journal-format-picker{width:112px;max-width:112px}.assembly-export-actions>button{padding:5px 7px}}

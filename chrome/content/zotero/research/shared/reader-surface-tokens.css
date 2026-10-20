@@ -1,0 +1,14 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Colors only: safe to share with native chrome without styling PDF or notes. */
+:root{
+ --es-read-ink:#20242a;--es-read-muted:#59636f;--es-read-tray:#f3f5f7;--es-read-surface:#fff;--es-read-line:#dbe1e8;
+ --es-read-selection:#e9f2ff;--es-read-radius:10px;--es-read-shadow:#1625360a;--es-read-highlight:#ffffffc4;
+}
+:root[data-easysch-reading-appearance=dark],
+:root:not([data-easysch-reading-appearance])[data-easysch-appearance=dark],
+:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance])[data-appearance=dark],
+:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance])[data-theme=dark],
+:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance]):not([data-theme])[systemdark]{
+ --es-read-ink:#e2e7ed;--es-read-muted:#a2adbc;--es-read-tray:#282f39;--es-read-surface:#252b33;--es-read-line:#444f5e;--es-read-selection:#304963;--es-read-shadow:#0003;--es-read-highlight:#ffffff0c;
+}
+@media(prefers-color-scheme:dark){:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance]):not([data-theme]){--es-read-ink:#e2e7ed;--es-read-muted:#a2adbc;--es-read-tray:#282f39;--es-read-surface:#252b33;--es-read-line:#444f5e;--es-read-selection:#304963;--es-read-shadow:#0003;--es-read-highlight:#ffffff0c}}

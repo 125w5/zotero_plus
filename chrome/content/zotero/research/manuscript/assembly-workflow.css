@@ -19,3 +19,25 @@ html[data-appearance] #steps .assembly-step{font:12px/1.4 var(--ui-font,system-u
 #workflow-panel :is(.workflow-error,.workflow-stale){padding:10px 12px;border-radius:8px;background:var(--ui-hover);color:#8b5f43;font-size:12px}
 @media(max-width:1050px){html[data-appearance] body>header{height:auto;min-height:48px;flex-wrap:wrap}#steps{position:static;transform:none;max-width:none;flex:1 0 100%;order:3;justify-content:center;padding-block:2px}}
 @media(max-width:620px){html[data-appearance] #steps .assembly-step{padding:5px;font-size:11px;gap:3px}.assembly-step-number{width:17px;height:17px}}
+.direction-workspace{margin:18px;min-height:0;max-height:100%;overflow:auto;padding:24px;border:1px solid var(--ui-border);border-radius:var(--ui-radius,10px);background:var(--ui-card);box-shadow:var(--ui-shadow);color:var(--ui-text);font:14px/1.75 var(--ui-font);flex:1}
+.direction-workspace[hidden],#canvas[hidden]{display:none!important}
+.direction-workspace:focus{outline:none}
+.direction-workspace.direction-compact{flex:none;margin:0;padding:8px 16px;border:0;border-bottom:1px solid var(--ui-border);border-radius:0;box-shadow:none;background:var(--ui-tray)}
+.direction-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border:0;padding:0;background:transparent;height:auto;position:static}
+.direction-heading small,.direction-intro,.direction-count{color:var(--ui-secondary)}
+.direction-workspace h2{font-size:20px;line-height:1.5;margin:4px 0 18px}.direction-workspace h3{font-size:18px;line-height:1.65;margin:14px 0}
+.direction-options{display:grid;gap:10px;margin:18px 0;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr))}
+.direction-options button{white-space:normal;text-align:left;min-height:52px;padding:13px 16px;line-height:1.65;border:1px solid var(--ui-border);border-radius:10px;color:var(--ui-text);background:var(--ui-card)}
+.direction-options button:is([aria-checked=true],[aria-selected=true]){background:var(--ui-selection);border-color:#a4bfdc;box-shadow:none}
+.direction-workspace textarea{box-sizing:border-box;width:100%;min-height:76px;resize:vertical;font:inherit;line-height:1.7;padding:12px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-tray);color:var(--ui-text)}
+.direction-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:18px}.direction-compact .direction-actions{margin:0}.direction-actions>.direction-intro{margin-right:auto;font-size:13px}
+.direction-workspace .direction-primary{background:var(--ui-selection);border:1px solid #b6cce3;color:var(--ui-text);min-height:34px;border-radius:8px;padding:7px 14px}
+.direction-progress:empty{display:none}.direction-progress{color:var(--ui-secondary)}.direction-error{color:#a3483c;background:var(--ui-hover);padding:10px;border-radius:8px}
+.direction-answer{border:1px solid var(--ui-border);background:var(--ui-tray);border-radius:10px;padding:12px 16px;margin:10px 0}.direction-answer p{margin:4px 0}
+.draft-preview-navigation{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.draft-document-diff{white-space:pre-wrap;line-height:1.9;padding:22px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-tray);max-height:50vh;overflow:auto}
+.draft-document-diff del{background:#fbe7e7;color:#923d3d;text-decoration:line-through}.draft-document-diff ins{background:#e0f2e5;color:#25673b;text-decoration:none}
+body[data-assembly-stage="3"] #selection-assistant{display:none}
+body[data-assembly-stage="1"] :is(#details,#selection-assistant){display:none!important}
+.direction-guidance{padding:16px;font:13px/1.75 var(--ui-font);color:var(--ui-text)}.direction-guidance[hidden]{display:none}.direction-guidance h3{font-size:14px;margin:0 0 14px}.direction-guidance section{border:1px solid var(--ui-border);border-radius:10px;padding:12px;background:var(--ui-card);box-shadow:var(--ui-shadow);margin-bottom:12px}.direction-guidance strong{font-size:12px}.direction-guidance p{white-space:pre-wrap;margin:6px 0 0;color:var(--ui-secondary);overflow-wrap:anywhere}
+@media(max-width:760px){.direction-workspace{margin:10px;padding:16px}.direction-heading h2{font-size:17px}.direction-options{grid-template-columns:1fr}.direction-compact .direction-intro{display:none}}

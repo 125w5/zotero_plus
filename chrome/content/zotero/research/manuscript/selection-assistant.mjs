@@ -34,7 +34,7 @@ export function installSelectionAssistant(U,{snapshot,persist,changed,status,sav
  const selectedMaterial=id=>U.p.materials.find(row=>row.id===id)||U.A.assetLibrary()[id];
  const sync=()=>{
   if(preview){const retained=U.p.proposals?.find(row=>row.id===preview.id);if(retained!==preview){preview=retained||[...(U.p.proposals||[])].reverse().find(row=>row.kind==='assembly-selection-preview')||null;renderProposal();}}
-  const mode=U.p.ui.canvasDisplay||'materials';if(mode!==savedMode){savedMode=mode;viewMode=['digest','article'].includes(mode)?'chat':'details';}
+  const mode=U.p.ui.assemblyFlowVersion>=2?'stage-'+U.p.ui.step:U.p.ui.canvasDisplay||'materials';if(mode!==savedMode){savedMode=mode;viewMode=U.p.ui.assemblyFlowVersion>=2?U.p.ui.step===2?'chat':'details':['digest','article'].includes(mode)?'chat':'details';}
   const chat=viewMode==='chat';doc.body.dataset.writingAssistant=String(chat);right.classList.add('has-selection-assistant');root.dataset.view=chat?'chat':'details';chatTab.setAttribute('aria-selected',String(chat));detailTab.setAttribute('aria-selected',String(!chat));pane.hidden=!chat;fresh.hidden=!chat;scope.textContent=U.conversationSession?.modelID||'GPT-6 Luna';
   if(chat){right.hidden=false;U.p.ui.rightOpen=true;}U.syncSelectionAssistantLayout?.();
  };
@@ -48,7 +48,7 @@ export function installSelectionAssistant(U,{snapshot,persist,changed,status,sav
  const refreshTranscript=()=>{
   const session=U.conversationSession;if(!session)return;const signature=JSON.stringify([session.id,session.messages?.map(row=>[row.id,row.text,row.sources]),busy]);if(signature===renderSignature)return;renderSignature=signature;
   for(const dispose of messageDisposers.splice(0))dispose();const nearBottom=transcript.scrollHeight-transcript.scrollTop-transcript.clientHeight<60;transcript.replaceChildren();
-  const messages=(session.messages||[]).slice(-40);if(!messages.length){const empty=create('div','selection-assistant-empty');empty.append(create('span','easysch-symbol'),create('h3','','围绕文章，逐处推进'),create('p','','选中正文、写作速读或素材批注，比较修改方案后再采用。'));transcript.append(empty);}
+  const messages=(session.messages||[]).slice(-40);if(!messages.length){const empty=create('div','selection-assistant-empty');empty.append(create('span','easysch-symbol'),create('h3','','围绕文章，逐处推进'),create('p','','选中正文或素材批注，比较修改方案后再采用。也可以要求整篇调整。'));transcript.append(empty);}
   for(const message of messages){const row=create('article','selection-assistant-message');row.dataset.role=message.role;row.dataset.messageId=message.id;const heading=create('div','selection-assistant-message-heading');heading.append(create('small','',message.role==='user'?'你':'研究助手'));row.append(heading);const text=create('div','selection-assistant-message-text');row.append(text);U.E.renderContent(text,message.text,{sources:message.sources||[],onSource:source=>U.openResearchCitation?.(source)});
    if(message.role==='assistant'){const grip=control('',()=>{},heading,'selection-assistant-message-grip');grip.append(assemblyChatIcon(doc,'grip'));grip.title='拖到论文页或素材栏，保留问题和来源';grip.setAttribute('aria-label',grip.title);messageDisposers.push(installMessageDrag({card:row,grip,textRoots:[text],sessionID:session.id,messageID:message.id,onDrag:event=>U.updateMessagePinTargets?.(event)}));}
    transcript.append(row);

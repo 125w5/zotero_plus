@@ -27,6 +27,8 @@
 		const timers = ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
 		E.setTimeout = timers.setTimeout;
 		E.clearTimeout = timers.clearTimeout;
+		E.startResearchActivity?.();
+		E.startJournalSubscriptions?.();
 		await E.preparePassageSearch();
 		E.manuscripts.startArticleIndex();
 		E.manuscripts.startMaterialAnnotationSync?.();

@@ -1,6 +1,7 @@
 @import url('shared/paper-overview.css');
 @import url('shared/surface-tokens.css');
 @import url('shared/compact-ui.css');
+@import url('shared/reader-surface-tokens.css');
 /* The reader rail is the workspace; sections are tonal trays and individual
    evidence cards are raised white surfaces. No extra headings or action rows. */
 #easysch-home-navigation{display:flex;gap:5px;flex-wrap:wrap;padding:12px 8px;border-bottom:1px solid var(--color-border,#d7dbe1)}#easysch-home-navigation button,.academic-chat button,.research-fields-toggle{font:inherit;border:1px solid var(--color-border,#d7dbe1);border-radius:9px;padding:7px 11px;background:var(--color-background,Canvas);color:var(--color-foreground,CanvasText);cursor:pointer;max-width:100%;white-space:normal}#easysch-home-navigation button:hover,.academic-chat button:hover{background:var(--color-quinary,#e9ebee)}.academic-chat{padding:12px;display:flex;flex-direction:column;gap:12px;min-width:0;color:var(--color-foreground,CanvasText);font:13px/1.65 system-ui,'Microsoft YaHei',sans-serif}.academic-chat-heading{display:flex;flex-direction:column;gap:3px}.academic-chat-heading strong{font-size:16px}.academic-chat-heading small,.academic-chat-status{opacity:.75;font-size:12px}.academic-chat-messages{max-height:45vh;overflow:auto}.academic-chat.focused .academic-chat-messages{max-height:62vh;min-height:220px}.academic-turn{padding:12px 0;border-bottom:1px solid var(--color-border,#d7dbe1)}.academic-turn>p:first-child{background:var(--color-quinary,#e9ebee);border-radius:10px;padding:10px 12px;font-weight:600}.academic-turn details{margin-top:8px}.academic-chat-suggestions{display:flex;flex-direction:column;gap:6px}.academic-chat-suggestions button{text-align:left;font-size:12px}.academic-chat form{position:sticky;bottom:0;padding:10px 0;background:var(--color-background,Canvas);display:flex;gap:8px;flex-wrap:wrap}.academic-chat textarea{box-sizing:border-box;flex-basis:100%;width:100%;border:1px solid var(--color-border,#d7dbe1);border-radius:10px;padding:10px;font:inherit;resize:vertical;color:inherit;background:inherit}.academic-chat button.primary{background:#315e89;color:white}.academic-chat button:disabled{opacity:.55}.research-fields-toggle{font-size:11px;margin:6px}.research-paper-metric{font:12px/1.6 system-ui,'Microsoft YaHei',sans-serif;padding:8px 10px;margin:6px;border-radius:8px;background:var(--color-quinary,#e9ebee);color:var(--color-foreground,CanvasText)}
@@ -479,3 +480,11 @@ item-details[data-easysch-navigation=paper] #easysch-asset-panel{
 #easysch-home-navigation button.active,
 item-details[data-easysch-navigation=paper] .reference-pane .reference-row[data-selected=true]{background:var(--easysch-selection)!important;box-shadow:none!important;outline:0;border-color:var(--easysch-line)}
 item-pane-sidenav[data-easysch-navigation=paper] .btn[aria-selected=true]{background:var(--easysch-selection)!important;box-shadow:none!important}
+
+/* Native controls share reader colors; document frames retain their own style. */
+:root,:root[data-easysch-appearance=dark],:root:not([data-easysch-appearance])[data-theme=dark]{
+ --easysch-canvas:var(--es-read-tray);--easysch-surface:var(--es-read-surface);--easysch-panel:var(--es-read-tray);
+ --easysch-line:var(--es-read-line);--easysch-muted:var(--es-read-muted);--easysch-ink:var(--es-read-ink);
+ --easysch-selection:var(--es-read-selection);--easysch-hover:color-mix(in srgb,var(--es-read-muted) 8%,var(--es-read-surface));
+ --easysch-highlight:var(--es-read-highlight);--easysch-shadow:var(--es-read-shadow);
+}

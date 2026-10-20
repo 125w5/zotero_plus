@@ -1,0 +1,67 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.discovery-unified{max-width:1240px;margin:0 auto;padding:26px 30px 50px;color:var(--ui-text);font:14px/1.65 var(--ui-font)}
+.discovery-unified .discovery-page-heading{display:flex;align-items:baseline;gap:18px;margin-bottom:18px}
+.discovery-unified .discovery-page-heading h2{margin:0;font-size:23px;letter-spacing:.02em}
+.discovery-unified .discovery-page-heading p{margin:0;color:var(--ui-secondary)}
+.discovery-search-card,.discovery-journal-panel{border:1px solid var(--ui-border);border-radius:12px;background:var(--ui-card);padding:18px;box-shadow:var(--ui-shadow);overflow:clip}
+.discovery-unified .discovery-query-grid,.project-paper-search form{display:grid;grid-template-columns:minmax(140px,.8fr) minmax(160px,1.5fr) minmax(160px,1.3fr) auto;gap:10px;margin:0}
+.discovery-unified input:not([type=checkbox]),.discovery-unified select,.project-paper-search input,.project-paper-search select{box-sizing:border-box;min-width:0;max-width:100%;height:40px;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-card);color:var(--ui-text);font:14px var(--ui-font);padding:8px 11px;box-shadow:none}
+.discovery-unified input:focus-visible,.discovery-unified select:focus-visible,.discovery-unified button:focus-visible{outline:2px solid #88aace;outline-offset:2px}
+.discovery-unified button{min-height:34px;border-radius:8px;border:1px solid var(--ui-border);background:var(--ui-card);color:var(--ui-text);padding:6px 12px;font:13px/1.5 var(--ui-font);box-shadow:0 1px 2px #18243408;cursor:pointer}
+.discovery-unified button:hover{background:var(--ui-hover)}
+.discovery-unified .primary{background:#395f82;border-color:#395f82;color:#fff}
+.discovery-unified .primary:hover{background:#2e5274}
+.discovery-unified button:disabled{cursor:default;opacity:.6}
+.discovery-scope-options{display:flex;align-items:center;gap:20px;margin-top:10px}
+.discovery-scope-options input:not([type=checkbox]){flex:1;background:var(--ui-tray)}
+.discovery-scope-options label,.discovery-journal-panel label{display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:13px;color:var(--ui-secondary)}
+.discovery-scope-options input[type=checkbox],.discovery-journal-panel input[type=checkbox],.discovery-unified .compact-check input{width:16px;height:16px;accent-color:#537a9c}
+.discovery-scope-note{font-size:12px;color:var(--ui-secondary);margin:8px 1px 14px;min-height:20px}
+.discovery-unified .discovery-feed-filters{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:12px 0;border-top:1px solid var(--ui-border)}
+.discovery-unified .discovery-feed-filters select{height:34px;font-size:13px;flex:1;min-width:110px;max-width:250px}
+.discovery-unified .discovery-destination{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:2px 0 0;padding:12px 0 0;border:0;border-top:1px solid var(--ui-border);background:transparent;border-radius:0}
+.discovery-unified .discovery-destination-label{font-size:13px;color:var(--ui-secondary)}
+.discovery-unified .discovery-destination>select{height:34px;flex:1;min-width:170px;max-width:430px}
+.discovery-unified .discovery-save-actions{display:flex;gap:8px;align-items:center;flex:1;min-width:190px}
+.discovery-unified .discovery-save-actions select{height:34px;font-size:13px;flex:1}
+.discovery-unified .discovery-destination-note{font-size:12px;color:var(--ui-secondary);width:100%}
+.discovery-mode-tabs{display:flex;align-items:center;gap:6px;margin:18px 0 6px}
+.discovery-mode-tabs button{border-color:transparent;background:transparent;box-shadow:none}
+.discovery-mode-tabs [aria-pressed=true]{background:var(--ui-selection);border-color:var(--ui-border);font-weight:600}
+.discovery-mode-tabs .discovery-track-trigger{margin-left:auto;border-color:var(--ui-border);background:var(--ui-card)}
+.discovery-results-status{font-size:13px;color:var(--ui-secondary);margin:8px 0 12px;min-height:21px}
+.discovery-unified .discovery-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px;border:0;border-bottom:1px solid var(--ui-border);padding:9px 2px 13px;margin-bottom:13px;background:transparent;position:static;font-size:12px}
+.discovery-unified .discovery-actions .discovery-direct-actions{margin-left:auto}
+.discovery-unified .discovery-actions details:not([open]){width:auto}
+.discovery-unified .discovery-actions details[open]{flex-basis:100%;background:var(--ui-tray);padding:12px;border-radius:8px}
+.discovery-unified .discovery-actions textarea{display:block;min-width:300px;max-width:100%;margin-top:8px}
+.discovery-unified .card.discovery-paper{position:relative;display:block;border:1px solid var(--ui-border);border-radius:12px;background:var(--ui-card);padding:18px 22px;margin:0 0 12px;box-shadow:0 1px 3px #18243404;transition:background-color 120ms,border-color 120ms;overflow:clip}
+.discovery-unified .card.discovery-paper:hover{border-color:color-mix(in srgb,var(--ui-text) 23%,var(--ui-border));box-shadow:var(--ui-shadow)}
+.discovery-unified .card.discovery-paper.selected{background:var(--ui-selection);border-color:var(--ui-border);box-shadow:none}
+.discovery-unified .discovery-title{display:flex;align-items:flex-start;gap:9px;min-width:0;padding-right:100px}
+.discovery-unified .discovery-title input{margin-top:6px;flex:none}
+.discovery-unified .discovery-title .discovery-collection-title{font-size:17px;line-height:1.55;font-weight:600;text-align:left;border:0;border-radius:0;background:transparent;padding:0;box-shadow:none;min-height:0;white-space:normal}
+.discovery-unified .discovery-paper-grip{font-size:18px;opacity:.4;cursor:grab;flex:none;user-select:none}
+.discovery-unified .discovery-paper-meta{display:block;margin:7px 0 9px 43px;color:var(--ui-secondary);font-size:12px}
+.discovery-unified .discovery-paper>button{position:absolute;right:20px;top:19px;min-width:84px}
+.discovery-unified .collection-authors{font-size:12px;color:var(--ui-secondary);margin:0 0 7px 43px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:85%}
+.discovery-unified .collection-abstract{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;margin:5px 0 8px 43px;font-size:14px;line-height:1.8;color:var(--ui-text)}
+.discovery-unified .discovery-paper>p[role=status]:empty{display:none}
+.discovery-unified .discovery-paper>p[role=status]{font-size:12px;margin:5px 0 6px 43px}
+.discovery-unified .discovery-paper>details{margin:9px 0 0 43px;font-size:12px;color:var(--ui-secondary)}
+.discovery-unified .discovery-paper>details[open]{padding:12px;background:var(--ui-tray);border-radius:8px;color:var(--ui-text)}
+.discovery-unified .discovery-paper>details button{margin:8px 5px 0 0;font-size:12px}
+.discovery-keywords{display:flex;flex-wrap:wrap;gap:6px;margin-left:43px}
+.discovery-keywords span{border-radius:5px;background:var(--ui-tray);color:var(--ui-secondary);font-size:11px;line-height:1.6;padding:2px 7px}
+.discovery-unified .collection-search-history,.discovery-unified .collection-reference-tools{margin-top:16px;padding:12px 0;border:0;border-top:1px solid var(--ui-border);background:transparent;color:var(--ui-secondary);font-size:13px}
+.discovery-unified .collection-search-history button{margin:8px 6px 0 0}
+.discovery-journal-panel{margin:8px 0 16px}
+.discovery-journal-panel h3{font-size:16px;margin:0 0 5px}
+.discovery-journal-panel p{font-size:12px}
+.discovery-journal-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:11px;padding:15px 0;margin-bottom:10px;border-bottom:1px solid var(--ui-border)}
+.discovery-journal-actions{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+.discovery-journal-actions select{height:34px;margin-left:auto}
+.project-paper-search .search-scope{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:8px}
+.project-paper-search .online-paper{padding:15px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-card);margin:10px 0}
+@media(max-width:900px){.discovery-unified{padding:18px}.discovery-unified .discovery-query-grid,.project-paper-search form{grid-template-columns:1fr 1fr}.discovery-page-heading{flex-wrap:wrap}.discovery-query-grid .discovery-submit{min-height:40px}.discovery-unified .discovery-title{padding-right:0}.discovery-unified .discovery-paper>button{position:static;margin:7px 0 0 43px}.discovery-unified .discovery-save-actions{flex-basis:100%}}
+@media(max-width:540px){.discovery-unified .discovery-query-grid{grid-template-columns:1fr}.discovery-scope-options{flex-wrap:wrap;gap:8px}.discovery-scope-options input:not([type=checkbox]){flex-basis:100%}.discovery-unified .card.discovery-paper{padding:14px}.discovery-unified .discovery-paper-meta,.discovery-unified .collection-abstract,.discovery-unified .collection-authors,.discovery-unified .discovery-paper>details,.discovery-unified .discovery-keywords{margin-left:0}}

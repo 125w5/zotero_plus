@@ -34,7 +34,7 @@ export function captureWritingPreview(project,{blockID=project.ui?.blockID||'',s
  const ids=[...new Set(links.length?links.map(row=>row.id):project.writingWorkflow?[]:(project.materials||[]).map(row=>row.id))];
  const sources=ids.map(id=>(project.materials||[]).find(row=>row.id===id)).filter(row=>row&&row.kind!=='idea'&&originalText(row).trim()).map(sourceOf);
  if(sources.some(row=>row.verification==='stale'))throw Error('关联素材来源有更新，请核验后再生成候选');
- const before=contentOf(block),outline=clone((project.sections||[]).map(row=>({id:row.id,title:row.title||'',purpose:row.purpose||'',headings:(project.blocks||[]).filter(item=>item.sectionID===row.id&&item.type==='heading').map(item=>({id:item.id,text:item.text||''}))})));
+ const before=contentOf(block),outline=clone((project.sections||[]).map(row=>({id:row.id,title:row.title||'',purpose:row.writingPurpose||row.purpose||'',headings:(project.blocks||[]).filter(item=>item.sectionID===row.id&&item.type==='heading').map(item=>({id:item.id,text:item.text||''}))})));
  if(!sources.length&&!String(block?.text||'').trim())throw Error(project.writingWorkflow?'请先为本章关联真实素材，或写入需要改写的正文；不会读取其他章节素材':'请先关联真实素材，或写入需要改写的正文');
  const scope={version:2,projectID:project.id,title:project.title||'',sectionID,blockID:block?.id||'',before,outline,sources,instruction:String(instruction).trim().slice(0,4000),mode:String(block?.text||'').trim()?'rewrite':'assemble'};
  if(project.writingWorkflow)scope.writingWorkflow=writingWorkflowContext(project,sectionID,{materialIDs:sources.map(row=>row.id)});

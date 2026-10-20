@@ -88,8 +88,8 @@ describe('Research-only agent workbench', function () {
 		assert.isTrue(container.querySelector('.library-workspace-tabs').hidden,'原生左栏已提供导航，推荐区不重复显示模式栏');
 		assert.isAtMost(Math.abs(frameRect.top-containerRect.top),2,'推荐页直接使用内容区顶端');assert.isAtMost(Math.abs(frameRect.bottom-containerRect.bottom),2,'推荐页填满中间区域');assert.closeTo(frameRect.width,containerRect.width,2,'推荐使用完整文库内容宽度');
 		assert.equal(win.getComputedStyle(win.document.getElementById('zotero-item-pane')).display,'none','不留下空白的原生右栏');
-		assert.lengthOf(discovery.agentHomeList.querySelectorAll('.workbench-recommendation'),0,'推荐页不重复本地文库');
-		discovery.agentRecommendations=[{id:'controlled-recommendation',title:'受控相关论文',source:'受控来源',abstract:'Controlled abstract.'}];discovery.renderAgentHome();
+		assert.equal(discovery.activeView,'search');assert.exists(discovery.$('view-search').querySelector('.discovery-search-card'));assert.lengthOf(discovery.$('search-results').querySelectorAll('.discovery-paper'),0,'统一搜集页不复制本地文库');
+		assert.exists(discovery.discoveryDomain);assert.exists(discovery.discoverySecondary);assert.notExists(homeFrame.contentDocument.querySelector('.rail [data-tab=home]'));
 		await capture('native-library-discovery');
 		// A notifier refresh can change the hidden native tree's selection while
 		// discovery is open. Returning must restore the original visible choice.
@@ -111,8 +111,8 @@ describe('Research-only agent workbench', function () {
 		const discovery=await E.openLibraryWorkspace(win,'discovery'),homeFrame=win.document.getElementById('easysch-library-discovery-frame'),view=homeFrame.contentWindow,scroll=homeFrame.contentDocument.querySelector('main');
 		const wheel=(deltaY,ctrlKey=false)=>scroll.dispatchEvent(new view.WheelEvent('wheel',{deltaY,ctrlKey,bubbles:true,cancelable:true}));scroll.scrollTop=0;
 		const tabs=win.Zotero_Tabs.getState().length;
-		wheel(-80,true);assert.equal(discovery.activeView,'home','Ctrl滚轮不触发模式切换');assert.equal(win.Zotero_Tabs.selectedID,'zotero-pane');wheel(-70);assert.equal(discovery.activeView,'home','轻微上滑仍保留推荐');wheel(-60);
-		await Zotero.Promise.delay(120);assert.equal(win._researchLibraryWorkspace.mode,'discovery');assert.equal(discovery.activeView,'home');assert.strictEqual(discovery,ui);assert.strictEqual(homeFrame,frame);assert.equal(win.Zotero_Tabs.selectedID,'zotero-pane');assert.equal(win.Zotero_Tabs.getState().length,tabs);assert.notExists(win.document.getElementById('easysch-workspace-frame'));
+		wheel(-80,true);assert.equal(discovery.activeView,'search','Ctrl滚轮不触发模式切换');assert.equal(win.Zotero_Tabs.selectedID,'zotero-pane');wheel(-70);assert.equal(discovery.activeView,'search','轻微上滑仍保留推荐');wheel(-60);
+		await Zotero.Promise.delay(120);assert.equal(win._researchLibraryWorkspace.mode,'search');assert.equal(discovery.activeView,'search');assert.strictEqual(discovery,ui);assert.strictEqual(homeFrame,frame);assert.equal(win.Zotero_Tabs.selectedID,'zotero-pane');assert.equal(win.Zotero_Tabs.getState().length,tabs);assert.notExists(win.document.getElementById('easysch-workspace-frame'));
 		await capture('native-discovery-retains-scroll-context');
 	});
 
@@ -271,7 +271,7 @@ describe('Research-only agent workbench', function () {
 		ui.agentData.mode = 'organize'; ui.agentMode.value = 'organize'; ui.previewAgentSource({ ...materials[1], kind: 'material', stableID: 'material:' + materials[1].id }); await ui.saveAgentState(); await E.store.flush(); const selectedID = ui.agentData.selectedID; const old = ui; frame.contentWindow.location.reload(); await wait(() => { ui = frame.contentWindow.EasySchUI; return ui && ui !== old && ui.ready && win._researchLibraryWorkspace.ui===ui && !frame.inert && ui.agentSelected?.stableID === selectedID; }, '同页重载恢复研究记录与宿主');
 		assert.equal(ui.agentMode.value, 'organize'); assert.lengthOf(ui.agentData.messages, 2); assert.include(ui.agentData.messages[1].text, '公开文献候选'); assert.equal(ui.agentSelected.id, materials[1].id); assert.lengthOf(searchCalls, 2, '重载不重新联网检索'); assert.equal(modelCalls, 0); assert.equal(downloadCalls, 0);
 		assert.equal(ui.agentInput.value, draft, '保留未发送草稿，不自动提交');
-		ui.agentReturn={tab:'home',scroll:0};ui.openAgentWorkbench(); frame.contentWindow.dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); await wait(()=>win.Zotero_Tabs.selectedID==='zotero-pane'&&win._researchLibraryWorkspace.mode==='discovery'&&ui.activeView==='home','Esc 返回同一文库推荐');
+		ui.agentReturn={tab:'home',scroll:0};ui.openAgentWorkbench(); frame.contentWindow.dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); await wait(()=>win.Zotero_Tabs.selectedID==='zotero-pane'&&win._researchLibraryWorkspace.mode==='search'&&ui.activeView==='search','Esc 从旧入口返回同一文库搜集页');
 	});
 
 	it('the native conversation entry reuses the ready workspace and opens agent mode without submitting', async () => {
