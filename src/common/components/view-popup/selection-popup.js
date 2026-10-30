@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLocalization } from '@fluent/react';
 import cx from 'classnames';
 import { ANNOTATION_COLORS } from '../../defines';
@@ -14,14 +14,35 @@ function SelectionPopup(props) {
 	const { l10n } = useLocalization();
 	const [annotationMode, setAnnotationMode] = useState(props.textSelectionAnnotationMode === 'underline' ? 'underline' : 'highlight');
 	const [annotationColor, setAnnotationColor] = useState(props.params.annotation.color || ANNOTATION_COLORS[0][1]);
+	const savedSelection = useRef(null);
 
 	function handleColorPick(color) {
 		setAnnotationColor(color);
 	}
 
-	function handleSaveAnnotation() {
-		props.onChangeTextSelectionAnnotationMode(annotationMode);
-		props.onAddAnnotation({ ...props.params.annotation, type: annotationMode, color: annotationColor });
+	function handleSaveAnnotation(mode = annotationMode) {
+		// A style is an action on the selected text. Do not require a second
+		// confirmation, or let a double-click create the same annotation twice.
+		if (savedSelection.current === props.params.annotation) return;
+		savedSelection.current = props.params.annotation;
+		try {
+			props.onChangeTextSelectionAnnotationMode(mode);
+			props.onAddAnnotation({ ...props.params.annotation, type: mode, color: annotationColor });
+		}
+		catch (error) {
+			savedSelection.current = null;
+			throw error;
+		}
+	}
+
+	function handleModePick(mode) {
+		setAnnotationMode(mode);
+		handleSaveAnnotation(mode);
+	}
+
+	function preserveSelection(event) {
+		// Keep the PDF selection while mouse/pen focus moves over its popup.
+		event.preventDefault();
 	}
 
 	function handleAddToNote() {
@@ -41,34 +62,40 @@ function SelectionPopup(props) {
 			<div className="colors" data-tabstop={1}>
 				{ANNOTATION_COLORS.map((color, index) => (<button
 					key={index}
+					type="button"
 					tabIndex={-1}
 					className={cx('toolbar-button color-button', { active: annotationColor === color[1] })}
 					title={l10n.getString(color[0])}
 					aria-label={l10n.getString(color[0])}
 					aria-pressed={annotationColor === color[1]}
 					data-annotation-color={color[1]}
+					onPointerDown={preserveSelection}
 					onClick={() => handleColorPick(color[1])}
 				><IconColor16 color={color[1]}/></button>))}
 			</div>
 			<div className="tool-toggle" data-tabstop={1}>
 				<button
+					type="button"
 					tabIndex={-1}
 					className={cx('highlight', { active: annotationMode === 'highlight' })}
 					title={l10n.getString('reader-highlight-text')}
 					aria-pressed={annotationMode === 'highlight'}
 					data-annotation-mode="highlight"
-					onClick={() => setAnnotationMode('highlight')}
+					onPointerDown={preserveSelection}
+					onClick={() => handleModePick('highlight')}
 				><IconHighlight/><span>{l10n.getString('reader-highlight-text')}</span></button>
 				<button
+					type="button"
 					tabIndex={-1}
 					className={cx('underline', { active: annotationMode === 'underline' })}
 					title={l10n.getString('reader-underline-text')}
 					aria-pressed={annotationMode === 'underline'}
 					data-annotation-mode="underline"
-					onClick={() => setAnnotationMode('underline')}
+					onPointerDown={preserveSelection}
+					onClick={() => handleModePick('underline')}
 				><IconUnderline/><span>{l10n.getString('reader-underline-text')}</span></button>
 			</div>
-			<button className="toolbar-button wide-button selection-annotation-save" data-tabstop={1} onClick={handleSaveAnnotation}>
+			<button type="button" className="toolbar-button wide-button selection-annotation-save" data-tabstop={1} onPointerDown={preserveSelection} onClick={() => handleSaveAnnotation()}>
 				保存批注
 			</button>
 			{props.enableAddToNote &&
