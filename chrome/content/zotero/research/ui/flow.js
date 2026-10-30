@@ -199,53 +199,87 @@ Object.assign(EasySchUI, {
 		}
 		const paper = this.current;
 		if (this.busy) throw Error('已有分析进行中，请先等待或取消');
+		// The library frame hides the status bar and #view-research, so this card
+		// carries its own progress and 停止 and goes into the view that is shown.
+		let shown = [...document.querySelectorAll('.view')].find((view) => !view.hidden) || this.$('view-research');
+		let box = this.el('section', undefined, 'card organize-card'), state = this.el('p'), list = this.el('div'), actions = this.el('div', undefined, 'actions');
+		let report = (text, error = false) => { state.textContent = text; this.status(text, error); };
+		let close = () => { let button = this.el('button', '关闭'); button.type = 'button'; button.onclick = () => box.remove(); actions.append(button); };
+		let stop = this.el('button', '停止');
+		stop.type = 'button';
+		stop.onclick = () => this.cancelLegacyJob();
+		box.append(this.el('h3', '标签建议 · ' + (paper.title || '当前论文')), state, list, actions);
+		actions.append(stop);
+		(shown.id === 'view-research' ? this.$('result') : shown).prepend(box);
+		let signal = this.legacyJobSignal(), record;
 		this.busy = true;
 		this.$('cancel').hidden = false;
-		this.status('正在建议标签…');
-		const record = await this.E.ai
-				.run({
-					mode: 'analyze',
-					papers: [paper],
-					onStatus: (s) => this.status(s),
-				})
-				.finally(() => {
-					this.busy = false;
-					this.$('cancel').hidden = true;
-				}),
-			box = this.el('section');
-		box.className = 'card';
-		box.append(this.el('h3', '核对标签建议后再保存'));
-		const choices = [];
-		for (const tag of record.result.keywords || []) {
+		report('正在建议标签…');
+		try {
+			record = await this.E.ai.run({
+				mode: 'analyze',
+				papers: [paper],
+				signal,
+				onStatus: (s) => report(s),
+			});
+		}
+		catch (error) {
+			close();
+			if (signal.aborted) {
+				report('已停止，标签未改动');
+				return;
+			}
+			report(error.message, true);
+			throw error;
+		}
+		finally {
+			this.busy = false;
+			this.$('cancel').hidden = true;
+			stop.remove();
+		}
+		const keywords = record.result.keywords || [], choices = [];
+		report(keywords.length ? '核对后保存选中的标签' : '没有建议的标签');
+		for (const tag of keywords) {
 			const l = this.el('label'),
 				c = this.el('input');
 			c.type = 'checkbox';
 			c.checked = true;
 			l.append(c, this.el('span', tag));
-			box.append(l);
+			list.append(l);
 			choices.push({ c, tag });
 		}
-		this.pptButton(
-			'保存选中标签',
-			async () => {
-				const item = await this.E.getItem(paper.id),
-					before = item.getTags().map((t) => t.tag),
-					tags = choices.filter((x) => x.c.checked).map((x) => x.tag);
-				await this.E.library.addTags(paper, tags);
-				this.status('标签已保存');
-				this.pptButton(
-					'撤销新增标签',
-					async () => {
-						for (const tag of tags.filter((t) => !before.includes(t)))
-							item.removeTag(tag);
-						await item.saveTx();
-						box.remove();
-					},
-					box,
-				);
-			},
-			box,
-		);
-		this.$('result').prepend(box);
+		// pptButton shows a failure only in the status bar, which this frame hides.
+		let guard = (action) => async () => {
+			try {
+				await action();
+			}
+			catch (error) {
+				report(error.message, true);
+			}
+		};
+		if (keywords.length) {
+			this.pptButton(
+				'保存选中标签',
+				guard(async () => {
+					const item = await this.E.getItem(paper.id),
+						before = item.getTags().map((t) => t.tag),
+						tags = choices.filter((x) => x.c.checked).map((x) => x.tag);
+					await this.E.library.addTags(paper, tags);
+					report('标签已保存');
+					this.pptButton(
+						'撤销新增标签',
+						guard(async () => {
+							for (const tag of tags.filter((t) => !before.includes(t)))
+								item.removeTag(tag);
+							await item.saveTx();
+							box.remove();
+						}),
+						actions,
+					);
+				}),
+				actions,
+			);
+		}
+		close();
 	},
 });

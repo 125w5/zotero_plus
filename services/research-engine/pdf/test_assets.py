@@ -2,7 +2,7 @@ import tempfile, unittest, json
 from unittest.mock import patch
 from pathlib import Path
 import pymupdf as fitz
-from assets import main, non_research_image, formula_regions, caption_runs, figure_region, graphic_regions, caption_label
+from assets import main, non_research_image, formula_regions, caption_runs, figure_region, graphic_regions, caption_label, table_region
 
 
 def text_block(text, bbox, font='CMMI10', size=10, baseline=None):
@@ -18,11 +18,83 @@ class LayoutPage:
     def get_drawings(self):return []
 
 class AssetTests(unittest.TestCase):
+    def test_table_rules_on_either_side_of_caption_ignore_page_header_and_plot(self):
+        for below in [True,False]:
+            with fitz.open() as d:
+                page=d.new_page(width=612,height=792)
+                page.draw_line((40,50),(570,50))
+                for y in [100,114,140,164]:page.draw_line((320,y),(550,y))
+                page.insert_text((345,129),'Model     Cost     Score',fontsize=8)
+                caption_y=185 if below else 90
+                page.insert_text((340,caption_y),'Table 1: Evaluation setup.',fontsize=8)
+                page.draw_rect((320,250,550,390))
+                page.insert_text((320,415),'Fig. 1: An unrelated chart.',fontsize=8)
+                blocks=[b for b in page.get_text('blocks') if b[6]==0]
+                cap=next(b for b in blocks if caption_label(b[4])=='Table 1')
+                rect=table_region(page,cap,graphic_regions(page,blocks),[],blocks)
+                self.assertLessEqual(rect.y0,100);self.assertGreaterEqual(rect.y1,164)
+                self.assertGreater(rect.y0,90);self.assertLess(rect.y1,190)
+                self.assertAlmostEqual(rect.x0,316);self.assertAlmostEqual(rect.x1,554)
+
+    def test_formula_control_encoded_delimiters_survive_and_next_prose_is_trimmed(self):
+        blocks=[text_block('x = y',(310,430,525,453)),
+                text_block('\r\r\r\r',(378,426,383,452),'CMEX9'),
+                text_block('\f\f\f\f',(461,426,466,452),'CMEX9'),
+                text_block('(1)',(531,453.4,542,462.4),'Times-Roman'),
+                text_block('where the input and output denote the measured signal.',(307,462.2,542,472.4),'Times-Roman')]
+        masks={};regions=formula_regions(LayoutPage(blocks),mask_regions=masks)
+        self.assertEqual(len(regions),1)
+        rect=regions[0][0]
+        self.assertLess(rect.y0,426);self.assertLessEqual(rect.y1,462.4)
+        for excluded in masks[('Equation 1',tuple(rect))]:
+            self.assertFalse(fitz.Rect(excluded).intersects(fitz.Rect(378,426,383,452)))
+            self.assertFalse(fitz.Rect(excluded).intersects(fitz.Rect(461,426,466,452)))
+
     def test_typographic_figure_caption_without_colon_is_not_lost(self):
         for text, label in [('Fig.\u202f1\u2002 Search framework\n', 'Fig. 1'), ('Fig. 30 A four-panel evaluation\n', 'Fig. 30'), ('Table 1 Summary of applications\n','Table 1'), ('TABLE II: Existing methods\n','TABLE II')]:
             self.assertEqual(caption_label(text),label)
         self.assertIsNone(caption_label('Fig. 1 shows how the neural network processes inputs.'))
         self.assertIsNone(caption_label('The following paragraph discusses Fig. 2.'))
+
+    def test_pipe_separated_and_appendix_captions_are_research_figures(self):
+        for text,label in [('Figure 1 | YUBI-Real2Sim analyzes and verifies scenes.','Figure 1'),
+                           ('Figure A1 | Ablation over background quality.','Figure A1'),
+                           ('Fig. S2\u2009\u2502\u2009 Supplementary comparison.','Fig. S2'),
+                           ('Table 2\uff5c Evaluation results.','Table 2')]:
+            self.assertEqual(caption_label(text),label)
+        self.assertIsNone(caption_label('Figure 1 shows the quantitative comparison.'))
+        self.assertIsNone(caption_label('This table compares Figure 1 | Figure 2.'))
+
+    def test_pipe_caption_indexes_one_complete_plot_instead_of_bitmap_fragments(self):
+        with tempfile.TemporaryDirectory() as temp:
+            pdf=Path(temp)/'pipe-caption.pdf'
+            with fitz.open() as d:
+                page=d.new_page(width=612,height=792)
+                page.draw_rect((62,90,550,280),fill=(.9,.94,1))
+                page.insert_text((75,120),'Policy performance',fontsize=14)
+                page.insert_text((62,305),'Figure 4 | Policy ranking in real and simulated evaluation.',fontsize=10)
+                d.save(pdf)
+            result=main(dict(operation='assets-index',pdf=str(pdf),cacheRoot=str(Path(temp)/'cache')))
+            figures=[asset for asset in result['assets'] if asset['kind']=='figure']
+            self.assertEqual(len(figures),1)
+            self.assertEqual(figures[0]['label'],'Figure 4')
+            self.assertTrue(figures[0]['evidenceEligible'])
+            self.assertGreaterEqual(figures[0]['bbox'][2],550)
+            self.assertTrue(Path(figures[0]['path']).exists())
+
+    def test_shaded_abstract_panel_does_not_merge_with_first_diagram(self):
+        with fitz.open() as d:
+            page=d.new_page(width=612,height=792)
+            page.draw_rect((65,70,545,385),fill=(.94,.95,.97),color=None)
+            page.insert_textbox((77,95,532,375),'The study evaluates the reliability of simulated policy rankings under scene perturbations. '*12,fontsize=10)
+            page.draw_rect((65,408,545,650),fill=(.97,.98,1),color=(.1,.3,.6))
+            page.insert_text((70,670),'Figure 1 | Evaluation framework and comparison.',fontsize=10)
+            blocks=[b for b in page.get_text('blocks') if b[6]==0]
+            cap=next(b for b in blocks if caption_label(b[4]))
+            rect=figure_region(page,cap,graphic_regions(page,blocks),[],blocks)
+            self.assertGreater(rect.y0,390,'the shaded article abstract is not figure evidence')
+            self.assertLessEqual(rect.y0,408)
+            self.assertGreaterEqual(rect.y1,650)
 
     def test_actual_springer_review_has_all_30_figures_and_five_tables(self):
         fixture=Path(__file__).resolve().parents[3]/'test/node/fixtures/deep-learning-review-caption-layout.json'

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
-import {normalizeChatAttachments} from './chat-attachments.mjs';
+import {normalizeChatAttachments,chatAttachmentFileKind} from './chat-attachments.mjs';
 
 // Folder membership is a source catalogue. Imported files, source choices and
 // unsent text still belong to the conversation and are never replaced by it.
@@ -32,4 +32,55 @@ export async function readNativeLibraryScope(E,win,{signal}={}){
  const labels=rows.map(row=>row.getName?.()||row.ref?.name||'我的文库'),collection=rows.length===1&&rows[0].isCollection?.()?rows[0].ref:null;
  const files=E.library.workspaceScope?await E.library.workspaceScope(rows,{signal}):[];
  return signal?.aborted?null:{key,folder:labels.join(' / '),collectionID:collection?.id||null,libraryID:collection?.libraryID||rows[0].ref?.libraryID||null,files};
+}
+
+// A file added to or edited in the shown folder updates the cached catalogue
+// item by item, with the same rows readNativeLibraryScope builds. Anything
+// else (several rows, saved searches, recursive folders, unknown items)
+// returns null and the caller rescans. An unchanged catalogue is returned as is.
+export async function patchNativeLibraryScope(E,win,scope,itemIDs,{Zotero,signal,recursive=false}={}){
+	let rows=win.ZoteroPane.getCollectionTreeRows();
+	if(!scope||recursive||rows.length!==1||libraryScopeKey(rows)!==scope.key)return null;
+	if(!E.chatAttachments?.fromItem||!Zotero?.Items?.getAsync)return null;
+	let row=rows[0],collectionID=row.isCollection?.()?row.ref?.id:null;
+	if(!collectionID&&!row.isLibrary?.(true))return null;
+	let libraryID=Number(row.ref?.libraryID??scope.libraryID),files=[...(scope.files||[])],changed=false;
+	let place=(attachmentID,ref)=>{
+		let at=files.findIndex(file=>Number(file.attachmentID)===attachmentID);
+		if(ref&&at<0)files.push(ref);
+		else if(ref&&JSON.stringify(files[at])!==JSON.stringify(ref))files[at]=ref;
+		else if(!ref&&at>=0)files.splice(at,1);
+		else return;
+		changed=true;
+	};
+	let inScope=item=>!!item&&!item.deleted&&Number(item.libraryID)===libraryID&&(!collectionID||(item.getCollections?.()||[]).some(id=>Number(id)===Number(collectionID)));
+	let supported=attachment=>{try{chatAttachmentFileKind(attachment.attachmentFilename||attachment.getField('title'));return true;}catch{return false;}};
+	let reconcile=async(attachment,top)=>{
+		let attachmentID=Number(attachment.id);
+		if(attachment.deleted||!inScope(top)||!supported(attachment)){place(attachmentID,null);return;}
+		let ref;
+		try{ref=await E.chatAttachments.fromItem(attachmentID);}
+		catch{place(attachmentID,null);return;}
+		let parent=top!==attachment?top:null;
+		place(attachmentID,{...ref,...(parent?{title:parent.getField('title')||ref.title}:{}),selected:false});
+	};
+	for(let id of new Set(itemIDs.map(Number).filter(Boolean))){
+		if(signal?.aborted)return null;
+		let item=await Zotero.Items.getAsync(id);
+		if(!item)return null;
+		if(item.isAnnotation?.()||item.isNote?.())continue;
+		if(item.isAttachment?.()){
+			let top=item.parentID?await Zotero.Items.getAsync(item.parentID):item;
+			if(!top)return null;
+			await reconcile(item,top);
+		}
+		else if(item.isRegularItem?.()){
+			let attachmentIDs=(item.getAttachments?.()||[]).map(Number);
+			for(let attachment of attachmentIDs.length?await Zotero.Items.getAsync(attachmentIDs):[])if(attachment)await reconcile(attachment,item);
+			for(let file of [...files])if(Number(file.paperItemID)===Number(item.id)&&Number(file.attachmentID)!==Number(item.id)&&!attachmentIDs.includes(Number(file.attachmentID)))place(Number(file.attachmentID),null);
+		}
+		else return null;
+	}
+	if(signal?.aborted)return null;
+	return changed?{...scope,files}:scope;
 }

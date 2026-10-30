@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {CHAT_ATTACHMENT_MIME} from '../shared/chat-attachments.mjs';
 import {sectionInsertionAnchor,sectionInsertionIndex} from './section-insertion.mjs';
+import {libraryAsset} from '../shared/material-access.mjs';
+import {placedBlock} from './assembly-placement.mjs';
 
 export function assemblyFileDropReference(dataTransfer,conversations){
  try{const value=JSON.parse(dataTransfer.getData(CHAT_ATTACHMENT_MIME));if(!value?.sessionID||!value?.attachmentID)return null;const reference=(conversations.getAttachments?.(value.sessionID)||conversations.get(value.sessionID)?.attachments||[]).find(row=>row.id===value.attachmentID);return reference?{sessionID:value.sessionID,reference}:null;}catch(_){return null;}
@@ -25,9 +27,11 @@ export function installAssemblyFileDrop({U,canvas,paperPosition,snapshot,attachM
   const projectID=U.p.id,sectionID=page.dataset.section,pos=paperPosition(page,event.clientY),anchor=sectionInsertionAnchor(U.p.blocks,U.p.sections,sectionID,pos.index);busy=true;canvas.dataset.fileDropBusy='true';
   const currentReference=()=>(U.conversations.getAttachments?.(payload.sessionID)||U.conversations.get(payload.sessionID)?.attachments||[]).find(row=>row.id===payload.reference.id);
   const validateReference=()=>{const latest=currentReference();if(!latest||JSON.stringify(latest)!==JSON.stringify(payload.reference))throw Error('读取时该文件的工作表或范围已变化，请重新拖动。');};
-  try{await persist({flush:true});if(disposed||U.p.id!==projectID)return;if(U.saveError)throw U.saveError;validateReference();let material=U.p.materials.find(row=>row.id===payload.reference.materialID)||U.A.assetLibrary()[payload.reference.materialID];
+  try{await persist({flush:true});if(disposed||U.p.id!==projectID)return;if(U.saveError)throw U.saveError;validateReference();let material=U.p.materials.find(row=>row.id===payload.reference.materialID)||libraryAsset(U.A,payload.reference.materialID);
    if(!material){const result=await U.E.chatAttachments.read([{...payload.reference,selected:true}],{images:false});if(disposed||U.p.id!==projectID)return;validateReference();material=assemblyFileDropMaterial(payload.reference,result.rows,U.M);}
-   if(!U.p.sections.some(row=>row.id===sectionID))throw Error('原章节已移除，请重新选择插入位置。');snapshot();if(!U.p.materials.some(row=>row.id===material.id))U.p.materials.push(U.M.clone(material));const block=U.M.block('paragraph',sectionID,{assembly:true,title:material.title,spaceBefore:pos.spaceBefore,conversationID:payload.sessionID,chatAttachmentID:payload.reference.id});attachMaterial(block,material.id);U.p.blocks.splice(sectionInsertionIndex(U.p.blocks,U.p.sections,sectionID,anchor),0,block);U.p.ui.blockID=block.id;U.p.ui.sectionID=sectionID;U.p.ui.caret=0;changed({editor:true});canvas.querySelector('[data-id="'+block.id+'"]')?.scrollIntoView({block:'nearest'});status('已在“'+U.p.sections.find(row=>row.id===sectionID).title+'”关联文件资料 · Ctrl+Z 撤销');
+   if(!U.p.sections.some(row=>row.id===sectionID))throw Error('原章节已移除，请重新选择插入位置。');
+   const existing=placedBlock(U.p,sectionID,{material,chatAttachmentID:payload.reference.id});if(existing){U.p.ui.blockID=existing.id;U.p.ui.sectionID=sectionID;changed({editor:true});canvas.querySelector('[data-id="'+existing.id+'"],[data-read-block="'+existing.id+'"]')?.scrollIntoView({block:'nearest'});status('这份文件资料已在本章，已定位到原卡片；未重复插入');return;}
+   snapshot();if(!U.p.materials.some(row=>row.id===material.id))U.p.materials.push(U.M.clone(material));const block=U.M.block('paragraph',sectionID,{assembly:true,title:material.title,spaceBefore:pos.spaceBefore,conversationID:payload.sessionID,chatAttachmentID:payload.reference.id});attachMaterial(block,material.id);U.p.blocks.splice(sectionInsertionIndex(U.p.blocks,U.p.sections,sectionID,anchor),0,block);U.p.ui.blockID=block.id;U.p.ui.sectionID=sectionID;U.p.ui.caret=0;changed({editor:true});canvas.querySelector('[data-id="'+block.id+'"]')?.scrollIntoView({block:'nearest'});status('已在“'+U.p.sections.find(row=>row.id===sectionID).title+'”关联文件资料 · Ctrl+Z 撤销');
   }catch(error){if(!disposed)status(error.message,true);}finally{busy=false;delete canvas.dataset.fileDropBusy;}
  };
  const leave=event=>{if(!canvas.contains(event.relatedTarget))clear();};canvas.addEventListener('dragover',over,true);canvas.addEventListener('drop',drop,true);canvas.addEventListener('dragleave',leave);doc.addEventListener('dragend',clear);

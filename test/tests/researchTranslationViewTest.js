@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 describe('Continuous cached translation view',function(){
  this.timeout(90000);
- const E=Zotero.Research;let win,sourceReader,sourceView,pdf,doc,app,reader,panel,notify,pages,prior,calls,folder,originalPrepare;
+ const E=Zotero.Research;let win,sourceReader,sourceView,pdf,doc,app,reader,panel,notify,pages,prior,calls,folder,originalPrepare,originalIndex,originalImages,originalPreparationQueue;
  const report={type:'真实 Zotero 原生 DOM + 受控版式、译文与图片回复',limitations:['不等同真人操作、真实模型、实际图像提取或网络验收'],tests:[]};
  const wait=async fn=>{for(let i=0;i<200;i++){if(await fn())return;await Zotero.Promise.delay(50);}throw Error('等待译文界面超时');};
  const click=(node,type='click',options={})=>node.dispatchEvent(new doc.defaultView.MouseEvent(type,{bubbles:true,cancelable:true,...options}));
@@ -13,9 +13,14 @@ describe('Continuous cached translation view',function(){
  }]});
  before(async()=>{
   originalPrepare=E.manuscripts.prepareTranslation;E.manuscripts.prepareTranslation=async()=>null;
+  // The fixture is imported locally. Keep unrelated import/open preparation
+  // from starting real indexing, image or model work beside controlled pages.
+  originalIndex=E.manuscripts.indexArticle;E.manuscripts.indexArticle=async()=>null;
+  originalImages=E.assets.queueImages;E.assets.queueImages=async()=>null;
+  originalPreparationQueue=E.queueReaderPreparation;E.queueReaderPreparation=()=>Promise.resolve();
   win=await loadZoteroPane();await E.attachWindow(win);
-  for(const item of await Zotero.Items.getAll(Zotero.Libraries.userLibraryID))if(item.isPDFAttachment()&&!item.deleted&&await item.fileExists()){pdf=item;break;}
-  assert.exists(pdf,'隔离文库需保留一个真实 PDF 以提供原生阅读器 DOM');
+  const file=getTestDataDirectory();file.append('test.pdf');pdf=await Zotero.Attachments.importFromFile({file});
+  assert.exists(pdf,'从随测试分发的 PDF 建立原生阅读器，不依赖已有文库');report.pdfFixture={file:file.leafName,attachmentID:pdf.id,importedBySuite:true};
   sourceReader=await E.openReaderReady(pdf.id);sourceView=sourceReader._internalReader._primaryView;await sourceView.initializedPromise;
   doc=sourceReader._iframeWindow.document;app=sourceView._iframeWindow.PDFViewerApplication;
   folder=PathUtils.join(Zotero.DataDirectory.dir,'translation-view-acceptance');await IOUtils.makeDirectory(folder,{ignoreExisting:true});
@@ -46,7 +51,7 @@ describe('Continuous cached translation view',function(){
   await E.store.update(s=>{if(prior.drafts)s.translationDrafts=prior.drafts;else delete s.translationDrafts;for(const [key,value]of [['readerTranslationZoom',prior.zoom],['readerTranslationWidth',prior.width],['readerTranslationLayout',prior.layout]]){if(value===undefined)delete s.settings[key];else s.settings[key]=value;}});
   await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));
  });
- after(async()=>{E.manuscripts.prepareTranslation=originalPrepare;await E.store.flush();});
+ after(async()=>{E.manuscripts.prepareTranslation=originalPrepare;E.manuscripts.indexArticle=originalIndex;E.assets.queueImages=originalImages;E.queueReaderPreparation=originalPreparationQueue;await E.store.flush();});
  const open=async()=>{panel=E.openReaderTranslation(reader);await wait(()=>calls.reads.length>=pages.length&&firstBox());return panel;};
  it('prepares on document open and reads every cached page before scrolling',async()=>{
   const toolbar=[];E.readerTranslationToolbar({reader,doc,append:button=>toolbar.push(button)});await wait(()=>calls.prepare===1);
@@ -212,7 +217,7 @@ describe('Continuous cached translation view',function(){
    requests[1].resolve({text:'噪声服从 ϵ ∼N (0, I)。',provider:'controlled machine translator'});await wait(()=>card.dataset.state==='complete');assert.equal(output.textContent,'噪声服从 ϵ ∼N (0, I)。');assert.notExists(output.querySelector('.translation-feedback'));assert.isTrue(retry.hidden);assert.isFalse(translate.disabled);assert.equal(translate.textContent,'机翻');assert.equal(translate.dataset.translationMode,'machine');assert.equal(card.getAttribute('aria-busy'),'false');assert.lengthOf(requests,2,'选择展开原因不会额外请求翻译');
   }finally{core._updateState(Cu.cloneInto({primaryViewSelectionPopup:null},sourceReader._iframeWindow));}
  });
- it('keeps the native selected-text translation visibly readable and lets annotation color and style be chosen together',async()=>{
+ it('keeps native selected-text translation readable and applies a chosen color and style immediately',async()=>{
   const core=sourceReader._internalReader,manager=core._annotationManager,add=manager.addAnnotation,oldMode=core._state.textSelectionAnnotationMode,added=[];let translations=0;
   E.quickTranslate=async(text,signal,options)=>{translations++;assert.isFalse(options.allowModelFallback);assert.include(text,'selected paragraph');return{text:'选中段落的受控中文译文，保留指标 24% 和变量。',provider:'controlled machine translator'};};
   manager.addAnnotation=annotation=>{added.push(JSON.parse(JSON.stringify(annotation)));return{...annotation,id:'controlled-color-style'};};
@@ -221,11 +226,38 @@ describe('Continuous cached translation view',function(){
    await wait(()=>doc.querySelector('.selection-popup .easysch-quick-translation')?.dataset.state==='complete');const popup=doc.querySelector('.selection-popup'),card=popup.querySelector('.easysch-quick-translation'),output=card.querySelector('.quick-translation-output'),translate=card.querySelector('.quick-translation-run');
    assert.include(output.textContent,'受控中文译文');assert.equal(doc.defaultView.getComputedStyle(output).display,'block');assert.isAbove(output.getBoundingClientRect().height,18);assert.notEqual(doc.defaultView.getComputedStyle(output).color,'rgba(0, 0, 0, 0)');assert.equal(translate.textContent,'机翻');assert.isFalse(translate.disabled);
    for(const selector of ['.quick-translation-cancel','.quick-translation-retry'])assert.equal(doc.defaultView.getComputedStyle(card.querySelector(selector)).display,'none','隐藏状态以实际计算样式验收');
-   popup.querySelector('[data-annotation-color="#5fb236"]').click();await Zotero.Promise.delay(30);popup.querySelector('[data-annotation-mode="underline"]').click();await Zotero.Promise.delay(30);assert.lengthOf(added,0,'选择颜色和样式不提前创建批注');assert.equal(popup.querySelector('[data-annotation-color="#5fb236"]').getAttribute('aria-pressed'),'true');assert.equal(popup.querySelector('[data-annotation-mode="underline"]').getAttribute('aria-pressed'),'true');
+   popup.querySelector('[data-annotation-color="#5fb236"]').click();await Zotero.Promise.delay(30);assert.lengthOf(added,0,'选择颜色不提前创建批注');assert.equal(popup.querySelector('[data-annotation-color="#5fb236"]').getAttribute('aria-pressed'),'true');
    const image=await win.browsingContext.currentWindowGlobal.drawSnapshot(null,1,'white');try{const canvas=win.document.createElementNS('http://www.w3.org/1999/xhtml','canvas');canvas.width=image.width;canvas.height=image.height;canvas.getContext('2d').drawImage(image,0,0);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await IOUtils.write(PathUtils.join(folder,'selected-text-translation-and-colors.png'),new Uint8Array(await blob.arrayBuffer()));}finally{image.close();}
-   assert.equal(translations,1,'颜色和样式选择不重复触发机翻');translate.click();assert.equal(translate.textContent,'机翻','点击执行时名称不切换成 AI 翻译');await wait(()=>translations===2&&card.dataset.state==='complete');assert.equal(translate.textContent,'机翻');assert.equal(translate.dataset.translationMode,'machine');
+   assert.equal(translations,1,'颜色选择不重复触发机翻');translate.click();assert.equal(translate.textContent,'机翻','点击执行时名称不切换成 AI 翻译');await wait(()=>translations===2&&card.dataset.state==='complete');assert.equal(translate.textContent,'机翻');assert.equal(translate.dataset.translationMode,'machine');
    const note=popup.querySelector('.easysch-reader-note'),strike=popup.querySelector('.easysch-reader-strikeout');assert.equal(note.textContent,'保存为笔记');assert.equal(strike.textContent,'划掉文字');assert.isFalse(note.disabled);assert.isFalse(strike.disabled);note.click();await wait(()=>calls.notes?.length===1);assert.equal(calls.notes[0].selection.position.pageIndex,0);assert.include(calls.notes[0].translation.text,'受控中文译文');strike.click();await wait(()=>calls.annotations?.length===1);assert.equal(calls.annotations[0].type,'strikeout');assert.equal(calls.annotations[0].selection.position.pageIndex,0);
-   popup.querySelector('.selection-annotation-save').click();await wait(()=>added.length===1);assert.equal(added[0].type,'underline');assert.equal(added[0].color,'#5fb236');assert.equal(added[0].position.pageIndex,0);assert.include(added[0].text,'24%');assert.equal(translations,2,'选区工具不重复触发机翻');
+   popup.querySelector('[data-annotation-mode="underline"]').click();await wait(()=>added.length===1);assert.equal(added[0].type,'underline');assert.equal(added[0].color,'#5fb236');assert.equal(added[0].position.pageIndex,0);assert.include(added[0].text,'24%');assert.equal(translations,2,'选区工具不重复触发机翻');
+  }finally{manager.addAnnotation=add;core._updateState(Cu.cloneInto({primaryViewSelectionPopup:null},sourceReader._iframeWindow));core.setTextSelectionAnnotationMode(oldMode);}
+ });
+ it('dispatches Gecko mouse hit tests through the selection popup without losing the selected source before saving',async()=>{
+  const core=sourceReader._internalReader,manager=core._annotationManager,add=manager.addAnnotation,oldMode=core._state.textSelectionAnnotationMode,added=[],events=[];
+  E.quickTranslate=async()=>({text:'受控选区译文，不调用外部服务'});manager.addAnnotation=annotation=>{added.push(JSON.parse(JSON.stringify(annotation)));return{...annotation,id:'controlled-pointer-annotation'};};
+  const nativeClick=async(node)=>{
+   const rect=node.getBoundingClientRect(),x=rect.left+rect.width/2,y=rect.top+rect.height/2,hit=doc.elementFromPoint(x,y);assert.strictEqual(hit.closest('button'),node,'实际鼠标命中目标按钮，没有透明层遮盖');
+   const down=event=>events.push({type:event.type,prevented:event.defaultPrevented,text:core._state.primaryViewSelectionPopup?.annotation?.text}),up=event=>events.push({type:event.type}),clicked=event=>events.push({type:event.type});
+   node.addEventListener('pointerdown',down);node.addEventListener('pointerup',up);node.addEventListener('click',clicked);
+   try{
+    // Current Gecko exposes synthesis on Window, not the retired
+    // nsIDOMWindowUtils.sendMouseEvent. This still uses browser hit testing
+    // at coordinates; it is not a target-only dispatch or a hardware click.
+    const contentWindow=Cu.unwaiveXrays(sourceReader._iframeWindow),options=Cu.cloneInto({button:0,inputSource:1},contentWindow),synthesis=Cu.cloneInto({isDOMEventSynthesized:true},contentWindow);
+    assert.isFunction(contentWindow.synthesizeMouseEvent,'测试环境需提供Gecko坐标事件合成入口');
+    contentWindow.synthesizeMouseEvent('mousemove',x,y,options,synthesis);contentWindow.synthesizeMouseEvent('mousedown',x,y,options,synthesis);contentWindow.synthesizeMouseEvent('mouseup',x,y,options,synthesis);await Zotero.Promise.delay(40);
+   }
+   finally{node.removeEventListener('pointerdown',down);node.removeEventListener('pointerup',up);node.removeEventListener('click',clicked);}
+  };
+  try{for(const type of ['underline','highlight']){
+   core._updateState(Cu.cloneInto({primaryViewSelectionPopup:{rect:[180,180,480,200],annotation:{text:'The full source selection for '+type+'.',position:{pageIndex:0,rects:[[20,20,300,36],[20,40,250,56]]},sortIndex:'00000|000001|00000'}}},sourceReader._iframeWindow));
+   await wait(()=>doc.querySelector('.selection-popup .easysch-quick-translation')?.dataset.state==='complete');const popup=doc.querySelector('.selection-popup');
+   await nativeClick(popup.querySelector('[data-annotation-color="#5fb236"]'));assert.equal(core._state.primaryViewSelectionPopup.annotation.text,'The full source selection for '+type+'.','颜色pointerdown/up不丢失完整选区');
+   const before=added.length;await nativeClick(popup.querySelector('[data-annotation-mode="'+type+'"]'));await wait(()=>added.length===before+1);const actual=added[before];assert.equal(actual.type,type);assert.equal(actual.color,'#5fb236');assert.equal(actual.text,'The full source selection for '+type+'.');assert.lengthOf(actual.position.rects,2,'跨行选区完整保留');
+   popup.querySelector('.selection-annotation-save').click();assert.equal(added.length,before+1,'模式点击后再按保存不会创建重复批注');core._updateState(Cu.cloneInto({primaryViewSelectionPopup:null},sourceReader._iframeWindow));await wait(()=>!doc.querySelector('.selection-popup'));
+  }
+  assert.isAtLeast(events.filter(event=>event.type==='pointerdown').length,4);assert.isAtLeast(events.filter(event=>event.type==='pointerup').length,4);assert.isAtLeast(events.filter(event=>event.type==='click').length,4);assert.isTrue(events.filter(event=>event.type==='pointerdown').every(event=>event.text?.startsWith('The full source selection')),'所有实际鼠标按下时仍保存当前完整选区');
   }finally{manager.addAnnotation=add;core._updateState(Cu.cloneInto({primaryViewSelectionPopup:null},sourceReader._iframeWindow));core.setTextSelectionAnnotationMode(oldMode);}
  });
 });

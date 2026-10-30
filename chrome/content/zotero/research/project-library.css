@@ -1,21 +1,55 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
-#manuscript-projects .project-library-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));align-items:stretch;gap:16px}
-body #manuscript-projects .project-library-grid .project-card{box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;min-width:0;max-width:none;min-height:272px;height:272px;margin:0;padding:20px;overflow:visible;gap:0;border:1px solid var(--ui-border,var(--line,#dfe4eb));border-radius:13px;background:var(--ui-card,var(--surface,#fff));box-shadow:0 3px 12px #25384a08}
-#manuscript-projects .project-card .project-card-top{display:flex;align-items:center;gap:12px;min-height:48px;flex:none}
+#manuscript-projects .project-library-grid{display:grid;max-width:1600px;margin-inline:auto;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));align-items:stretch;gap:16px}
+body #manuscript-projects .project-library-grid .project-card{box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;min-width:0;max-width:none;min-height:272px;height:272px;margin:0;padding:20px;overflow:visible;gap:0;border:1px solid var(--ui-soft-border,var(--ui-border,var(--line,#dfe4eb)));border-radius:var(--ui-radius-panel,14px);background:var(--ui-panel-bg,var(--ui-card,var(--surface,#fff)));box-shadow:var(--ui-card-shadow);font-family:var(--ui-font);color:var(--ui-text,var(--text,#283443))}
+#manuscript-projects .project-card .project-card-top{display:flex;align-items:center;gap:12px;min-height:48px;flex:none;min-width:0;max-width:100%}
 #manuscript-projects .project-card .project-card-icon{display:grid;place-content:center;flex:none;width:36px;height:40px;border:1px solid var(--line,#dfe4eb);border-radius:9px;background:var(--soft,#f1f5fa);color:var(--accent,#386487);font-size:23px}
-#manuscript-projects .project-card .project-card-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-family:inherit;font-size:15px;font-weight:600;line-height:1.55;text-align:left;border:0;background:transparent;box-shadow:none;min-width:0;padding:0;overflow-wrap:anywhere;color:var(--text,#283443)}
+#manuscript-projects .project-card .project-card-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex:1 1 0;max-width:100%;max-height:3.1em;white-space:normal;word-break:normal;font-family:var(--ui-font);font-size:15px;font-weight:600;line-height:1.55;text-align:left;border:0;background:transparent;box-shadow:none;min-width:0;padding:0;overflow-wrap:anywhere;color:var(--ui-text,var(--text,#283443))}
 #manuscript-projects .project-card .project-goal{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:43px;height:43px;flex:none;margin:13px 0 0;font-size:13px;line-height:1.65;color:var(--muted,#687482);overflow-wrap:anywhere}
 #manuscript-projects .project-card .project-card-facts{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;line-height:20px;padding:12px 0;color:var(--muted,#687482)}
-#manuscript-projects .project-card>footer{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:auto;padding:0 0 12px;border-bottom:1px solid var(--line,#dfe4eb);font-size:11px;color:var(--muted,#687482)}
+#manuscript-projects .project-card>footer{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:auto;padding:0 0 8px;border-bottom:0;font-size:11px;color:var(--muted,#687482)}
 #manuscript-projects .project-card .project-card-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:12px;min-height:34px}
 #manuscript-projects .project-card .project-open{min-height:34px;border-radius:8px;padding:5px 12px;font-size:12px;background:var(--soft,#edf1f5);color:var(--text,#283443)}
 #manuscript-projects .project-card .project-card-menu{position:relative;flex:none;margin:0;color:var(--muted,#687482);font-size:12px}
 #manuscript-projects .project-card-menu>summary{cursor:pointer;min-height:34px;box-sizing:border-box;padding:8px 10px;border-radius:8px}
 #manuscript-projects .project-card-menu>summary:hover{background:var(--soft,#edf1f5)}
 #manuscript-projects .project-card-menu[open]{z-index:5}
-#manuscript-projects .project-card-menu-content{position:absolute;right:0;bottom:calc(100% + 6px);z-index:5;min-width:168px;max-width:260px;padding:5px;border:1px solid var(--line,#dfe4eb);border-radius:10px;background:var(--ui-card,var(--surface,#fff));box-shadow:0 9px 28px #24384b1f}
-#manuscript-projects .project-card-menu-content>button{display:block;width:100%;min-height:34px;text-align:left;padding:7px 10px;margin:0;border:0;border-radius:6px;box-shadow:none;background:transparent;font-size:12px}
+#manuscript-projects .project-card-menu-content{position:absolute;right:0;bottom:calc(100% + 6px);z-index:5;min-width:168px;max-width:260px;padding:5px;border:1px solid var(--ui-border,var(--line,#dfe4eb));border-radius:var(--ui-radius-card,10px);background:var(--ui-card,var(--surface,#fff));box-shadow:var(--ui-float-shadow,0 9px 28px #24384b1f)}
+#manuscript-projects .project-card-menu-content>button{display:block;width:100%;min-height:34px;text-align:left;padding:7px 10px;margin:0;border:0;border-radius:var(--ui-radius-control,8px);box-shadow:none;background:transparent;font:13px/1.5 var(--ui-font);color:var(--ui-text)}
 #manuscript-projects .project-card-menu-content>button:hover{background:var(--soft,#edf1f5)}
 #manuscript-projects .project-create>label{display:block;margin:10px 0 5px;font-size:13px;color:var(--muted,#687482)}
-#manuscript-projects .project-create>select{display:block;width:100%;min-height:38px;box-sizing:border-box;margin:0;border-radius:9px;background:var(--surface,#fff)}
+#manuscript-projects .project-create>select{display:block;width:100%;min-height:38px;box-sizing:border-box;margin:0;border-radius:var(--ui-radius-control,8px);background:var(--ui-card,var(--surface,#fff))}
 @media(max-width:620px){#manuscript-projects .project-library-grid{grid-template-columns:1fr}}
+
+/* One reader-style surface per task. The create form lives in the top layer
+   so opening it never moves the saved project cards. */
+html body #manuscript-projects>.project-library-heading{background:transparent;border:0;box-shadow:none;padding:0;margin:0 0 20px;min-height:48px}
+html body #manuscript-projects #new-manuscript{float:none;margin:0;min-height:36px;padding:7px 14px;border-radius:8px;box-shadow:var(--ui-control-shadow)}
+html body #manuscript-projects .project-library-metrics{display:flex;align-items:center;gap:28px;flex-wrap:wrap;margin:0 0 20px;padding:0 2px}
+html body #manuscript-projects .project-library-metrics>div{display:flex;align-items:baseline;gap:8px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+html body #manuscript-projects .project-library-metrics strong{font-size:21px;font-weight:500;color:var(--ui-text)}
+html body #manuscript-projects .project-library-metrics span{font-size:12px;color:var(--ui-secondary)}
+html body #manuscript-projects .project-card .project-card-icon{border:0;background:var(--ui-tray);box-shadow:none;border-radius:8px}
+html body #manuscript-projects .project-card .project-open{border:1px solid var(--ui-soft-border,var(--ui-border));border-radius:8px;background:var(--ui-control-bg,var(--ui-card));box-shadow:var(--ui-control-shadow)}
+html body #manuscript-projects .project-card .project-open:hover{background:var(--ui-hover)}
+html body #manuscript-projects .project-create-dialog{box-sizing:border-box;width:min(560px,calc(100% - 40px));max-height:calc(100% - 48px);padding:24px;margin:auto;border:1px solid var(--ui-soft-border,var(--ui-border));border-radius:var(--ui-radius-panel,14px);background:var(--ui-panel-bg,var(--ui-card));color:var(--ui-text);box-shadow:var(--ui-float-shadow);overflow:auto;font:14px/1.65 var(--ui-font)}
+.project-create-dialog::backdrop{background:#25334130;backdrop-filter:blur(8px)}
+html body #manuscript-projects .project-create-dialog>.project-create{display:block;width:100%;max-width:none;margin:0!important;padding:0!important;border:0!important;background:transparent!important;border-radius:0!important;box-shadow:none!important;backdrop-filter:none}
+.project-create-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
+html body #manuscript-projects .project-create-heading h3{margin:0;font-size:18px;font-weight:600}
+html body #manuscript-projects .project-create-heading>.project-create-close{display:grid;place-content:center;min-width:30px;min-height:30px;width:30px;height:30px;padding:0;border:0;border-radius:8px;background:transparent;box-shadow:none;font-size:23px;color:var(--ui-secondary)}
+html body #manuscript-projects .project-create-close:hover{background:var(--ui-hover)}
+html body #manuscript-projects .project-create-dialog label{display:block;margin:16px 0 6px;font-size:13px;color:var(--ui-secondary)}
+html body #manuscript-projects .project-create-dialog :is(input,select){display:block;width:100%;height:40px;min-height:40px;margin:0;padding:8px 11px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-control,8px);background:var(--ui-card);color:var(--ui-text);font:13px/1.6 var(--ui-font)}
+.project-create-hint{font-size:12px;line-height:1.7;color:var(--ui-secondary);margin:12px 0 22px}
+.project-create-hint[data-error=true]{color:#a03b35}
+.project-create-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding-top:12px;border-top:0}
+html body #manuscript-projects .project-create-actions>button{margin:0;min-height:36px;padding:7px 12px;border:1px solid var(--ui-soft-border,var(--ui-border));border-radius:8px;background:var(--ui-control-bg,var(--ui-card));font:13px/1.5 var(--ui-font);box-shadow:var(--ui-control-shadow)}
+html body #manuscript-projects .project-create-actions>.primary{background:var(--ui-primary,var(--accent,#466786));border-color:transparent;color:var(--ui-primary-text,#fff)}
+html body #manuscript-projects .project-create-actions>button:hover:not(:disabled){background:var(--ui-hover)}
+html body #manuscript-projects .project-create-actions>.primary:hover:not(:disabled){background:var(--ui-primary-hover,var(--ui-primary,#e9f2ff))}
+@media(max-width:620px){html body #manuscript-projects .project-create-dialog{padding:20px}.project-create-actions>button{flex:1}}
+.project-create-scope{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;margin:2px 0 12px}
+.project-create-scope>label:first-child{grid-column:1/-1}
+.project-create-scope .research-domain-picker{margin-top:6px}
+.project-create-hint:empty{display:none}
+@media(max-width:560px){.project-create-scope{grid-template-columns:1fr}}

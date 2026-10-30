@@ -8,6 +8,10 @@
 		});
 		return transport;
 	};
+	// PDF streams use the same application-owned background transport and can
+	// follow repository redirects without waiting behind metadata search jobs.
+	R.fetchDiscoveryPDF=(url,options)=>providerTransport().fetch(url,options);
+	R.createProviderController=()=>new (providerTransport().AbortController)();
 	R.requestProvider = async function (url, options = {}, timeout = 30000, readResponse = response => response.text()) {
 		// A background request must outlive closing its originating library or
 		// Reader window. A persistent system-principal sandbox owns fetch and
@@ -16,19 +20,28 @@
 		if(!win?.fetch||!win.AbortController)throw new Error('后台网络环境不可用，请重新打开软件');
 		const timers=R.setTimeout&&R.clearTimeout?R:ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
 		const controller=new win.AbortController(),external=options.signal;let reason,timer,rejectStopped;
-		const stopError=()=>{const error=new Error(reason==='cancel'?'服务请求已取消':'服务请求超时，请重试');error.name=reason==='cancel'?'AbortError':'TimeoutError';return error;};
+		// A number keeps the legacy single deadline. {firstByte,idle,total}
+		// lets a streamed answer run long while a stalled one still stops.
+		let limits=typeof timeout==='object'&&timeout?{firstByte:Number(timeout.firstByte)||0,idle:Number(timeout.idle)||0,total:Number(timeout.total)||0}:{firstByte:0,idle:0,total:Number(timeout)||30000},firstTimer,idleTimer;
+		let stopMessages={cancel:'服务请求已取消',timeout:'服务请求超时，请重试','first-byte':'模型较长时间没有开始回复，请重试或降低思考强度',idle:'模型输出中断时间过长，请重试',total:'本次生成超过时长上限，请重试或降低思考强度'};
+		const stopError=()=>{const error=new Error(stopMessages[reason]||stopMessages.timeout);error.name=reason==='cancel'?'AbortError':'TimeoutError';if(reason!=='cancel'&&reason!=='timeout')error.timeoutStage=reason;return error;};
 		const stopped=new Promise((_,reject)=>{rejectStopped=reject;});
 		const stop=cause=>{if(reason)return;reason=cause;controller.abort();rejectStopped(stopError());};
 		const abort=()=>stop('cancel');external?.addEventListener('abort',abort,{once:true});if(external?.aborted)abort();
-		if(!reason)timer=timers.setTimeout(()=>stop('timeout'),timeout);
+		if(!reason&&limits.total)timer=timers.setTimeout(()=>stop(limits.firstByte||limits.idle?'total':'timeout'),limits.total);
+		if(!reason&&limits.firstByte)firstTimer=timers.setTimeout(()=>stop('first-byte'),limits.firstByte);
+		// Readers report streamed chunks; silent reasoning before the first
+		// chunk is covered by the total deadline, not the idle timer.
+		const activity=()=>{if(reason||!limits.idle)return;if(idleTimer!==undefined)timers.clearTimeout(idleTimer);idleTimer=timers.setTimeout(()=>stop('idle'),limits.idle);};
 		try {
 			const reading=(async()=>{
 				if(reason)throw stopError();
 				let response;try{response=await win.fetch(url,{...options,signal:controller.signal,redirect:'error'});}
 				catch(error){if(reason)throw stopError();throw Object.assign(new Error('无法连接服务，请检查网络或代理'),{name:'ProviderTransportError'});}
 				if(reason)throw stopError();
+				if(firstTimer!==undefined){timers.clearTimeout(firstTimer);firstTimer=undefined;}
 				if(!response.ok){const errors=ChromeUtils.importESModule('chrome://zotero/content/research/shared/provider-error.mjs');throw await errors.providerResponseError(response);}
-				return await readResponse(response);
+				return await readResponse(response,activity);
 			})();
 			// Covers headers, response.text() and custom streaming readers. Abort
 			// also rejects our own promise if a reader is awaiting a stalled chunk.
@@ -36,20 +49,21 @@
 			const result=await Promise.race([reading,stopped]);if(reason)throw stopError();return result;
 		}
 		catch (e) { if(reason)throw stopError();if(e.name==='ProviderRequestError'||e.name==='ProviderTransportError')throw e;throw Object.assign(new Error(/^(服务返回 HTTP|模型流式响应|模型响应在完成前)/.test(e.message)?e.message:'服务已连接，但返回内容无法读取，请重试'),{name:'ProviderResponseError'}); }
-		finally { if(timer!==undefined)timers.clearTimeout(timer);external?.removeEventListener('abort',abort); }
+		finally { for(const id of [timer,firstTimer,idleTimer])if(id!==undefined)timers.clearTimeout(id);external?.removeEventListener('abort',abort); }
 	};
 	R.configureProviders = async function (data) {
 		// Import a user-supplied OpenAI-compatible provider into the profile's
 		// password manager. The source tree and exported research data never hold keys.
 		if (data.ai) {
 			const endpoint = R.core.endpoint(data.ai.endpoint || data.ai.url || R.settings().endpoint);
-			if (!['gpt6luna', 'gpt-6-luna'].includes(data.ai.model)) throw new Error('此 AI 接口只允许使用 GPT-6 Luna');
+			const model = String(data.ai.model || R.settings().model || 'gpt-6.1-sol').trim().replace(/^gpt6luna$/i, 'gpt-6-luna').replace(/^gpt6[.-]?1sol$/i, 'gpt-6.1-sol');
+			if (!model || model.length > 160 || /[\s\x00-\x1f]/.test(model)) throw new Error('请输入有效的模型名称');
 			if (data.ai.key !== undefined) {
 				if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(data.ai.key || '')) throw new Error('AI 密钥格式无效');
 				await R.credentials.set(endpoint, data.ai.key);
 			}
 			else if (!await R.credentials.get(endpoint)) throw new Error('此接口尚未保存 AI 密钥');
-			await R.store.update(s => { s.settings.endpoint = endpoint; s.settings.model = 'gpt-6-luna'; });
+			await R.store.update(s => { s.settings.endpoint = endpoint; s.settings.model = model; });
 		}
 		if (data.image) {
 			const endpoint = R.core.endpoint(data.image.endpoint || data.image.url);
@@ -154,39 +168,70 @@
 			easyscholar: !!await R.credentials.get('https://easyscholar.cc'),
 			youdao: !!R.settings().youdaoAppID && !!await R.credentials.get('https://openapi.youdao.com') };
 	};
-	R.testProviders = async function () {
+	// A stopped test starts no further probe and aborts the running one.
+	R.testProviders = async function ({ signal } = {}) {
 		let flags = await R.providerStatus(), results = {};
 		for (let name of Object.keys(flags)) {
+			if (signal?.aborted) break;
 			if (!flags[name]) { results[name] = '未配置'; continue; }
 			try {
 				if (name === 'ai') {
-					const { endpoint, model } = R.settings();
+					const settings = R.settings(), { endpoint, model } = settings;
 					const chat=ChromeUtils.importESModule('chrome://zotero/content/research/shared/chat-completion.mjs'),stream=chat.chatRequiresStreaming(endpoint);
-					const reply = await R.requestProvider(endpoint + '/chat/completions', {
-						method: 'POST', headers: { Authorization: 'Bearer ' + await R.credentials.get(endpoint), 'Content-Type': 'application/json' },
-						body: JSON.stringify({ model, max_tokens: 24, ...(stream ? { stream: true } : {}), messages: [{ role: 'user', content: '只回答：连接正常' }] })
-					}, 30000, response=>chat.readChatCompletion(response,{stream}));
-					if (!reply.text) throw new Error('模型未返回正文');
+					const Policy=ChromeUtils.importESModule('chrome://zotero/content/research/shared/research-ai-policy.mjs'),key=await R.credentials.get(endpoint);
+					const probe=async(config,tokens,timeout)=>{
+						const reply=await R.requestProvider(endpoint + '/chat/completions', {
+							method: 'POST', signal, headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+							body: JSON.stringify({ model: config.model, [Policy.tokenParameter(config)]: tokens, ...Policy.reasoningPayload(config), ...(stream ? { stream: true } : {}), messages: [{ role: 'user', content: '只回答：连接正常' }] })
+						}, timeout, response=>chat.readChatCompletion(response,{stream}));
+						// A reasoning model may spend this small cap on thinking; the
+						// length stop still proves the model and effort were accepted.
+						if (!reply.text && reply.finishReason !== 'length') throw new Error('模型未返回正文');
+					};
+					R.lastResearchProbe = null;
+					await probe({ ...settings, thinkingLevel: 'off', reasoningParameter: '' }, 24, 30000);
 					results[name] = '对话成功 · ' + model;
+					// The settings test must cover the model research tasks actually
+					// route to, with its real effort, not only the configured model.
+					// Name an effort only when a reasoning parameter is actually sent.
+					const routed = R.researchModelConfig({ ...settings, thinkingLevel: '' }, 'research'), sent = Object.keys(Policy.reasoningPayload(routed)).length > 0;
+					const label = '将使用 ' + routed.model + (sent ? ' · 思考 ' + Policy.thinkingLabel(routed.thinkingLevel) : ' · 未发送思考参数') + (settings.researchModelRouting === 'configured' ? '（已设为使用配置模型）' : '');
+					const needed = routed.model !== model || sent;
+					// Writing and assessment can run at a higher effort than this probe covers.
+					let writing = R.researchModelConfig({ ...settings, thinkingLevel: '' }, 'writing'), writingNote = sent && Object.keys(Policy.reasoningPayload(writing)).length && writing.thinkingLevel !== routed.thinkingLevel ? '；写作与评估使用' + Policy.thinkingLabel(writing.thinkingLevel) + '思考，未单独测试' : '';
+					try {
+						if (needed) await probe(routed, ['high', 'xhigh'].includes(routed.thinkingLevel) ? 8192 : 4096, 90000);
+						results.research = label + (needed ? '：可用' : '：与对话测试相同') + writingNote;
+						R.lastResearchProbe = { ok: true, routedModel: routed.model, configuredModel: model, thinkingLevel: routed.thinkingLevel, routing: settings.researchModelRouting || 'auto' };
+					}
+					catch (error) {
+						// A stop is not a failed probe and must not offer a model switch.
+						if (signal?.aborted) throw error;
+						results.research = label + '：不可用（' + error.message + '）';
+						R.lastResearchProbe = { ok: false, routedModel: routed.model, configuredModel: model, thinkingLevel: routed.thinkingLevel, routing: settings.researchModelRouting || 'auto', message: error.message };
+					}
 				}
 				else if (name === 'image') {
 					const Image = ChromeUtils.importESModule('chrome://zotero/content/research/shared/image-generation.mjs');
-					const selected = Image.selectImageModel(await R.imageModels({ refresh: true }), R.settings().imageModel);
+					const selected = Image.selectImageModel(await R.imageModels({ refresh: true, signal }), R.settings().imageModel);
 					results[name] = '已连接 · ' + selected + '（未生成图片）';
 				}
 				else if (name === 'deepseek') {
-					const result=await R.quickTranslate('The experiment includes a control group.',undefined,{purpose:'document',persist:false});
+					const result=await R.quickTranslate('The experiment includes a control group.',signal,{purpose:'document',persist:false});
 					results[name] = '学术翻译成功 · ' + result.provider;
 				}
-				else if (name === 'azure') { await R.translateAzure('The experiment includes a control group.'); results[name] = '选区机翻成功'; }
-				else if (name === 'youdao') { await R.translateYoudao('The experiment includes a control group.'); results[name] = '短句翻译成功'; }
+				else if (name === 'azure') { await R.translateAzure('The experiment includes a control group.', undefined, { signal }); results[name] = '选区机翻成功'; }
+				else if (name === 'youdao') { await R.translateYoudao('The experiment includes a control group.', undefined, { signal }); results[name] = '短句翻译成功'; }
 				else {
 					let item = new Zotero.Item('journalArticle'); item.setField('publicationTitle', 'Nature'); item.setField('ISSN', '0028-0836');
-					let data = await R.lookupMetrics(item, new Date().getFullYear() - 1);
+					let data = await R.lookupMetrics(item, new Date().getFullYear() - 1, { signal });
 					results[name] = data.impact_factor != null ? '期刊查询成功（未写入文库）' : '接口已连接，未返回影响因子';
 				}
 			}
-			catch (e) { results[name] = e.message; }
+			catch (e) {
+				if (signal?.aborted) break;
+				results[name] = e.message;
+			}
 		}
 		return results;
 	};

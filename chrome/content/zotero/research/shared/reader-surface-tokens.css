@@ -7,8 +7,9 @@
 :root[data-easysch-reading-appearance=dark],
 :root:not([data-easysch-reading-appearance])[data-easysch-appearance=dark],
 :root:not([data-easysch-reading-appearance]):not([data-easysch-appearance])[data-appearance=dark],
-:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance])[data-theme=dark],
-:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance]):not([data-theme])[systemdark]{
+:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance])[data-color-scheme=dark],
+:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance]):not([data-color-scheme])[data-theme=dark],
+:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance]):not([data-color-scheme]):not([data-theme])[systemdark]{
  --es-read-ink:#e2e7ed;--es-read-muted:#a2adbc;--es-read-tray:#282f39;--es-read-surface:#252b33;--es-read-line:#444f5e;--es-read-selection:#304963;--es-read-shadow:#0003;--es-read-highlight:#ffffff0c;
 }
-@media(prefers-color-scheme:dark){:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance]):not([data-theme]){--es-read-ink:#e2e7ed;--es-read-muted:#a2adbc;--es-read-tray:#282f39;--es-read-surface:#252b33;--es-read-line:#444f5e;--es-read-selection:#304963;--es-read-shadow:#0003;--es-read-highlight:#ffffff0c}}
+@media(prefers-color-scheme:dark){:root:not([data-easysch-reading-appearance]):not([data-easysch-appearance]):not([data-appearance]):not([data-color-scheme]):not([data-theme]){--es-read-ink:#e2e7ed;--es-read-muted:#a2adbc;--es-read-tray:#282f39;--es-read-surface:#252b33;--es-read-line:#444f5e;--es-read-selection:#304963;--es-read-shadow:#0003;--es-read-highlight:#ffffff0c}}

@@ -46,7 +46,7 @@ export function normalizeWritingWorkflow(value={},_project={}) {
 /** Update the whole plan, or only the selected chapter. The caller persists
  * the project with its normal save path; a validation failure changes nothing. */
 export function updateWritingWorkflow(project,patch,{sectionID}={}) {
- object(project,'论文项目');const change=object(patch,'写作计划修改'),current=normalizeWritingWorkflow(project.writingWorkflow),next=clone(current);
+ object(project,'论文项目');const change=object(patch,'写作计划修改'),hadWorkflow=project.writingWorkflow!=null,current=normalizeWritingWorkflow(project.writingWorkflow),next=clone(current);
  const changes=sectionID?{[key(sectionID)]:change}:object(change.sections,'章节计划修改');
  if(!sectionID)for(const field of WRITING_WORKFLOW_GLOBAL_FIELDS)if(own(change,field))next[field]=text(change[field],field);
  for(const [id,raw] of Object.entries(changes)) {
@@ -59,7 +59,13 @@ export function updateWritingWorkflow(project,patch,{sectionID}={}) {
   if(own(update,'figureBlockIDs')){const selected=ids(update.figureBlockIDs,'图表编号'),figures=new Set(figureIDs(project,id));if(selected.some(blockID=>!figures.has(blockID)))throw Error('结果只能关联本章已有图表或公式');plan.figureBlockIDs=selected;}
   next.sections[id]=plan;
  }
- project.writingWorkflow=normalizeWritingWorkflow(next);return project.writingWorkflow;
+ project.writingWorkflow=normalizeWritingWorkflow(next);
+ // Editing a plan is a content change even when ordinary assembly autosaves
+ // deliberately skip expensive full-source signature checks. Invalidate only
+ // the affected chapters here; keep every existing narrative and source.
+ const globalChanged=!hadWorkflow||WRITING_WORKFLOW_GLOBAL_FIELDS.some(field=>current[field]!==next[field]),changedSections=new Set(Object.keys(next.sections).filter(id=>JSON.stringify(sectionPlan(current.sections[id]))!==JSON.stringify(next.sections[id])));
+ if(globalChanged||changedSections.size){for(const frame of Object.values(project.writingFrameworks||{})){if(!globalChanged&&!changedSections.has(frame.sectionID))continue;frame.dirty=true;for(const node of frame.nodes||[])node.dirty=true;}if(project.writingDigestReview)project.writingDigestReview.dirty=true;}
+ return project.writingWorkflow;
 }
 
 const requirements=Object.freeze({

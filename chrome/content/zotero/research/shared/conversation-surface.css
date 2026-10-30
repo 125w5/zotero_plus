@@ -10,12 +10,15 @@
 #easysch-conversation-surface .clui-native-shell{flex:none;min-height:0;border-radius:18px;box-shadow:var(--ui-shadow,0 2px 8px #0001),inset 0 1px var(--ui-glint,#ffffff9c);}
 #easysch-conversation-surface[data-expanded=true] .clui-native-shell{flex:1;}
 #easysch-conversation-surface .clui-native-body{flex:1;min-height:0;}
+/* This surface floats over PDF pages of any colour. Lighter glass lets white or
+   black paper pull the placeholder below 4.5:1, so it stays nearly opaque. */
+#easysch-conversation-surface[data-clui-native]{--clui-container-bg:color-mix(in srgb,var(--ui-card,#fff) 94%,transparent);}
 #easysch-conversation-surface[data-embedded=true]{position:relative;inset:0;z-index:auto;max-height:100%;transform:none;}
 #easysch-conversation-surface[data-dragging=true],#easysch-conversation-surface[data-resizing=true]{transition:none!important;}
 #easysch-conversation-surface[data-dragging=true]{cursor:grabbing;will-change:transform;}
 #easysch-conversation-surface[data-dragging=true] .clui-native-glass{backdrop-filter:none;}
 #easysch-conversation-surface[data-presentation=reader-bottom][data-dock=floating][data-expanded=false] .clui-native-shell{display:none;}
-#easysch-conversation-surface[data-presentation=reader-bottom][data-dock=floating][data-idle=true]{opacity:.2;transform:translate3d(0,calc(100% - 14px),0);}
+#easysch-conversation-surface[data-presentation=reader-bottom][data-dock=floating][data-idle=true]{opacity:.5;transform:none;}
 .conversation-surface-move{cursor:grab!important;touch-action:none;flex:none;width:28px;height:28px;}
 .conversation-surface-move:active{cursor:grabbing!important;}
 .conversation-surface button{appearance:none;border:1px solid transparent;border-radius:9px;padding:5px 7px;background:transparent;color:var(--ui-secondary,#74808e);font:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;transition:background 130ms,box-shadow 130ms,border-color 130ms,color 130ms;}
@@ -69,9 +72,40 @@
 .conversation-surface-save{position:absolute;right:0;bottom:0;min-height:28px;font-size:11px!important;opacity:.76;}
 .conversation-surface-message-grip{position:absolute;left:0;bottom:0;min-height:28px;padding:4px 7px!important;font-size:11px!important;cursor:grab!important;opacity:.72;}
 .conversation-surface-message-grip svg{stroke-width:3;}
+.conversation-surface-message-run{margin-left:auto;color:var(--ui-secondary,#738091);font-weight:400;opacity:.85;}
+/* A streamed draft is provisional until the saved answer replaces it. */
+.conversation-surface-message.conversation-surface-draft{padding:10px 12px;border:1px dashed var(--ui-border,#d6dfe7);border-radius:10px;background:color-mix(in srgb,var(--ui-tray,#f2f5f8) 60%,transparent);}
+.conversation-surface-draft-state{color:var(--ui-secondary,#738091);}
+.conversation-surface-draft-text{white-space:pre-wrap;color:var(--ui-secondary,#738091);font:14px/1.85 var(--ui-font,system-ui);}
+.conversation-surface-draft-text:empty{display:none;}
+.conversation-surface-failure{align-self:flex-start;max-width:100%;margin-top:-6px;padding:8px 12px;border:1px solid color-mix(in srgb,var(--ui-danger,#aa413d) 34%,var(--ui-border,#d6dfe7));border-left-width:3px;border-radius:10px;background:color-mix(in srgb,var(--ui-danger,#aa413d) 7%,var(--ui-card,#fff));color:var(--ui-text,#24282f);font:12px/1.7 var(--ui-font,system-ui);overflow-wrap:anywhere;}
+.conversation-surface-failure[data-kind=stopped]{border-color:var(--ui-border,#d6dfe7);border-left-color:var(--ui-secondary,#738091);background:var(--ui-tray,#f2f5f8);}
+.conversation-surface-failure-head{font-weight:600;color:color-mix(in srgb,var(--ui-danger,#aa413d) 72%,var(--ui-text,#24282f));}
+.conversation-surface-failure[data-kind=stopped] .conversation-surface-failure-head{color:var(--ui-secondary,#738091);}
+.conversation-surface-failure-cause{white-space:pre-wrap;}
+.conversation-surface-failure-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.conversation-surface .conversation-surface-failure-action{min-height:26px;padding:3px 9px;border:1px solid var(--ui-border,#d6dfe7);border-radius:8px;background:var(--ui-card,#fff);color:var(--ui-text,#24282f);font-size:12px;}
+.conversation-surface .conversation-surface-failure-action:hover{background:var(--ui-hover,#edf1f5);}
 .conversation-surface-message:is(:hover,:focus-within) :is(.conversation-surface-save,.conversation-surface-message-grip){opacity:1;}
 #easysch-conversation-surface .conversation-surface-input-row{flex:none;margin-bottom:4px;}
 #easysch-conversation-surface .conversation-surface-footer{display:flex;flex-direction:column;gap:7px;margin:0;padding:7px 16px 9px;border-radius:25px;box-shadow:0 3px 0 color-mix(in srgb,var(--ui-tray,#edf0f4) 85%,transparent),0 4px 0 color-mix(in srgb,var(--ui-border,#d7dfe8) 65%,transparent),var(--ui-shadow,0 3px 12px #1c263510),inset 0 1px var(--ui-glint,#ffffffaa);}
+/* A docked conversation belongs to the reader's pane. Give its history and
+   composer the same frame; the floating CLUI keeps its free-standing shape. */
+#easysch-conversation-surface[data-dock]:not([data-dock=floating]){--conversation-pane-radius:12px;transition:opacity 160ms;transform:none;}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating])[data-expanded=true]{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating]) .clui-native-shell{width:100%;margin:0 0 8px;border-radius:var(--conversation-pane-radius);background:var(--ui-card,#fff);box-shadow:0 2px 8px #20354b10,inset 0 1px var(--ui-glint,#fff);transition:background 160ms,box-shadow 160ms;}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating])[data-expanded=true] .clui-native-shell{margin:0;min-height:0;}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating])[data-expanded=true] .clui-native-body{display:grid;grid-template-rows:minmax(0,1fr);height:auto;max-height:none;transition:opacity 160ms;}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating])[data-expanded=true] .conversation-surface-input-row{grid-row:2;min-width:0;margin:0;}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating]) .conversation-surface-footer{border-radius:var(--conversation-pane-radius);background:color-mix(in srgb,var(--ui-card,#fff) 90%,transparent);box-shadow:0 2px 8px #20354b12,inset 0 1px var(--ui-glint,#fff);}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating]) :is(.conversation-surface-composer,.conversation-surface-input){border-radius:8px;}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating]) .conversation-surface-message.from-user{border-radius:10px;}
+/* A dock is one reading rail. Its surfaces share the same corner family;
+   the inset tray keeps the message area distinct from the bottom composer. */
+#easysch-conversation-surface[data-dock]:not([data-dock=floating])[data-expanded=true]{padding:8px;border-radius:16px;background:color-mix(in srgb,var(--ui-tray,#f1f4f7) 88%,transparent);box-shadow:inset 1px 0 color-mix(in srgb,var(--ui-border,#dbe1e8) 65%,transparent);}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating]) .conversation-surface-header{border-radius:12px 12px 0 0;background:color-mix(in srgb,var(--ui-card,#fff) 92%,var(--ui-tray,#f1f4f7));}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating]) :is(.conversation-surface-empty,.conversation-surface-log){border-radius:0 0 12px 12px;}
+#easysch-conversation-surface[data-dock]:not([data-dock=floating]) .clui-native-height-grip{border-radius:12px 12px 0 0;}
 .conversation-surface-composer{position:relative;display:flex;flex-direction:column;min-width:0;background:transparent;border:0;border-radius:18px;}
 .conversation-surface-input{resize:none;min-width:0;width:100%;min-height:38px;max-height:116px;padding:8px 3px 7px;border:0;border-radius:18px;background:transparent!important;color:var(--ui-text,#24282f)!important;caret-color:var(--ui-text,#24282f);font:14px/1.65 var(--ui-font,system-ui);box-shadow:none!important;transition:height 180ms cubic-bezier(.4,0,.1,1);}
 .conversation-surface-input:focus-visible{outline:none;}
@@ -99,8 +133,7 @@
 .conversation-surface-strength-options button{font-size:11px;padding:6px;}
 .conversation-surface-model-status{font-size:11px;color:var(--ui-secondary,#738091);padding:4px 6px;}
 @keyframes conversation-control-enter{from{opacity:0;transform:translateY(5px) scale(.985)}to{opacity:1;transform:none}}
-.conversation-surface-attachments{display:flex;gap:5px;flex-wrap:wrap;max-height:85px;overflow:auto;scrollbar-width:thin;padding:3px 0;}
-.conversation-surface-attachment{display:flex;align-items:center;gap:5px;min-width:0;max-width:100%;border:1px solid var(--ui-border,#d8e0e9);border-radius:10px;padding:3px 5px;background:var(--ui-tray,#f4f6f9);font-size:11px;color:var(--ui-secondary,#657487);box-shadow:0 1px 3px #1625380d;}
+.conversation-surface-attachment{display:flex;align-items:center;gap:6px;min-width:0;max-width:280px;border:1px solid var(--ui-border,#d8e0e9);border-radius:8px;padding:3px 6px;background:color-mix(in srgb,var(--ui-tray,#f4f6f9) 65%,transparent);font-size:12px;color:var(--ui-text,#253141);box-shadow:inset 0 1px #ffffff8a;}
 .conversation-surface-attachment-name{max-width:185px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text;}
 .conversation-surface-attachment-remove,.conversation-surface-attachment-grip{flex:none;width:28px;height:28px;padding:5px!important;}
 .conversation-surface-attachment-grip{cursor:grab!important;}
@@ -126,6 +159,7 @@
 .conversation-surface-dock-target{position:fixed;z-index:2147482997;pointer-events:none;display:flex;align-items:center;justify-content:center;border:2px dashed #8a9bae;border-radius:12px;background:#c5d1de44;color:#52657b;font:12px var(--ui-font,system-ui);backdrop-filter:blur(3px);}
 .conversation-preferences-popover{position:fixed;z-index:2147483001;max-width:calc(100vw - 16px);color:var(--ui-text,#283541);font:12px/1.6 var(--ui-font,system-ui);animation:conversation-control-enter 140ms ease-out;}
 .conversation-preferences-popover{overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;}
+.conversation-preferences-popover[data-embedded=true]{z-index:2147483011;}
 .conversation-preferences-popover :is(.conversation-surface-controls,.conversation-surface-session-menu){position:static;inset:auto;width:100%;max-width:none;box-sizing:border-box;max-height:none;overflow:visible;margin:0;}
 .conversation-surface-execution-menu{display:flex;flex-direction:column;gap:3px;}
 .conversation-surface-execution-menu button{justify-content:flex-start;min-height:38px;font-size:12px;white-space:normal;text-align:left;}

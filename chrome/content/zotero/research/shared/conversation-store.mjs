@@ -51,6 +51,6 @@ export function patchConversation(state,id,patch,now=new Date().toISOString()) {
  }
  if(messages)session.messages=mergeConversationMessages(session.messages,messages);
  session.updatedAt=now;
- if(['研究对话','新研究对话'].includes(session.title)&&session.messages.length)session.title=session.messages.find(message=>message.role==='user')?.text?.replace(/\s+/g,' ').slice(0,28)||session.title;
+ if(!session.titleManuallySet&&['研究对话','新研究对话'].includes(session.title)&&session.messages.length)session.title=session.messages.find(message=>message.role==='user')?.text?.replace(/\s+/g,' ').slice(0,28)||session.title;
  return session;
 }

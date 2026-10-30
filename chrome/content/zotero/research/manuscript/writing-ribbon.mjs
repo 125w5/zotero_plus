@@ -25,18 +25,18 @@ export function installWritingRibbon(U,{el,button,snapshot,changed,persist,statu
  tools.classList.add('writing-ribbon');tools.dataset.ribbonTab='home';U.$('workspace').querySelector('main').prepend(tools);
  const link=el('link');link.rel='stylesheet';link.href=new URL('./writing-ribbon.css',import.meta.url).href;doc.head.append(link);
  const bar=el('div',undefined,'writing-ribbon-bar'),tabs=el('nav',undefined,'writing-ribbon-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','写作工具');
- const navigation=el('div',undefined,'writing-ribbon-navigation');navigation.append(tabs);bar.append(U.$('toggle-left'),navigation);tools.prepend(bar);
+ const navigation=el('div',undefined,'writing-ribbon-navigation');bar.append(U.$('toggle-left'),navigation);tools.prepend(bar);
  for(const [id,title]of [['toggle-left','素材与结构栏'],['toggle-right','模块详情栏']]){U.$(id).setAttribute('aria-label','展开或收起'+title);U.$(id).title='展开或收起'+title;}
  const view=el('div',undefined,'writing-ribbon-view');navigation.append(view);bar.append(U.$('toggle-right'));
- const drawer=el('div',undefined,'writing-ribbon-drawer');drawer.id='writing-ribbon-drawer';drawer.hidden=true;drawer.append(U.$('manual-writing-tools'),U.$('insert-tools'));tools.append(drawer);
- const footer=el('div',undefined,'writing-ribbon-footer');drawer.append(footer);
- const pin=button('',()=>{U.p.ui.ribbonPinned=!U.p.ui.ribbonPinned;syncPin();persist();},footer,'writing-ribbon-pin');
+ const drawer=el('div',undefined,'writing-ribbon-drawer');drawer.id='writing-ribbon-drawer';drawer.hidden=true;drawer.append(tabs,U.$('manual-writing-tools'),U.$('insert-tools'));tools.append(drawer);
+ const toggle=button('文字工具',()=>drawer.hidden?expand():collapse({force:true}),null,'writing-ribbon-toggle');toggle.dataset.action='toggle-writing-tools';toggle.setAttribute('aria-controls',drawer.id);toggle.setAttribute('aria-expanded','false');toggle.title='展开字体、段落、插入与查找工具';navigation.prepend(toggle);
+ toggle.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14M10 4v12M6.5 16h7M3 4v3m14-3v3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>文字工具</span>';
+ const pin=button('',()=>{U.p.ui.ribbonPinned=!U.p.ui.ribbonPinned;syncPin();persist();},null,'writing-ribbon-pin');bar.insertBefore(pin,U.$('toggle-right'));
  pin.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m15 3 6 6-3 1-3 6-3-3-7 7-1-1 7-7-3-3 6-3Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
  function syncPin(){const pinned=!!U.p.ui.ribbonPinned;pin.setAttribute('aria-pressed',String(pinned));pin.title=pinned?'取消固定，点击外部自动收起':'固定工具栏';pin.setAttribute('aria-label',pin.title);tools.dataset.pinned=String(pinned);}
- let leaveTimer=null;
- const clearLeave=()=>{if(leaveTimer!==null){win.clearTimeout(leaveTimer);leaveTimer=null;}};
- const expand=()=>{clearLeave();drawer.hidden=false;tools.dataset.expanded='true';for(const tab of tabs.children)tab.setAttribute('aria-expanded',String(tab.getAttribute('aria-selected')==='true'));};
- const collapse=({force=false}={})=>{clearLeave();if(U.p.ui.ribbonPinned&&!force)return;drawer.hidden=true;tools.dataset.expanded='false';for(const tab of tabs.children)tab.setAttribute('aria-expanded','false');};
+ const expand=()=>{drawer.hidden=false;pin.hidden=false;toggle.setAttribute('aria-expanded','true');tools.dataset.expanded='true';for(const tab of tabs.children)tab.setAttribute('aria-expanded',String(tab.getAttribute('aria-selected')==='true'));};
+ const collapse=({force=false}={})=>{if(U.p.ui.ribbonPinned&&!force)return;drawer.hidden=true;pin.hidden=true;toggle.setAttribute('aria-expanded','false');tools.dataset.expanded='false';for(const tab of tabs.children)tab.setAttribute('aria-expanded','false');};
+ const reset=()=>{U.p.ui.ribbonPinned=false;syncPin();collapse({force:true});};
  const syncView=()=>{const mode=U.$('canvas-display-mode');if(mode&&mode.parentElement!==view)view.append(mode);};
  // Both installation orders mount directly into this container. No subtree
  // observer is needed for every toolbar or editor DOM update.
@@ -71,11 +71,9 @@ export function installWritingRibbon(U,{el,button,snapshot,changed,persist,statu
  tabs.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const items=[...tabs.children],index=items.indexOf(doc.activeElement);event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?items.length-1:(index+(event.key==='ArrowRight'?1:-1)+items.length)%items.length;setTab(items[next].dataset.ribbonTab);items[next].focus();};
  const shortcut=event=>{if(!(event.ctrlKey||event.metaKey)||event.altKey||event.isComposing||!event.target.closest?.('#canvas,.writing-ribbon'))return;if(['f','h'].includes(event.key.toLowerCase())){event.preventDefault();event.stopPropagation();setTab('find',{focus:true});if(event.key.toLowerCase()==='h')replacement.focus();}};
  const outside=event=>{if(!tools.contains(event.target))collapse();};
- const enter=event=>{if(event.pointerType!=='touch')expand();};
- const leave=()=>{clearLeave();leaveTimer=win.setTimeout(()=>{leaveTimer=null;if(!tools.contains(doc.activeElement))collapse();},180);};
- const escape=event=>{if(event.key==='Escape'&&!drawer.hidden&&tools.contains(event.target)){collapse({force:true});event.preventDefault();event.stopPropagation();tabs.querySelector('[aria-selected=true]')?.focus();}};
+ const escape=event=>{if(event.key==='Escape'&&!drawer.hidden&&tools.contains(event.target)){collapse({force:true});event.preventDefault();event.stopPropagation();toggle.focus();}};
  const pinState=new win.MutationObserver(()=>{if(tools.dataset.pinned!==String(!!U.p.ui.ribbonPinned))syncPin();});pinState.observe(U.$('canvas'),{childList:true});
- doc.addEventListener('keydown',shortcut,true);doc.addEventListener('pointerdown',outside,true);tools.addEventListener('keydown',escape);tools.addEventListener('pointerenter',enter);tools.addEventListener('pointerleave',leave);syncPin();setTab('home',{open:!!U.p.ui.ribbonPinned});if(!U.p.ui.ribbonPinned)collapse();
- const api={root:tools,drawer,pin,view,setTab,expand,collapse,query,replacement,find,replace:apply,refresh:recompute,destroy(){clearLeave();pinState.disconnect();doc.removeEventListener('keydown',shortcut,true);doc.removeEventListener('pointerdown',outside,true);tools.removeEventListener('keydown',escape);tools.removeEventListener('pointerenter',enter);tools.removeEventListener('pointerleave',leave);}};U.writingRibbon=api;
+ doc.addEventListener('keydown',shortcut,true);doc.addEventListener('pointerdown',outside,true);tools.addEventListener('keydown',escape);syncPin();setTab('home',{open:!!U.p.ui.ribbonPinned});if(!U.p.ui.ribbonPinned)collapse();
+ const api={root:tools,drawer,toggle,pin,view,setTab,expand,collapse,reset,query,replacement,find,replace:apply,refresh:recompute,destroy(){pinState.disconnect();doc.removeEventListener('keydown',shortcut,true);doc.removeEventListener('pointerdown',outside,true);tools.removeEventListener('keydown',escape);}};U.writingRibbon=api;
  win.addEventListener('pagehide',()=>api.destroy(),{once:true});return api;
 }

@@ -84,4 +84,19 @@ describe('Shared research chat attachments',function(){
    const abort=new win.AbortController();abort.abort();let cancelled;try{await A.captureRegion(session.id,{hostWindow:win,rect:{x:95,y:135,width:100,height:60},signal:abort.signal});}catch(error){cancelled=error;}assert.match(cancelled?.message||'',/取消/);assert.equal(JSON.stringify(A.get(session.id)),attachedBefore);let denied;try{await A.captureRegion(session.id,{hostWindow:{closed:false},rect:{x:0,y:0,width:100,height:60}});}catch(error){denied=error;}assert.match(denied?.message||'',/本应用/);assert.equal(JSON.stringify(A.get(session.id)),attachedBefore,'拒绝其他窗口时不附加资料');
   }finally{A.importFile=previousImport;marker.remove();}
  });
+ it('reuses a PDF already in the library through the attachment-table lookup, without a second import',async()=>{
+  const A=E.chatAttachments,target=await E.workbenchConversations.create({title:'已有附件复用验收',origin:'reader'}),path=PathUtils.join(folder,'reuse-'+Zotero.Utilities.randomString(10)+'.pdf');
+  await IOUtils.writeUTF8(path,'%PDF-1.4\n% chat reuse '+Zotero.Utilities.randomString(24)+'\n%%EOF\n');
+  const existing=await Zotero.Attachments.importFromFile({file:Zotero.File.pathToFile(path),libraryID:Zotero.Libraries.userLibraryID});created.push(existing.id);
+  const before=(await Zotero.Items.getAll(Zotero.Libraries.userLibraryID,false,false,true)).length;
+  await A.attach(target.id,{files:[path]});
+  assert.equal(A.get(target.id)[0].attachmentID,existing.id,'指纹相同的已有附件被复用');assert.equal((await Zotero.Items.getAll(Zotero.Libraries.userLibraryID,false,false,true)).length,before,'没有再次导入');
+ });
+ it('keeps the valid files of a mixed drop and names the file that was not imported',async()=>{
+  const A=E.chatAttachments,target=await E.workbenchConversations.create({title:'批量导入验收',origin:'reader'}),good=PathUtils.join(folder,'good-'+Zotero.Utilities.randomString(10)+'.pdf'),bad=PathUtils.join(folder,'bad-'+Zotero.Utilities.randomString(10)+'.pdf');
+  await IOUtils.writeUTF8(good,'%PDF-1.4\n% chat batch '+Zotero.Utilities.randomString(24)+'\n%%EOF\n');await IOUtils.writeUTF8(bad,'not a pdf '+Zotero.Utilities.randomString(8));
+  let error;try{await A.attach(target.id,{files:[bad,good]},{source:'drop'});}catch(value){error=value;}
+  const refs=A.get(target.id);for(const ref of refs)created.push(ref.attachmentID);
+  assert.include(error?.message||'',PathUtils.filename(bad));assert.match(error?.message||'',/其余 1 份已导入/);assert.lengthOf(refs,1,'坏文件之后的有效文件仍被导入');
+ });
 });

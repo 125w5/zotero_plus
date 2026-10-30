@@ -3,6 +3,8 @@ import {ASSEMBLY_COMMANDS,assemblyCommandsFor,assemblyRegionRect} from './assemb
 import {assemblyChatIcon} from './assembly-chat-context.mjs';
 import {mountConversationQuestionChoices} from '../shared/conversation-question-choices.mjs';
 import {installCLUIChatBehavior} from '../shared/clui-surface.mjs';
+import {pendingPlanEditMessage} from '../shared/plan-edit-proposal.mjs';
+import {libraryView} from '../shared/material-access.mjs';
 
 const EXTRA_ICONS={camera:['M3 7h5l2-3h4l2 3h5v13H3Z','M16 13a4 4 0 1 0-8 0 4 4 0 0 0 8 0'],shield:['M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z','m8 12 3 3 5-6'],tools:['M4 5h16M4 12h16M4 19h16','M8 3v4m8 3v4M9 17v4'],paper:['M5 3h14v18H5Z','M8 7h8m-8 4h8m-8 4h5'],slides:['M3 4h18v13H3Z','M12 17v4m-4 0h8M7 8h10m-10 4h5'],trash:['M5 6h14M9 6V3h6v3M7 6l1 15h8l1-15','M10 10v7m4-7v7']};
 function icon(doc,name){
@@ -33,7 +35,10 @@ export function installAssemblyComposer(U,{status,persist}){
  const pin=control('固定对话，不随外部双击收起','pin',()=>clui.setPinned(!clui.pinned),'assembly-clui-pin');pin.id='assembly-clui-pin';pin.dataset.cluiIgnoreExpand='true';pin.setAttribute('aria-pressed','false');taskActions.append(pin);
  let cluiApplying=false;
  const clui=installCLUIChatBehavior({root:surface,body:transcript,onChange:({mode,expanded,pinned,detailHeight})=>{
-  if(cluiApplying)return;cluiApplying=true;try{U.cluiMode=mode;U.chatExpanded=expanded;const chromeHeight=Math.max(104,ai.getBoundingClientRect().height-transcript.getBoundingClientRect().height);U.chatReadingHeight=mode==='detail'?detailHeight+chromeHeight:0;U.chatReadingSessionID=mode==='detail'?U.conversationSession.id:'';if(expanded)U.p.ui.aiOpen=true;pin.setAttribute('aria-pressed',String(pinned));pin.title=pinned?'取消固定，双击外部可收起':'固定对话，不随外部双击收起';U.applyPanels();}finally{cluiApplying=false;}
+  if(cluiApplying)return;cluiApplying=true;try{U.cluiMode=mode;U.chatExpanded=expanded;const chromeHeight=Math.max(104,ai.getBoundingClientRect().height-transcript.getBoundingClientRect().height);U.chatReadingHeight=mode==='detail'?detailHeight+chromeHeight:0;U.chatReadingSessionID=mode==='detail'?U.conversationSession.id:'';U.p.ui.aiOpen=expanded;pin.setAttribute('aria-pressed',String(pinned));pin.title=pinned?'取消固定，双击外部可收起':'固定对话，不随外部双击收起';U.applyPanels();}finally{cluiApplying=false;}
+  // Opening the bottom strip is the real user entry too. A pending content
+  // change needs space for both versions and its adoption controls.
+  if(mode==='conversation'&&pendingPlanEditMessage(U.conversationSession?.messages))win.queueMicrotask(()=>{if(U.assemblyCLUI?.mode==='conversation')U.openCoauthor();});
  }});
  U.assemblyCLUI=clui;
  const execution=node('button','assembly-execution-mode');execution.type='button';execution.id='assembly-execution-mode';execution.title='Auto 执行已授权的应用操作；询问模式逐次确认写入';execution.setAttribute('aria-haspopup','menu');form.querySelector('.ai-compose-actions').insertBefore(execution,U.$('ai-options'));
@@ -50,7 +55,7 @@ export function installAssemblyComposer(U,{status,persist}){
   const search=node('input','assembly-picker-search');search.type='search';search.placeholder='搜索论文标题、素材内容';search.setAttribute('aria-label','查找论文或素材');picker.append(search);const list=node('div','assembly-picker-list');picker.append(list);
   const file=control('从本机添加 PDF、DOCX、Excel、图片或文本','file',async()=>{picker.hidden=true;await U.attachResearchFiles();});file.append(node('span','','本机文件'));head.insertBefore(file,head.lastChild);
   const papers=kind==='materials'?[]:await U.A.papers();if(generation!==pickGeneration)return;
-  const materials=kind==='papers'?[]:[...new Map([...U.p.materials,...Object.values(U.A.assetLibrary())].map(m=>[m.id,m])).values()];
+  const materials=kind==='papers'?[]:[...new Map([...U.p.materials,...Object.values(libraryView(U.A))].map(m=>[m.id,m])).values()];
   const render=()=>{list.replaceChildren();const query=search.value.normalize('NFKC').toLowerCase();let count=0;
    const add=(title,label,payload,reference)=>{const row=node('button','assembly-picker-row');row.type='button';row.dataset.sourceId=reference;row.append(icon(doc,label==='论文'?'paper':'file'),node('span','',title),node('small','',label));row.setAttribute('aria-pressed',String((U.conversationSession.attachments||[]).some(item=>item.id===reference||item.paperItemID===payload.items?.[0])));row.onclick=()=>run(async()=>{row.disabled=true;try{await persist({flush:true});await U.attachResearchFiles(payload,{source:'picker'});row.setAttribute('aria-pressed','true');}finally{row.disabled=false;}});list.append(row);count++;};
    for(const paper of papers.filter(p=>String(p.title).normalize('NFKC').toLowerCase().includes(query)).slice(0,60))add(paper.title,'论文',{items:[paper.id]},'paper:'+paper.id);

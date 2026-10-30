@@ -2,7 +2,6 @@
 import {formulaSourceKey,normalizeFormulaInput} from './formula-research.mjs';
 import {evidenceCaption} from './evidence-reading-context.mjs';
 import {prepareReaderPaneStyles} from './reader-pane-styles.mjs';
-import {evidenceSummary} from './evidence-summary.mjs';
 
 const HTML='http://www.w3.org/1999/xhtml',SVG='http://www.w3.org/2000/svg',viewers=new WeakMap();
 const ICONS={close:'m6 6 12 12M6 18 18 6',locate:'M12 3v4m0 10v4M3 12h4m10 0h4M18 12a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z',note:'M14 3H5v18h14V8l-5-5ZM14 3v5h5M8 12h8M8 16h5',explain:'M4 4h16v12H9l-5 4Z',copy:'M8 8h12v13H8ZM16 8V3H3v13h5'};
@@ -16,6 +15,38 @@ export function appendEvidenceCaption(target,asset){
  for(const run of runs){const tag=run.script==='super'?'sup':run.script==='sub'?'sub':run.fontStyle==='italic'?'em':'span',chunk=doc.createElementNS(HTML,tag);if(run.fontStyle==='italic'&&tag!=='em'){const italic=doc.createElementNS(HTML,'em');italic.textContent=run.text;chunk.append(italic);}else chunk.textContent=run.text;target.append(chunk);}
 }
 
+// The list is a reading aid, not a second copy of the full explanation. Older
+// saved summaries can contain several paragraphs; keep their complete text in
+// the detail and derive only a short, plain preview for the collapsed row.
+export function readerEvidenceSummary(material,{maxLength=160}={}){
+ const detail=material?.imageExplanation,pending=!detail&&!material?.userEdited&&!['verified','confirmed'].includes(material?.verification)&&['pending','running','failed'].includes(material?.generationStatus);
+ if(pending)return '';
+ const raw=String(material?.summary||detail?.summary||detail?.result?.sections?.find(section=>section.body?.trim())?.body||'');
+ const plain=raw.replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/\[([^\]]+)\]\([^)]*\)/g,'$1').replace(/(?:^|\n)\s{0,3}#{1,6}\s*/g,'').replace(/[*`]/g,'').replace(/\s+/g,' ').trim();
+ if(plain.length<=maxLength)return plain;
+ const sample=plain.slice(0,maxLength),end=Math.max(sample.lastIndexOf('。'),sample.lastIndexOf('！'),sample.lastIndexOf('？'),sample.lastIndexOf('. '));
+ return end>=Math.floor(maxLength*.45)?sample.slice(0,end+1):sample.trimEnd()+'…';
+}
+
+// Compare presentation text only. The saved summary, Markdown sections and
+// source references stay intact; a section that already contains the summary
+// should not be preceded by a second rendering of the same paragraph.
+const explanationText=value=>String(value||'').replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/\[([^\]]+)\]\([^)]*\)/g,'$1')
+ .replace(/(?:^|\n)\s{0,3}(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/g,'\n')
+ .replace(/\*\*([^*]+)\*\*/g,'$1').replace(/__([^_]+)__/g,'$1').replace(/`([^`]+)`/g,'$1')
+ .replace(/(^|[\s(（\[【])\*([^*\n]+)\*(?=$|[\s)）\]】.,;:!?，。；：！？])/g,'$1$2').replace(/\s+/g,' ').replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g,'$1').trim();
+
+export function renderReaderEvidenceExplanation(target,material,{renderText=(host,text)=>{host.textContent=text;},classPrefix='reader-evidence'}={}){
+	let doc=target.ownerDocument,detail=material?.imageExplanation,pending=!detail&&!material?.userEdited&&!['verified','confirmed'].includes(material?.verification)&&['pending','running','failed'].includes(material?.generationStatus);
+	let node=(tag,cls,parent,text)=>{let value=doc.createElementNS(HTML,tag);value.className=cls;if(text!==undefined)value.textContent=text;parent.append(value);return value;};
+	target.replaceChildren();
+	if(pending)return false;
+	const summary=explanationText(material?.summary),sections=detail?.result?.sections||[],summaryInSection=summary&&sections.some(section=>explanationText(section.body).includes(summary));
+	if(summary&&!summaryInSection)renderText(node('div',classPrefix+'-summary '+classPrefix+'-richtext',target),material.summary,detail?.sources||[]);
+	for(let section of sections){let group=node('section',classPrefix+'-explanation-section',target);if(section.heading)node('h3','',group,section.heading);renderText(node('div',classPrefix+'-richtext',group),section.body||'',detail?.sources||[]);}
+	return !!target.childElementCount;
+}
+
 /** One media viewer for extracted figures/tables/equations, with the SAME
  * reader Logo conversation temporarily mounted into its bottom-right region.
  * Merely opening it never sends a model request or creates a saved session. */
@@ -24,7 +55,7 @@ export async function openReaderEvidenceDetail(E,reader,asset,{doc=reader?._wind
  await prepareReaderPaneStyles(doc,{Zotero:reader?._window?.Zotero||doc.defaultView.Zotero,name:'evidence',url:'chrome://zotero/content/research/shared/reader-evidence-detail.css'});
  const previous=viewers.get(doc);if(previous?.asset.id===asset.id){previous.root.focus({preventScroll:true});return previous;}previous?.close();
  const win=doc.defaultView,node=(tag,cls,parent,text)=>{const value=doc.createElementNS(HTML,tag);value.className=cls||'';if(text!==undefined)value.textContent=text;parent?.append(value);return value;};
- const root=node('div','reader-evidence-backdrop'),dialog=node('section','reader-evidence-detail',root);root.tabIndex=-1;root.dataset.assetId=String(asset.id);dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-label',readerEvidenceLabel(asset)+' · 来源与解读');
+ const root=node('div','reader-evidence-backdrop'),dialog=node('section','reader-evidence-detail',root);root.tabIndex=-1;root.dataset.assetId=String(asset.id);dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-busy','true');dialog.setAttribute('aria-label',readerEvidenceLabel(asset)+' · 来源与解读');
  const header=node('header','reader-evidence-header',dialog),title=node('h2','',header,readerEvidenceLabel(asset));title.id='evidence-detail-title';dialog.setAttribute('aria-labelledby',title.id);
  node('span','reader-evidence-page',header,Number.isInteger(asset.pageIndex)?'第 '+(asset.page||asset.pageIndex+1)+' 页':'');
  const actions=node('div','reader-evidence-actions',header),status=node('p','reader-evidence-status',dialog);status.hidden=true;status.setAttribute('role','status');
@@ -36,9 +67,10 @@ export async function openReaderEvidenceDetail(E,reader,asset,{doc=reader?._wind
  const captionDisclosure=node('details','reader-evidence-caption-disclosure',source);node('summary','',captionDisclosure,'原始图注');const caption=node('p','reader-evidence-caption',captionDisclosure);appendEvidenceCaption(caption,asset);captionDisclosure.hidden=!caption.textContent.trim();
  const explanation=node('section','reader-evidence-explanation',reading);explanation.setAttribute('aria-label','论文图表解释');
  const chatHost=node('div','reader-evidence-chat',right);chatHost.setAttribute('aria-label','当前论文的共享对话');
- let disposed=false,chatLease,offMaterials,offImages,formulaController,tabObserver,explanationKey='',originFocus=origin||doc.activeElement;
+ let disposed=false,chatLease,offMaterials,offImages,formulaController,tabObserver,explanationKey='',explanationExpanded=false,originFocus=origin||doc.activeElement;
  const setStatus=(text,error=false)=>{if(disposed)return;status.textContent=text||'';status.hidden=!text;status.dataset.error=String(error);};
- const close=()=>{if(disposed)return;disposed=true;formulaController?.abort();offMaterials?.();offImages?.();if(tabObserver)win.Zotero?.Notifier?.unregisterObserver(tabObserver);doc.removeEventListener('keydown',escape);root.removeEventListener('easysch-conversation-close-request',close);win.removeEventListener('pagehide',pagehide);chatLease?.dispose();root.remove();if(viewers.get(doc)===control)viewers.delete(doc);if(originFocus?.isConnected&&(!reader.tabID||win.Zotero_Tabs?.selectedID===reader.tabID))originFocus.focus({preventScroll:true});};
+ const chatState=event=>{chatHost.dataset.collapsed=String(event.detail?.size==='compact');};chatHost.addEventListener('easysch-conversation-statechange',chatState);
+ const close=()=>{if(disposed)return;disposed=true;formulaController?.abort();offMaterials?.();offImages?.();if(tabObserver)win.Zotero?.Notifier?.unregisterObserver(tabObserver);doc.removeEventListener('keydown',escape);root.removeEventListener('easysch-conversation-close-request',close);chatHost.removeEventListener('easysch-conversation-statechange',chatState);win.removeEventListener('pagehide',pagehide);chatLease?.dispose();root.remove();if(viewers.get(doc)===control)viewers.delete(doc);if(originFocus?.isConnected&&(!reader.tabID||win.Zotero_Tabs?.selectedID===reader.tabID))originFocus.focus({preventScroll:true});};
  const locate=async()=>{try{await reader.navigate({pageIndex:asset.pageIndex,position:E.assets.position(asset)});close();}catch(error){setStatus('原文定位失败：'+error.message,true);}};
  paper.onclick=locate;
  const noteButton=button('note','保存完整原图与解读为笔记',async()=>{if(noteButton.disabled)return;noteButton.disabled=true;try{const saved=await E.saveAssetNote(asset,{reader});if(disposed)return;chatLease?.surface?.show();chatLease?.surface?.refresh();setStatus(saved.warning||'已保存为笔记');}catch(error){setStatus(error.message,true);}finally{noteButton.disabled=false;}});
@@ -46,9 +78,9 @@ export async function openReaderEvidenceDetail(E,reader,asset,{doc=reader?._wind
  const renderText=(host,text,sources=[])=>{if(E.renderContent)E.renderContent(host,text,{sources,onSource:value=>E.library.openSource({...value,...value.anchor})});else host.textContent=text;};
  const validatedLatex=value=>{const latex=normalizeFormulaInput(value);if(!latex)return '';const probe=node('div');renderText(probe,'$$\n'+latex+'\n$$');if(!probe.querySelector('.katex')||probe.querySelector('.katex-error'))throw Error('公式格式尚未识别完整，请核对原式后重新识别');return latex;};
  const selectedModel=()=>{const session=E.workbenchConversations?.getForScope?.({paperID:asset.paperItemID||attachment?.parentID||attachment?.id});return {...E.settings(),...(session?.modelID?{model:session.modelID}:{}),...(session?.thinkingLevel?{thinkingLevel:session.thinkingLevel}:{})};};
- const renderExplanation=()=>{
+ const renderExplanation=(force=false)=>{
   if(disposed)return;const material=E.assets.materialFor(asset),transcription=E.store?.get?.('formulaTranscriptions',formulaSourceKey(asset)),formula=E.store?.get?.('readerFormulaExplanations',formulaSourceKey(asset)),detail=material?.imageExplanation;
-  const key=JSON.stringify([material?.revision,material?.summary,detail,material?.generationStatus,material?.generationError,formula,transcription?.latex]);if(key===explanationKey)return;explanationKey=key;explanation.replaceChildren();
+  const key=JSON.stringify([material?.revision,material?.summary,detail,material?.generationStatus,material?.generationError,formula,transcription?.latex]);if(!force&&key===explanationKey)return;explanationKey=key;explanation.replaceChildren();
   if(asset.kind==='formula'){
    let latex='';try{latex=validatedLatex(material?.data?.latex||material?.latex||transcription?.latex||'');}catch(error){node('p','reader-evidence-empty',explanation,error.message);}
    if(latex){const equation=node('div','reader-evidence-equation',explanation);renderText(equation,'$$\n'+latex+'\n$$');const copy=button('copy','复制 LaTeX',()=>{const clipboard=win.Zotero?.Utilities?.Internal?.copyTextToClipboard;if(clipboard)clipboard(latex);else Cc['@mozilla.org/widget/clipboardhelper;1'].getService(Ci.nsIClipboardHelper).copyString(latex);setStatus('已复制 LaTeX');},equation);copy.classList.add('reader-evidence-copy');}
@@ -61,12 +93,17 @@ export async function openReaderEvidenceDetail(E,reader,asset,{doc=reader?._wind
     }catch(error){if(!disposed)setStatus(error.message,true);}finally{formulaController=null;explain.disabled=false;}
    },explanation);node('span','reader-evidence-action-label',explain,formula?'重新解释':'解释公式');
   }else{
-   const summary=evidenceSummary(material,{limit:130});if(summary){const overview=node('div','reader-evidence-summary',explanation);renderText(overview,summary,detail?.sources||[]);}
-   if(detail?.result?.sections?.length||material?.summary?.trim()&&material.summary.trim()!==summary){const full=node('details','reader-evidence-full',explanation);node('summary','reader-evidence-full-toggle',full,'详细解读');
-    if(material?.summary?.trim())renderText(node('div','reader-evidence-richtext',full),material.summary,detail?.sources||[]);
-    for(const section of detail?.result?.sections||[]){const group=node('section','reader-evidence-explanation-section',full);if(section.heading)node('h3','',group,section.heading);renderText(node('div','reader-evidence-richtext',group),section.body||'',detail.sources||[]);}
-   }
-   if(!explanation.childElementCount){const text=material?.generationError?'图表说明暂未完成':'暂无已保存的图表解读';node('p','reader-evidence-empty',explanation,text);}
+   const brief=readerEvidenceSummary(material);
+   if(brief){
+    const toggle=node('button','reader-evidence-full-toggle',explanation,brief);toggle.type='button';toggle.title=explanationExpanded?'点击摘要，返回简要说明':'点击简要摘要，查看完整说明';toggle.setAttribute('aria-expanded',String(explanationExpanded));
+    toggle.onclick=()=>{explanationExpanded=!explanationExpanded;renderExplanation(true);};
+    if(explanationExpanded){
+     toggle.hidden=true;const complete=node('div','reader-evidence-complete',explanation);renderReaderEvidenceExplanation(complete,material,{renderText});complete.tabIndex=0;complete.title='点击返回简要说明';complete.setAttribute('aria-label','详细说明；点击或按 Enter 返回摘要');
+     const collapse=()=>{explanationExpanded=false;renderExplanation(true);explanation.querySelector('.reader-evidence-full-toggle')?.focus({preventScroll:true});};
+     complete.onclick=event=>{if(event.defaultPrevented||event.target.closest('button,a,input,textarea,select,[contenteditable="true"]')||doc.getSelection()?.toString().trim())return;collapse();};
+     complete.onkeydown=event=>{if(event.target===complete&&event.key==='Enter'){event.preventDefault();collapse();}};
+    }
+   }else{const text=material?.generationError?'图表说明暂未完成':'暂无已保存的图表解读';node('p','reader-evidence-empty',explanation,text);}
   }
  };
  const escape=event=>{if(event.key==='Escape'&&!event.isComposing&&!event.defaultPrevented){event.preventDefault();close();}};
@@ -76,7 +113,8 @@ export async function openReaderEvidenceDetail(E,reader,asset,{doc=reader?._wind
  doc.documentElement.append(root);doc.addEventListener('keydown',escape);root.addEventListener('easysch-conversation-close-request',close);win.addEventListener('pagehide',pagehide);renderExplanation();root.focus({preventScroll:true});
  offMaterials=E.manuscripts.onAssetsChanged?.(renderExplanation);offImages=E.assets.onImagesChanged?.(id=>{if(id===reader.itemID)renderExplanation();});
  if(reader.tabID&&win.Zotero?.Notifier)tabObserver=win.Zotero.Notifier.registerObserver({notify:()=>{if(win.Zotero_Tabs?.selectedID!==reader.tabID)close();}},['tab'],'reader-evidence-detail');
- Promise.resolve(imageSource(asset.path||asset.imagePath||asset.thumbnail)).then(value=>{if(!disposed)image.src=value;}).catch(error=>setStatus('原图读取失败：'+error.message,true));
- try{const lease=await E.mountReaderAcademicChat(reader,chatHost,{locked:true,focusAsset:asset});if(disposed)lease.dispose();else chatLease=lease;}catch(error){if(!disposed){chatHost.dataset.unavailable='true';node('p','reader-evidence-empty',chatHost,'对话暂未就绪');setStatus(error.message,true);}}
+ const retained=E.assets.materialFor(asset),imagePath=retained?.imageRetained&&retained.imagePath?retained.imagePath:asset.path||asset.imagePath||asset.thumbnail;
+ Promise.resolve(imageSource(imagePath)).then(async value=>{if(disposed)return;image.src=value;await image.decode();if(!disposed){image.dataset.decoded='true';dialog.setAttribute('aria-busy','false');}}).catch(error=>{if(!disposed){dialog.setAttribute('aria-busy','false');setStatus('原图读取失败：'+error.message,true);}});
+ try{const lease=await E.mountReaderAcademicChat(reader,chatHost,{locked:true,collapsible:true,focusAsset:asset});if(disposed)lease.dispose();else chatLease=lease;}catch(error){if(!disposed){chatHost.dataset.unavailable='true';node('p','reader-evidence-empty',chatHost,'对话暂未就绪');setStatus(error.message,true);}}
  return control;
 }

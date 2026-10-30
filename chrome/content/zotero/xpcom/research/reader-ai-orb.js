@@ -16,13 +16,14 @@
   const attachment = Zotero.Items.get(reader.itemID), paper = attachment.parentID ? Zotero.Items.get(attachment.parentID) : attachment;
   return {id:paper.id, paperItemID:paper.id, attachmentID:attachment.id, kind:'paper', title:paper.getField('title'), selection:E.readerSelection?.(reader) || undefined};
  };
+ const anchorLinkHTML=anchor=>{const item=Zotero.Items.get(anchor.attachmentID);return item?'<a href="'+E.core.escapeHTML(E.library.uri(item,anchor.position.pageIndex)+'&annotation='+anchor.annotationKey)+'">PDF 第 '+(anchor.position.pageIndex+1)+' 页批注</a>':'';};
  const messageNoteHTML=(message,anchor)=>{
   const escape=E.core.escapeHTML,sources=(message.sources||[]).map(source=>{
    const sourceAttachment=source.attachmentID||source.anchor?.attachmentID,item=sourceAttachment&&Zotero.Items.get(sourceAttachment),
     uri=source.uri||source.anchor?.uri||source.url||(item&&E.library.uri(item,source.pageIndex??source.anchor?.pageIndex));
    return /^(?:https?:|zotero:)/i.test(uri||'')?'<a href="'+escape(uri)+'">'+escape(source.label||source.title||'来源')+'</a>':'';
   }).filter(Boolean);
-  if(anchor){const item=Zotero.Items.get(anchor.attachmentID);if(item)sources.unshift('<a href="'+escape(E.library.uri(item,anchor.position.pageIndex)+'&annotation='+anchor.annotationKey)+'">PDF 第 '+(anchor.position.pageIndex+1)+' 页批注</a>');}
+  const link=anchor&&anchorLinkHTML(anchor);if(link)sources.unshift(link);
   const question=String(message.question||'').trim();
   return '<div data-schema-version="9">'+(question?'<p><strong>问题</strong></p>'+E.noteContentHTML(question)+'<p><strong>回答</strong></p>':'')+E.noteContentHTML(Evidence.numberedCitationText(message).trim())+(sources.length?'<p>'+sources.join(' · ')+'</p>':'')+'</div>';
  };
@@ -59,6 +60,12 @@
    const pageView=pdfViews(reader).map(view=>view._iframeWindow?.PDFViewerApplication?.pdfViewer?._pages?.[position.pageIndex]).find(Boolean),pages=pdfViews(reader).map(view=>view._iframeWindow?.PDFViewerApplication?.pdfDocument?.numPages).find(Number.isFinite);
    if (!Number.isInteger(position.pageIndex) || position.pageIndex < 0 || pages&&position.pageIndex>=pages || !position.rects?.length || position.rects.some(rect=>rect.length!==4 || rect.some(value=>!Number.isFinite(value)) || rect[2]<=rect[0] || rect[3]<=rect[1])) throw Error('没有有效的 PDF 位置，请拖到纸张内');
    if(sourcePosition&&(sourcePosition.pageIndex!==position.pageIndex||!sourcePosition.rects?.length||sourcePosition.rects.some(rect=>rect.length!==4||rect.some(value=>!Number.isFinite(value))||rect[2]<=rect[0]||rect[3]<=rect[1])))throw Error('所选范围没有有效的 PDF 位置');
+   // Only a note of this source is reused: a child of the same paper, or for a
+   // standalone PDF a note that this answer saved from that PDF.
+   let linked=asNote&&message.savedNoteID?await Zotero.Items.getAsync(message.savedNoteID):null,anchors=message.savedAnchors||[];
+   if(linked&&(linked.deleted||linked.libraryID!==attachment.libraryID||(linked.parentID||null)!==(attachment.parentID||null)||!attachment.parentID&&!anchors.some(row=>row.noteID===linked.id&&row.attachmentID===attachment.id&&(row.annotationID||!row.reused))))linked=null;
+   let place=value=>JSON.stringify([value?.pageIndex,value?.rects||null]),repeat=linked&&anchors.find(row=>row.annotationID&&row.noteID===linked.id&&row.attachmentID===attachment.id&&place(row.position)===place(position));
+   if(repeat){const marker=await Zotero.Items.getAsync(repeat.annotationID);if(marker&&!marker.deleted)return {annotationID:repeat.annotationID,annotationKey:repeat.annotationKey,attachmentID:attachment.id,position:clone(repeat.position),...(repeat.sourcePosition?{sourcePosition:clone(repeat.sourcePosition),sourceKind:repeat.sourceKind}:{}),noteID:linked.id,reused:true,warning:await E.openSavedReaderNote(linked.id,reader)};}
    const annotation = new Zotero.Item('annotation'); annotation.libraryID=attachment.libraryID; annotation.parentID=attachment.id;
    annotation.annotationType=range?'highlight':'note'; annotation.annotationColor=asNote?'#a28ae5':'#2ea8e5';
    // The AI answer is the comment. Do not duplicate the original PDF excerpt.
@@ -67,6 +74,13 @@
    annotation.annotationPageLabel=String(position.pageIndex+1); annotation.annotationSortIndex=String(position.pageIndex).padStart(5,'0')+'|000000|'+String(top).padStart(5,'0');
    await annotation.saveTx(); await reader.setAnnotations([annotation]);
    const result={annotationID:annotation.id,annotationKey:annotation.key,attachmentID:attachment.id,position:clone(position),...(sourcePosition?{sourcePosition:clone(sourcePosition),sourceKind:sourceKind||'range'}:{})};
+   if (asNote&&linked) {
+    // The answer already has a note: link this place in it rather than add a copy.
+    // The note is saved first, so a failed save leaves no link to a marker it lacks.
+    const html=linked.getNote(),link='<p>'+anchorLinkHTML(result)+'</p>',end=html.lastIndexOf('</div>');
+    linked.setNote(end<0?html+link:html.slice(0,end)+link+html.slice(end));await linked.saveTx();await E.rememberNoteLink(annotation,linked);
+    return {...result,noteID:linked.id,extended:true,warning:await E.openSavedReaderNote(linked.id,reader)};
+   }
    if (asNote) {
     Object.assign(result,await E.noteFromAnnotation(reader,annotation.key));
     const note=await Zotero.Items.getAsync(result.noteID);if(note?.setNote){note.setNote(messageNoteHTML(message,result));await note.saveTx();}
@@ -88,16 +102,23 @@
  };
  // Scoped reader modes borrow the very same Logo surface and conversation.
  // The returned lease restores its former floating/docked placement on close.
- E.mountReaderAcademicChat = async (reader,host,{locked=true,focusAsset}={}) => {
+ const readerChatAppearance=(surface,win)=>{
+  const root=surface.root,previous=root.dataset.readerAppearance,media=win.matchMedia('(prefers-color-scheme: dark)');let disposed=false;
+  const apply=()=>{if(disposed)return;const mode=Zotero.Prefs.get('extensions.easysch.writingAppearance',true)||'light';root.dataset.readerAppearance=mode==='auto'?(media.matches?'dark':'light'):mode;};
+  apply();media.addEventListener('change',apply);const observer=Zotero.Prefs.registerObserver('extensions.easysch.writingAppearance',apply,true);
+  const dispose=()=>{if(disposed)return;disposed=true;media.removeEventListener('change',apply);Zotero.Prefs.unregisterObserver(observer);win.removeEventListener('unload',dispose);try{if(previous===undefined)delete root.dataset.readerAppearance;else root.dataset.readerAppearance=previous;}catch(_){/* The owning native window may already be gone. */}};
+  win.addEventListener('unload',dispose,{once:true});return dispose;
+ };
+ E.mountReaderAcademicChat = async (reader,host,{locked=true,collapsible=false,focusAsset}={}) => {
   const win=reader?._window;if(!win||activeReader(win)!==reader)throw Error('请在当前论文阅读标签打开学术对话');
   E.addReaderAIOrbWindow(win);const surface=await windows.get(win)?.openSurface(reader,{show:false});
-  if(!surface)throw Error('当前论文对话尚未就绪');const lease=surface.mount(host,{locked}),restore=windows.get(win).focusAsset(focusAsset);
-  return {...lease,surface,dispose(){restore();lease.dispose();}};
+  if(!surface)throw Error('当前论文对话尚未就绪');const lease=surface.mount(host,{locked,collapsible}),restore=windows.get(win).focusAsset(focusAsset),restoreAppearance=readerChatAppearance(surface,win);
+  return {...lease,surface,dispose(){restoreAppearance();restore();lease.dispose();}};
  };
  E.dockReaderAcademicChat = async (reader,{locked=true,side='right'}={}) => {
   const win=reader?._window;if(!win||activeReader(win)!==reader)throw Error('请在当前论文阅读标签打开学术对话');
   E.addReaderAIOrbWindow(win);const surface=await windows.get(win)?.openSurface(reader,{show:false});
-  if(!surface)throw Error('当前论文对话尚未就绪');const lease=surface.lockDock(side,{locked});return {...lease,surface};
+  if(!surface)throw Error('当前论文对话尚未就绪');const lease=surface.lockDock(side,{locked}),restoreAppearance=readerChatAppearance(surface,win);return {...lease,surface,dispose(){restoreAppearance();lease.dispose();}};
  };
 
  E.addReaderAIOrbWindow = win => {
@@ -128,8 +149,8 @@
   button.title = '学术对话 · 拖动调整位置'; button.setAttribute('aria-label', button.title);
   const image = doc.createElementNS(HTML, 'img'); image.alt = ''; image.draggable = false;
   button.append(image); layer.append(style, button); doc.documentElement.append(layer);
-  let reader, observedFrame, observedPanes=[], normalized = E.store.get().settings?.readerAIOrbPosition, position, bounds, contentBounds, drag, frame, initialPlacementFrame, orbDragFrame,orbDragPoint,lastDrawDark,disposed = false, suppressClick = false;
-  let taskController, messageDrag, pendingMessage, rangeDrag, rangePreview, dropDocuments=[], dropFrames=[], opening,focusedAsset;
+  let reader, observedFrame, observedPanes=[], normalized = E.store.get('settings','readerAIOrbPosition'), position, bounds, contentBounds, drag, frame, initialPlacementFrame, orbDragFrame,orbDragPoint,lastDrawDark,disposed = false, suppressClick = false;
+  let taskController, taskSessionID, messageDrag, pendingMessage, rangeDrag, rangePreview, dropDocuments=[], dropFrames=[], opening,focusedAsset;
   const focusAsset=asset=>{const previous=focusedAsset,scope={asset};focusedAsset=scope;return ()=>{if(focusedAsset===scope)focusedAsset=previous;};};
   const dropHint=doc.createElementNS(HTML,'div');dropHint.className='easysch-ai-pdf-drop-hint';dropHint.hidden=true;layer.append(dropHint);
   const dropLabel=doc.createElementNS(HTML,'span');dropLabel.textContent='左键批注 / 右键笔记';
@@ -141,7 +162,9 @@
   rangeButton.onclick=beginRange;
   const savePending=async(asNote,event)=>{
    if(!pendingMessage)return;event?.preventDefault();event?.stopPropagation();const saved=pendingMessage;clearPending();
-   try{const result=await E.saveReaderAIMessage(saved.reader,saved.message,{position:saved.position,asNote,sourcePosition:saved.sourcePosition,sourceKind:saved.sourceKind,range:saved.range});await rememberMessageAnchor(saved.sessionID,saved.message.id,result);surface.setStatus(asNote?'已保存为关联笔记':'已保存为 PDF 批注');if(asNote&&!surface.state.embedded&&!surface.state.locked)surface.hide();}
+   // The drag snapshot can predate an earlier save of the same answer.
+   let live=conversations.get(saved.sessionID)?.messages.find(value=>value.id===saved.message.id),message=live?{...saved.message,savedNoteID:live.savedNoteID,savedAnchors:live.savedAnchors}:saved.message;
+   try{const result=await E.saveReaderAIMessage(saved.reader,message,{position:saved.position,asNote,sourcePosition:saved.sourcePosition,sourceKind:saved.sourceKind,range:saved.range});await rememberMessageAnchor(saved.sessionID,saved.message.id,result);surface.setStatus(result.warning||(result.reused?'已打开已保存的关联笔记':result.extended?'已在已保存的笔记中加入这个位置':asNote?'已保存为关联笔记':'已保存为 PDF 批注'));if(asNote&&!result.warning&&!surface.state.embedded&&!surface.state.locked)surface.hide();}
    catch(error){surface.setStatus(error.message);Zotero.logError(error);}
   };
   dropHint.onclick=event=>{if(!event.target.closest('button')&&!pendingMessage?.selecting)savePending(false,event);};dropHint.oncontextmenu=event=>{if(!pendingMessage?.selecting)savePending(true,event);};
@@ -190,7 +213,7 @@
    })();}
    const pending=opening;try{const result=await pending.promise;if(disposed||activeReader(win)!==current)return null;if(result&&show){if(surface.docked)surface.dock(surface.docked);surface.show({nearLogo:!surface.docked});surface.setExpanded(true);}return result;}finally{if(opening===pending)opening=null;}
   };
-  const surface=Surface.installConversationSurface({doc,orb:button,dockTargets,state:E.store.get().settings?.readerAISurface||{},presentation:'reader-bottom',getWorkArea:()=>contentBounds,
+  const surface=Surface.installConversationSurface({doc,orb:button,dockTargets,state:E.store.get('settings','readerAISurface')||{},presentation:'reader-bottom',getWorkArea:()=>contentBounds,
    getModels:()=>E.workbenchModels?.()||[],
    getAttachments:session=>session?.attachments||[],
    onAttach:(payload,{sessionID,source}={})=>E.chatAttachments.attach(sessionID,payload,{source}),
@@ -200,22 +223,38 @@
    renderContent:(host,text,options)=>E.renderContent(host,text,options),
    onSource:source=>source.materialID&&!source.attachmentID&&!source.anchor?.attachmentID?E.notebook.openSource(source):E.library.openSource({...source,...source.anchor}),
    onSelectSession:id=>{const current=activeReader(win),scope={paperID:sourceFor(current).paperItemID};return id==='__new__'?newSession():id==='__inherit__'?newSession({inherit:true}):conversations.select(id,{scope});},
-   onSend:async(prompt,{sessionID,onProgress,stop,mode,modelID,thinkingLevel,executionMode,onToolPermission,onResearchQuestion}={})=>{
-    if(stop){taskController?.abort();return;}const current=activeReader(win);if(!current)throw Error('请先打开论文');
+   retryable:true,
+   onSend:async(prompt,{sessionID,onProgress,stop,mode,modelID,thinkingLevel,executionMode,onToolPermission,onResearchQuestion,onDraft,retryMessageID}={})=>{
+    if(stop){if(!sessionID||sessionID===taskSessionID)taskController?.abort();return;}const current=activeReader(win);if(!current)throw Error('请先打开论文');
     const session=conversations.get(sessionID);if(!session)throw Error('研究对话已不存在');
-    const source=sourceFor(current),history=session.messages;taskController=new win.AbortController();
+    const source=sourceFor(current),history=session.messages;taskController=new win.AbortController();taskSessionID=sessionID;
     const asset=focusedAsset?.asset;
     try{if(asset&&Number(asset.attachmentID)===Number(current.itemID)){
      const context=await E.assets.contextFor(asset,{signal:taskController.signal}),reading=ChromeUtils.importESModule('chrome://zotero/content/research/shared/evidence-reading-context.mjs'),formula=ChromeUtils.importESModule('chrome://zotero/content/research/shared/formula-research.mjs'),latex=E.store.get('formulaTranscriptions',formula.formulaSourceKey(asset))?.latex||'';
      source.selection={...reading.evidenceConversationSelection(asset,context,latex),position:E.assets.position(asset)};source.evidenceAsset=clone(asset);
-    }}catch(error){taskController=null;throw error;}
+    }}catch(error){taskController=null;taskSessionID=null;throw error;}
     await conversations.select(session.id,{scope:{paperID:source.paperItemID}});
-    await conversations.append(session.id,{role:'user',text:prompt,attachmentID:current.itemID,attachments:session.attachments||[]},{origin:'reader'});await conversations.update(session.id,{draft:''},{origin:'reader'});
+    // A retry reuses the saved question instead of appending a duplicate.
+    const retried=retryMessageID?session.messages.find(row=>row.id===retryMessageID&&row.role==='user'):null;
+    if(retryMessageID&&!retried){taskController=null;taskSessionID=null;throw Error('要重试的问题已不存在，请重新发送');}
+    const question=retried||await conversations.append(session.id,{role:'user',text:prompt,attachmentID:current.itemID,attachments:session.attachments||[]},{origin:'reader'});
+    if(retried)await conversations.update(session.id,{messages:[{id:retried.id,failure:null}]},{origin:'reader'});
+    else await conversations.update(session.id,{draft:''},{origin:'reader'});
     try{
-     const result=await E.runWorkbenchTask({prompt,mode:mode||session.mode||'auto',modelID:modelID||session.modelID,thinkingLevel:thinkingLevel||session.thinkingLevel||'off',executionMode:executionMode||session.executionMode||'auto',onToolPermission,onResearchQuestion,projectID:session.projectID||'',sessionID:session.id,selectedSource:source,attachments:session.attachments||[],history,signal:taskController.signal,onProgress});
+     const result=await E.runWorkbenchTask({prompt:retried?retried.text:prompt,mode:mode||session.mode||'auto',modelID:modelID||session.modelID,thinkingLevel:thinkingLevel||session.thinkingLevel||'off',executionMode:executionMode||session.executionMode||'auto',onToolPermission,onResearchQuestion,projectID:session.projectID||'',sessionID:session.id,selectedSource:source,attachments:session.attachments||[],history,signal:taskController.signal,onProgress,onDraft});
      if(taskController.signal.aborted)throw Error('已停止，本次回答未保存');
      await conversations.append(session.id,{...result,role:'assistant',text:result.text,sources:result.sources||[],attachmentID:current.itemID,steps:result.steps||[]},{origin:'reader'});
-    }finally{taskController=null;}
+    }
+    catch(error){
+     // The saved question keeps a retryable failure row; returning the text to
+     // the input would send it twice.
+     const Workbench=ChromeUtils.importESModule('chrome://zotero/content/research/shared/agent-workbench.mjs');
+     const failure=Workbench.workbenchFailure(error,{aborted:!!taskController?.signal.aborted,model:modelID||session.modelID||'',thinkingLevel:thinkingLevel||session.thinkingLevel||'',configuredModel:E.settings().model||''});
+     try{await conversations.update(session.id,{messages:[{id:question.id,failure}]},{origin:'reader'});}catch(saveError){Zotero.logError(saveError);}
+     try{error.messageSaved=true;}catch(_){/* A foreign error still reports its message. */}
+     throw error;
+    }
+    finally{taskController=null;taskSessionID=null;}
    },
    onSave:async(message,{sessionID}={})=>{const current=activeReader(win);if(!current)throw Error('请先打开论文');const result=await E.saveReaderAIMessage(current,message,{asNote:true});await rememberMessageAnchor(sessionID,message.id,{...result,attachmentID:current.itemID});if(!surface.state.embedded&&!surface.state.locked)surface.hide();},
    onDragMessage:(event,message,meta)=>{if(meta)return;if(event.type==='dragend'){messageDrag=null;if(!pendingMessage)dropHint.hidden=true;}else{const current=activeReader(win);ensureDropListeners(current);clearPending();let payload;try{payload=JSON.parse(event.dataTransfer.getData('application/x-easysch-research-message'));}catch(_){}messageDrag={message:clone(message),sessionID:payload?.sessionID||conversations.getActive().id,reader:current};dropLabel.textContent='左键批注 / 右键笔记';dropHint.hidden=false;}},

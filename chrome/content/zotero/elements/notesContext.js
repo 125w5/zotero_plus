@@ -135,6 +135,7 @@
 			}
 			// fx115: setting attribute doesn't work
 			this.node.selectedIndex = modeMap[mode];
+			if (mode === 'notesList') this.update();
 		}
 
 		static get observedAttributes() {
@@ -152,6 +153,8 @@
 		update = Zotero.Utilities.throttle(this._updateNotesList, 1000, { leading: false });
 
 		cachedNotes = [];
+		_cachedNotesQuery = null;
+		_notesListGeneration = 0;
 
 		affectedIDs = new Set();
 
@@ -317,6 +320,7 @@
 			
 			return Zotero_Tabs.selectedID != 'zotero-pane'
 				&& ZoteroContextPane.context.mode == "notes"
+				&& ZoteroContextPane.context._getCurrentNotesContext() === this
 				&& this.mode == "notesList"
 				&& splitter.getAttribute('state') != 'collapsed';
 		}
@@ -347,6 +351,7 @@
 		}
 
 		_setPinnedNote(item) {
+			const previousEditor = this._getCurrentEditor();
 			let isChild = false;
 			let reader = Zotero.Reader.getByTabID(Zotero_Tabs.selectedID);
 			if (reader) {
@@ -359,25 +364,23 @@
 			let editor;
 
 			if (isChild) {
-				// One pinned editor per reader tab; otherwise returning to a tab
-				// restores the first (old) note instead of the newly saved note.
-				for (const old of this.tabNotesDeck.querySelectorAll(`:scope > [data-tab-id="${Zotero_Tabs.selectedID}"]`)) {
-					old.querySelector('note-editor')?.saveSync();
-					old.remove();
+				// Keep the tab's editor iframe. Setting a different item already
+				// flushes the old instance once; reopening the same note needs no
+				// synchronous serialization or iframe reconstruction.
+				let vbox = this.tabNotesDeck.querySelector(`:scope > [data-tab-id="${Zotero_Tabs.selectedID}"]`);
+				if (!vbox) {
+					vbox = document.createXULElement('vbox');
+					vbox.setAttribute('data-tab-id', Zotero_Tabs.selectedID);
+					vbox.style.display = 'flex';
+					editor = document.createXULElement('note-editor');
+					editor.style.flex = '1';
+					vbox.append(editor);
+					this.tabNotesDeck.append(vbox);
 				}
-				let vbox = document.createXULElement('vbox');
-				vbox.setAttribute('data-tab-id', Zotero_Tabs.selectedID);
-				vbox.style.display = 'flex';
-
-				editor = document.createXULElement('note-editor');
-				editor.style.flex = "1";
-
-				vbox.append(editor);
-
-				this.tabNotesDeck.append(vbox);
+				else editor = vbox.querySelector('note-editor');
 
 				this.mode = "childNote";
-				this.tabNotesDeck.selectedIndex = this.tabNotesDeck.children.length - 1;
+				this.tabNotesDeck.selectedPanel = vbox;
 			}
 			else {
 				// Try to reuse existing editor
@@ -395,6 +398,9 @@
 				this.mode = "standaloneNote";
 			}
 
+			// A hidden editor survives a child/standalone switch, so flush it
+			// here. Replacing an item in the same editor is saved by its setter.
+			if (previousEditor && previousEditor !== editor) previousEditor.saveSync();
 			editor.mode = this.editable ? 'edit' : 'view';
 			editor.item = item;
 			editor.parentItem = null;
@@ -407,12 +413,14 @@
 		updatePinnedNoteTitle() {
 			let item = this._getCurrentEditor()?.item;
 			let title = this.selectedPanel?.querySelector('.parent-title');
-			let parentItem = item.parentItem;
+			let parentItem = item?.parentItem;
+			if (!title) return;
 			title.textContent = parentItem?.getDisplayTitle() || '';
 		}
 
 		updateNotesListFromCache() {
 			this._updateNotesList(true);
+			this.update();
 		}
 
 
@@ -441,17 +449,18 @@
 		async _updateNotesList(useCached) {
 			let query = this.input.value;
 			let notes;
-			
-			// Calls itself and debounces until notes list becomes
-			// visible, and then updates
+			// Hidden editors do not poll the entire library every second.
+			// Returning to the list, selecting a tab or opening the pane wakes
+			// one refresh; notifier invalidations stay in affectedIDs meanwhile.
 			if (!useCached && !this._isNotesListVisible()) {
-				this.update();
 				return;
 			}
+			const generation = ++this._notesListGeneration;
 			
-			if (useCached && this.cachedNotes.length) {
+			if (useCached && this._cachedNotesQuery === query) {
 				notes = this.cachedNotes;
 			}
+			else if (useCached) return;
 			else {
 				await Zotero.Schema.schemaUpdatePromise;
 				let s = new Zotero.Search();
@@ -464,6 +473,7 @@
 					}
 				}
 				notes = await s.search();
+				if (generation !== this._notesListGeneration || query !== this.input.value) return;
 				notes = Zotero.Items.get(notes);
 				if (Zotero.Prefs.get('extensions.easysch.noteSort', true) !== 'page') {
 					notes.sort((a, b) => {
@@ -473,8 +483,9 @@
 					});
 				}
 				else {
+					const pages = new Map(notes.map(note => [note.id, Zotero.Research.notePage(note)]));
 					notes.sort((a, b) => {
-						return (Zotero.Research.notePage(a) - Zotero.Research.notePage(b)) || b.dateModified.localeCompare(a.dateModified);
+						return (pages.get(a.id) - pages.get(b.id)) || b.dateModified.localeCompare(a.dateModified);
 					});
 				}
 				
@@ -535,6 +546,7 @@
 					};
 				});
 				this.cachedNotes = notes;
+				this._cachedNotesQuery = query;
 				this.affectedIDs = new Set();
 			}
 
@@ -609,8 +621,10 @@
 			if (!editor) {
 				return;
 			}
-			// Immediately save note content before vbox with note-editor iframe is destroyed below
-			editor.saveSync();
+			// Flush through teardown while the iframe is still attached.
+			// disconnectedCallback's second destroy is idempotent, so pending
+			// content is serialized once before its document goes away.
+			editor.destroy();
 			ZoteroContextPane.context.mode = "notes";
 
 			switch (this.mode) {
@@ -629,6 +643,7 @@
 			}
 
 			this.mode = "notesList";
+			this.updateNotesListFromCache();
 			ZoteroContextPane.updateAddToNote();
 		};
 	}

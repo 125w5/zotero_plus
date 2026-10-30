@@ -27,6 +27,7 @@ html[data-appearance] .workbench-home-search>input { flex:1; min-width:0; border
 .agent-active .workspace>header,.agent-active .workspace>.statusbar { display:none; }
 .agent-active .workspace>main { overflow:hidden; }
 .agent-workbench { height:100%; max-width:none; margin:0; padding:0; min-height:0; display:flex; flex-direction:column; animation:agent-enter .2s cubic-bezier(.2,.7,.3,1); }
+.agent-workbench > .organize-card { flex:none; margin:10px 12px 0; }
 .agent-topbar { height:46px; min-height:46px; display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--surface) 94%,transparent); backdrop-filter:blur(12px); }
 .agent-session-title { font-size:12px; font-weight:500; max-width:36%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .agent-new-session { margin-left:auto; white-space:nowrap; }
@@ -72,6 +73,18 @@ html[data-appearance] .agent-message.user { width:fit-content; max-width:min(100
 .agent-execution-step { margin:5px 0 5px 6px; padding-left:10px; border-left:1px solid var(--line); }
 .agent-citation { display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; padding:2px 6px; min-height:24px; margin:5px 5px 0 0; border-radius:5px; color:var(--muted); background:transparent!important; }
 .agent-artifact { margin:8px 6px 0 0; border-radius:8px; font-size:12px; padding:5px 10px; }
+/* A streamed draft is provisional until the saved answer replaces it. */
+.agent-message.agent-message-draft { padding:10px 12px; border:1px dashed var(--ui-border,#dfe3e9); border-radius:10px; background:color-mix(in srgb,var(--ui-tray,#f5f6f8) 60%,transparent)!important; }
+.agent-message-draft-state { margin-bottom:4px; color:var(--ui-secondary,#606976); font-size:11px; }
+.agent-message-draft-text { white-space:pre-wrap; color:var(--ui-secondary,#606976); }
+.agent-message-draft-text:empty { display:none; }
+.agent-message-failure { max-width:var(--agent-transcript-width); margin:-16px 0 24px; padding:8px 12px; border:1px solid color-mix(in srgb,var(--ui-danger,#aa413d) 34%,var(--ui-border,#dfe3e9)); border-left-width:3px; border-radius:10px; background:color-mix(in srgb,var(--ui-danger,#aa413d) 7%,var(--ui-card,#fff)); color:var(--ui-text,#24282f); font:12px/1.7 var(--ui-font); overflow-wrap:anywhere; text-align:left; }
+.agent-message-failure[data-kind=stopped] { border-color:var(--ui-border,#dfe3e9); border-left-color:var(--ui-secondary,#606976); background:var(--ui-tray,#f5f6f8); }
+.agent-message-failure-head { font-weight:600; color:color-mix(in srgb,var(--ui-danger,#aa413d) 72%,var(--ui-text,#24282f)); }
+.agent-message-failure[data-kind=stopped] .agent-message-failure-head { color:var(--ui-secondary,#606976); }
+.agent-message-failure-cause { white-space:pre-wrap; }
+.agent-message-failure-actions { display:flex; flex-wrap:wrap; }
+.agent-message-failure-actions .agent-artifact { margin:6px 6px 0 0; }
 .agent-message-sources { margin-top:8px; font-size:11px; }
 .agent-composer { flex:none; width:min(calc(100% - var(--agent-transcript-gutter) - var(--agent-transcript-gutter)),var(--agent-transcript-width)); align-self:flex-start; border:1px solid var(--line); border-radius:15px; margin:6px var(--agent-transcript-gutter) 14px; background:var(--surface); box-shadow:0 3px 12px #17202a0d; overflow:hidden; }
 html[data-appearance] .agent-composer>textarea { border:0; border-radius:0; display:block; width:100%; height:76px; resize:none; padding:13px 15px 7px; line-height:1.6; min-height:76px; max-height:180px; background:transparent; outline:none; overflow-y:auto; transition:height .18s cubic-bezier(.2,.7,.3,1); }
@@ -100,7 +113,7 @@ html[data-appearance] .agent-preview { display:flex; flex-direction:column; min-
 .agent-preview-body[data-pane=read] { display:flex; flex-direction:column; padding:0; overflow:hidden; }
 .agent-preview-body[data-pane=read]>iframe { display:block; flex:1; width:100%; height:100%; min-height:0; border:0; }
 .agent-preview-tabs { display:flex; gap:1px; width:100%; margin-top:2px; }
-html[data-appearance] .agent-preview-tabs button { flex:1; border:0; border-radius:6px 6px 0 0; padding:7px 3px; min-height:32px; color:var(--muted); background:transparent; font-size:11px; }
+html[data-appearance] .agent-preview-tabs button { flex:1; display:flex; align-items:center; justify-content:center; text-align:center; border:0; border-radius:7px; padding:7px 3px; min-height:36px; color:var(--muted); background:transparent; font:13px/1.5 var(--ui-font,system-ui); }
 html[data-appearance] .agent-preview-tabs button[aria-selected=true] { color:var(--text); box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--accent) 80%,var(--text)); background:color-mix(in srgb,var(--soft) 40%,transparent); }
 .agent-paper-metadata { display:grid; grid-template-columns:48px minmax(0,1fr); gap:6px 8px; margin:0 0 16px; font-size:11px; line-height:1.6; }
 .agent-paper-metadata dt { color:var(--muted); }
@@ -204,10 +217,13 @@ html[data-appearance] .agent-workbench .agent-clui :is(.agent-attach,.agent-dire
    frame fills the center; CLUI expansion belongs to the floating reader dock. */
 html[data-appearance] .agent-workbench .agent-clui[data-clui-persistent=true]{position:relative;inset:auto;transform:none;flex:1;width:100%;max-height:none;min-height:0;padding:0 14px 12px;gap:10px;}
 .agent-clui[data-clui-persistent=true] .clui-native-tab-strip{display:none;}
-html[data-appearance] .agent-clui[data-clui-persistent=true] .clui-native-shell{flex:1;min-height:0;width:100%;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;}
+html[data-appearance] .agent-clui[data-clui-persistent=true] .clui-native-shell{flex:1;min-height:0;width:min(100%,calc(var(--agent-transcript-width) + var(--agent-transcript-gutter) * 2));align-self:center;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;}
 .agent-clui[data-clui-persistent=true] .clui-native-body{height:auto;flex:1;grid-template-rows:minmax(0,1fr);}
 .agent-clui[data-clui-persistent=true] .agent-clui-body-content{height:100%;}
-.agent-clui[data-clui-persistent=true] .clui-native-input-row{margin:0;}
+.agent-clui[data-clui-persistent=true] .clui-native-input-row{flex:none;min-width:0;width:min(100%,calc(var(--agent-transcript-width) + var(--agent-transcript-gutter) * 2));align-self:center;margin:0;}
+html[data-appearance] .agent-workbench .agent-clui .agent-attachments{flex:none;min-height:38px;max-height:104px;padding:1px 2px 7px 0;}
+html[data-appearance] .agent-workbench .agent-clui .agent-attachment-name{flex:1;min-height:0;padding:0;border:0;border-radius:3px;background:transparent;font:inherit;text-align:left;}
+html[data-appearance] .agent-workbench .agent-clui .agent-composer>textarea:focus-visible{outline:none;}
 html[data-appearance] .agent-clui[data-clui-persistent=true] .agent-message{font-size:14px;}
 .agent-composer-options-body[data-portaled=true]{position:fixed;z-index:2147483001;bottom:auto;transform:none;box-sizing:border-box;max-height:calc(100vh - 24px);overflow:auto;color:var(--ui-text,var(--text,#283541));background:var(--ui-glass,var(--surface,#fffffff5));font:12px/1.6 var(--ui-font,system-ui);}
 .agent-composer-options-body[data-portaled=true][hidden]{display:none;}

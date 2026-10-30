@@ -5,7 +5,7 @@ describe('Native library paper organization and unified sidebar',function(){
  const tree=()=>win.ZoteroPane.itemsView;
  const ids=()=>tree().rowProvider.rows.filter(row=>row.isObjectRow&&row.type==='item').map(row=>row.ref.id);
  before(async()=>{
-  prior={rapid:E.queueReaderRapidReading,images:E.assets.queueImages,metadata:E.completePaperMetadata,metrics:E.ensurePaperMetrics,summaries:E.manuscripts.ensureChineseSummaries,syncLibrary:E.manuscripts.syncLibrary};E.queueReaderRapidReading=()=>{};E.assets.queueImages=async()=>{};E.completePaperMetadata=async()=>{};E.ensurePaperMetrics=async()=>null;E.manuscripts.ensureChineseSummaries=async()=>{};
+  prior={rapid:E.queueReaderRapidReading,images:E.assets.queueImages,metadata:E.completePaperMetadata,metrics:E.ensurePaperMetrics,summaries:E.manuscripts.ensureChineseSummaries,syncLibrary:E.manuscripts.syncLibrary,index:E.manuscripts.indexArticle,queue:E.manuscripts.queueArticle};E.queueReaderRapidReading=()=>{};E.assets.queueImages=async()=>{};E.completePaperMetadata=async()=>{};E.ensurePaperMetrics=async()=>null;E.manuscripts.ensureChineseSummaries=async()=>{};
   // The persistent research fixture has projects from earlier suites whose
   // native item IDs belong to a discarded test DB. Test only the real project
   // created below, without starting unrelated full-library migration jobs.
@@ -14,11 +14,12 @@ describe('Native library paper organization and unified sidebar',function(){
   paper=await createDataObject('item',{itemType:'journalArticle',title:'论文视图受控验收'});
   note=new Zotero.Item('note');note.parentID=paper.id;note.setNote('<p>归属论文的人工笔记</p>');await note.saveTx();
   orphan=new Zotero.Item('note');orphan.setNote('<p>未关联笔记保留原样</p>');await orphan.saveTx();
+  E.manuscripts.indexArticle=async()=>null;E.manuscripts.queueArticle=async()=>null;
   attachment=await Zotero.Attachments.importFromFile({file:PathUtils.join(getTestDataDirectory().path,'test.pdf')});
   const project=await E.manuscripts.create('真实装配项目视图验收');projectItem=Zotero.Items.get(await E.manuscripts.ensureLibraryItem(project.id));
   await win.ZoteroPane.collectionsView.selectLibrary(Zotero.Libraries.userLibraryID);await workspace.showItemScope('papers');
  });
- after(async()=>{workspace?.dispose();win?.close();if(prior){E.queueReaderRapidReading=prior.rapid;E.assets.queueImages=prior.images;E.completePaperMetadata=prior.metadata;E.ensurePaperMetrics=prior.metrics;E.manuscripts.ensureChineseSummaries=prior.summaries;E.manuscripts.syncLibrary=prior.syncLibrary;}});
+ after(async()=>{workspace?.dispose();win?.close();if(prior){E.queueReaderRapidReading=prior.rapid;E.assets.queueImages=prior.images;E.completePaperMetadata=prior.metadata;E.ensurePaperMetrics=prior.metrics;E.manuscripts.ensureChineseSummaries=prior.summaries;E.manuscripts.syncLibrary=prior.syncLibrary;E.manuscripts.indexArticle=prior.index;E.manuscripts.queueArticle=prior.queue;}});
  it('shows papers in the main list and preserves real child notes and attachment relationships',async()=>{
   await workspace.showItemScope('papers');assert.include(ids(),paper.id);assert.notInclude(ids(),orphan.id);assert.notInclude(ids(),attachment.id);assert.notInclude(ids(),projectItem.id);assert.equal(Zotero.Items.get(note.id).parentID,paper.id);
   await tree().selectItem(paper.id);await tree().expandSelectedRows();await wait(()=>ids().includes(note.id),'论文下的真实笔记');assert.include(ids(),note.id);
@@ -33,8 +34,8 @@ describe('Native library paper organization and unified sidebar',function(){
   await workspace.showItemScope('papers');await tree().selectItem(paper.id);await tree().expandSelectedRows();await wait(()=>ids().includes(added.id),'论文下的归属笔记');
   const project=await E.manuscripts.create('通知后关联装配项目'),itemID=await E.manuscripts.ensureLibraryItem(project.id);await wait(()=>!ids().includes(itemID),'延迟项目关联不会泄露到论文列表');await workspace.showItemScope('unlinked');assert.include(ids(),itemID);await workspace.showItemScope('papers');
  });
- it('centres the five unique research routes, keeps folders beneath the library and puts search above the daily panel',async()=>{
-  const doc=win.document,buttons=doc.querySelectorAll('#easysch-home-navigation .native-workbench [data-page]');assert.deepEqual(Array.from(buttons,b=>b.dataset.page),['agent','search','discovery','writing','ppt']);
+ it('centres the four unique research routes, keeps folders beneath the library and puts search above the daily panel',async()=>{
+  const doc=win.document,buttons=doc.querySelectorAll('#easysch-home-navigation .native-workbench [data-page]');assert.deepEqual(Array.from(buttons,b=>b.dataset.page),['agent','search','writing','ppt']);
   for(const b of buttons){const style=win.getComputedStyle(b);assert.equal(style.textAlign,'center');assert.equal(style.display,'grid');assert.isAtLeast(b.getBoundingClientRect().height,34);}
   const toolbar=doc.getElementById('zotero-toolbar-collection-tree'),bottom=doc.getElementById('easysch-library-bottom');assert.strictEqual(toolbar.nextElementSibling,bottom);assert.equal(win.getComputedStyle(toolbar).backgroundColor,win.getComputedStyle(doc.getElementById('zotero-collections-pane')).backgroundColor);
   collection=await createDataObject('collection',{name:'直接位于文库下的研究文件夹'});const view=win.ZoteroPane.collectionsView;await view.selectCollection(collection.id);const root=view.getRowIndexByID('L'+Zotero.Libraries.userLibraryID),folder=view.getRowIndexByID('C'+collection.id),recent=view._rows.findIndex(row=>row.isRecentlyRead?.()&&row.ref.libraryID===Zotero.Libraries.userLibraryID);assert.isAbove(folder,root);if(recent>=0)assert.isBelow(folder,recent);

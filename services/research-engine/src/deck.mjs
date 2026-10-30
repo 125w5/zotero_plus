@@ -7,6 +7,7 @@ import { validatePlan, validateDataset } from './plan.mjs';
 import { renderAssetSlide } from './asset-slides.mjs';
 import { renderDataChart } from './data-charts.mjs';
 import { renderStudioDeck } from './studio-render.mjs';
+import { finalizePresentation } from './presentation-package.mjs';
 export async function renderDeck({ plan, evidence, datasets = [], assets = [], directory }) {
   if(plan.version===3)return renderStudioDeck({plan,evidence,datasets,assets,directory});
   validatePlan(plan, evidence);
@@ -47,5 +48,6 @@ export async function renderDeck({ plan, evidence, datasets = [], assets = [], d
   }
   const output = path.join(directory,'presentation.pptx');
   await ppt.writeFile({fileName:output});
-  return {path:output,slides:plan.slides.length,editable:true,visualAssets,visualReview:'pending',warnings:['已生成原生可编辑元素；尚未完成逐页视觉验收。',...visualAssets.flatMap(a=>a.warnings)]};
+  const checked=await finalizePresentation(output);
+  return {path:output,slides:plan.slides.length,editable:true,visualAssets,packageValidation:checked.report,visualReview:'pending',warnings:['已生成原生可编辑元素；尚未完成逐页视觉验收。',...checked.warnings,...visualAssets.flatMap(a=>a.warnings)]};
 }

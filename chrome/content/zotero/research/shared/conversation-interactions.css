@@ -11,7 +11,8 @@
 .conversation-interaction-actions>button{min-height:34px;border:1px solid var(--ui-border,#d6dce5);border-radius:10px;padding:6px 11px;font:inherit;color:inherit;background:var(--ui-card,#fff);box-shadow:0 1px 2px #1c26350b,inset 0 1px #fff9;cursor:pointer;transition:background 140ms,transform 140ms,box-shadow 140ms;}
 .conversation-interaction-actions>button:hover{background:var(--ui-hover,#eef2f7);box-shadow:0 2px 5px #1c263519;}
 .conversation-interaction-actions>button:active{transform:translateY(1px);box-shadow:inset 0 1px 3px #1c263519;}
-.conversation-interaction-actions .conversation-interaction-primary{background:#3a495d;color:#fff;border-color:#3a495d;}
+.conversation-interaction-actions .conversation-interaction-primary{background:var(--ui-primary,#e8f0fb);color:var(--ui-primary-text,#405e82);border-color:color-mix(in srgb,var(--ui-primary-text,#405e82) 16%,transparent);}
+html[data-appearance] .conversation-interaction-actions>.conversation-interaction-primary:hover:not(:disabled){background:var(--ui-primary-hover,#dce8f8);color:var(--ui-primary-text,#405e82);}
 .conversation-surface-toolbar .conversation-surface-execution{flex:none;max-width:78px;}
 @keyframes conversation-interaction-enter{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:none;}}
 @media(prefers-reduced-motion:reduce){.conversation-interaction-card{animation:none;}.conversation-interaction-actions button{transition:none;}}

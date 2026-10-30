@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 (function (E) {
  const Ref=ChromeUtils.importESModule('chrome://zotero/content/research/shared/reference-matcher.mjs');
+ const ReferenceMetadata=ChromeUtils.importESModule('chrome://zotero/content/research/shared/reference-metadata.mjs');
  const Feed=ChromeUtils.importESModule('chrome://zotero/content/research/shared/discovery-feed.mjs');
+ ChromeUtils.importESModule('chrome://zotero/content/research/shared/workspace-outputs.mjs').installWorkspaceOutputs(E,{Zotero,IOUtils:globalThis.IOUtils});
  const pdfReferenceTasks=new Map(),referenceControllers=new Set();let stopping=false;
  const checkReferences=signal=>{if(stopping||signal?.aborted)throw Error('已取消参考文献收集');};
  const referenceController=()=>{const controller=new (Zotero.getMainWindow().AbortController)();referenceControllers.add(controller);return controller;};
@@ -14,12 +16,19 @@
  };
  let lookupTail=Promise.resolve(),lastLookup=0;
  const referenceTasks=new Map(),metadataTasks=new Map();
+ // A paper can resolve 300 references. Write their metadata every 20 lookups
+ // or 2 s, and when a collection settles, rather than once per lookup.
+ let referenceWriter=Feed.createStoreBranchWriter?Feed.createStoreBranchWriter(E,'referenceMetadata',{maxPending:20,onError:error=>Zotero.logError(error)}):{
+	get:key=>E.store.get('referenceMetadata',key),
+	set:(key,value)=>E.store.update(s=>{s.referenceMetadata||={};s.referenceMetadata[key]=value;}),
+	flush:()=>Promise.resolve()
+ };
  E.collectReferences=async(paper,{signal,refresh=false,onProgress=()=>{}}={})=>{
   checkReferences(signal);
   let sourceVersion='metadata';const item=await Zotero.Items.getAsync(paper.id),attachment=item?.isPDFAttachment()?item:await item?.getBestAttachment();const path=await attachment?.getFilePathAsync();if(path){const stat=await IOUtils.stat(path);sourceVersion=attachment.id+':'+stat.size+':'+stat.lastModified;}
-  const key='resolved-refs-v5:'+Ref.REFERENCE_PARSE_VERSION+':'+paper.id+':'+Ref.cleanDOI(paper.doi),cached=E.store.get().discovery?.[key];
+  const key='resolved-refs-v6:'+Ref.REFERENCE_PARSE_VERSION+':'+paper.id+':'+Ref.cleanDOI(paper.doi),cached=E.store.get('discovery',key);
   if(!refresh&&cached&&cached.referenceParseVersion===Ref.REFERENCE_PARSE_VERSION&&cached.sourceVersion===sourceVersion&&Date.now()-Date.parse(cached.at)<86400000){onProgress({done:cached.total,total:cached.total,found:cached.records.length,references:cached.references,records:cached.records,complete:true});return {...cached,cacheHit:true};}
-  const taskKey=key+':'+sourceVersion;let task=referenceTasks.get(taskKey);
+  const taskKey=key+':'+sourceVersion;let task=referenceTasks.get(taskKey);if(task?.controller.signal.aborted){referenceTasks.delete(taskKey);task=null;}
   if(!task){
    task={listeners:new Set(),latest:null,controller:referenceController()};const workSignal=task.controller.signal;
    const notify=progress=>{task.latest=progress;for(const listener of task.listeners)try{listener(progress);}catch(error){Zotero.logError(error);}};
@@ -39,47 +48,43 @@
   const partial=new Map();notify({done:0,total:refs.length,found:0,references:refs,records:[]});
   const lookupOne=async ref=>{
    checkReferences(workSignal);
-   const query=ref.title||ref.quote,arxiv=!ref.doi&&Ref.referenceArxiv(ref.quote),k=ref.doi?'doi:'+ref.doi:arxiv?'arxiv:'+arxiv:'bibliography:'+E.assets.key(query),entry=E.store.get().referenceMetadata?.[k];
+   const query=ref.title||ref.quote,arxiv=!ref.doi&&Ref.referenceArxiv(ref.quote),k=ref.doi?'doi:'+ref.doi:arxiv?'arxiv:'+arxiv:'bibliography:'+E.assets.key(query),entry=referenceWriter.get(k);
    // A retry only bypasses negative/failure entries; successfully acquired
    // metadata is reused. Different panes and papers share the same lookup.
-   if(entry&&Date.now()-entry.at<(entry.records.length?604800000:3600000)&&(entry.records.length||!refresh)){if(entry.error)throw Error(entry.error);return entry.records;}
-   if(metadataTasks.has(k))return metadataTasks.get(k);
-   const controller=referenceController(),metadataSignal=controller.signal;
-   const metadata=(async()=>{try{
+   if(entry&&Date.now()-entry.at<(entry.records.length?604800000:3600000)&&(entry.records.length||entry.lookupVersion===ReferenceMetadata.REFERENCE_LOOKUP_VERSION&&!refresh)){if(entry.error)throw Error(entry.error);return entry.records;}
+   return ReferenceMetadata.consumeReferenceTask(metadataTasks,k,async metadataSignal=>{try{
    const wait=lookupTail.then(async()=>{checkReferences(metadataSignal);await Zotero.Promise.delay(Math.max(0,lastLookup+180-Date.now()));checkReferences(metadataSignal);lastLookup=Date.now();});lookupTail=wait.catch(()=>{});await wait;
-   if(arxiv){const p=await E.arxivMetadata(arxiv,{signal:metadataSignal});checkReferences(metadataSignal);await E.store.update(s=>{s.referenceMetadata||={};s.referenceMetadata[k]={at:Date.now(),records:[p]};});return [p];}
-   const target=ref.doi?'https://api.crossref.org/works/'+encodeURIComponent(ref.doi):'https://api.crossref.org/works?query.bibliographic='+encodeURIComponent(query.slice(0,700))+'&rows=3';
-   const data=JSON.parse(await E.requestProvider(target,{signal:metadataSignal},10000)).message;checkReferences(metadataSignal);
-   const records=(ref.doi?[data]:data.items||[]).map(Ref.crossrefRecord);
-   const parser=new (Zotero.getMainWindow().DOMParser)();for(const p of records)p.abstract=parser.parseFromString(p.abstract||'','text/html').body.textContent;
-   await E.store.update(s=>{s.referenceMetadata||={};s.referenceMetadata[k]={at:Date.now(),records};});return records;
-   }catch(error){checkReferences(metadataSignal);await E.store.update(s=>{s.referenceMetadata||={};s.referenceMetadata[k]={at:Date.now(),records:[],error:error.message};});throw error;}finally{referenceControllers.delete(controller);}})();
-   metadataTasks.set(k,metadata);try{return await metadata;}finally{metadataTasks.delete(k);}
+   const records=await ReferenceMetadata.lookupReferenceMetadata(E,ref,{signal:metadataSignal,Parser:Zotero.getMainWindow().DOMParser});checkReferences(metadataSignal);
+   checkReferences(metadataSignal);await referenceWriter.set(k,{at:Date.now(),records,lookupVersion:ReferenceMetadata.REFERENCE_LOOKUP_VERSION});return records;
+   }catch(error){checkReferences(metadataSignal);await referenceWriter.set(k,{at:Date.now(),records:[],error:error.message,lookupVersion:ReferenceMetadata.REFERENCE_LOOKUP_VERSION});throw error;}finally{for(const controller of referenceControllers)if(controller.signal===metadataSignal)referenceControllers.delete(controller);}}, {signal:workSignal,createController:referenceController});
   };
   const result={...await Ref.resolveReferences(refs,{lookup:lookupOne,signal:workSignal,limit:300,budget:Infinity,onProgress:progress=>{if(progress.record)partial.set(progress.index,progress.record);notify({...progress,references:refs,records:[...partial.values()]});}}),references:refs,url,notes,sourceVersion,referenceParseVersion:Ref.REFERENCE_PARSE_VERSION,at:new Date().toISOString(),cacheHit:false};
   checkReferences(workSignal);
   await E.store.update(s=>{s.discovery||={};s.discovery[key]=result;});notify({done:refs.length,total:refs.length,found:result.records.length,references:refs,records:result.records,complete:true});return result;
-   })();referenceTasks.set(taskKey,task);task.promise.finally(()=>{referenceTasks.delete(taskKey);referenceControllers.delete(task.controller);}).catch(()=>{});
+   })();referenceTasks.set(taskKey,task);task.promise.finally(()=>{task.settled=true;if(referenceTasks.get(taskKey)===task)referenceTasks.delete(taskKey);referenceControllers.delete(task.controller);referenceWriter.flush().catch(error=>Zotero.logError(error));}).catch(()=>{});
   }
   const listener=progress=>{if(!signal?.aborted)onProgress(progress);};task.listeners.add(listener);if(task.latest)listener(task.latest);
   // Detaching one pane must not cancel another pane's shared background job.
-  let abort;try{return await Promise.race([task.promise,new Promise((_,reject)=>{if(signal){abort=()=>reject(Error('已取消'));signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();}})]);}finally{task.listeners.delete(listener);if(abort)signal.removeEventListener('abort',abort);}
+  let abort;try{return await Promise.race([task.promise,new Promise((_,reject)=>{if(signal){abort=()=>reject(Error('已取消'));signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();}})]);}finally{task.listeners.delete(listener);if(abort)signal.removeEventListener('abort',abort);if(!task.listeners.size&&!task.settled)task.controller.abort();}
  };
  Zotero.addShutdownListener(async()=>{
   stopping=true;for(const controller of referenceControllers)controller.abort();
+  // Queue unwritten reference metadata before any other shutdown step awaits.
+  let pendingReferences=referenceWriter.flush().catch(error=>Zotero.logError(error));
   await E.stopJournalSubscriptions?.();
-  await Promise.allSettled([...referenceTasks.values()].map(task=>task.promise).concat([...metadataTasks.values()]));
+  await Promise.allSettled([...referenceTasks.values(),...metadataTasks.values()].map(task=>task.promise));
+  await pendingReferences;await referenceWriter.flush().catch(error=>Zotero.logError(error));
   await E.store?.flush?.();
  });
 	const graph = 'https://api.semanticscholar.org/graph/v1/',
 		fields =
-			'paperId,title,abstract,year,url,externalIds,authors,venue,openAccessPdf';
+			'paperId,title,abstract,year,publicationDate,url,externalIds,authors,venue,openAccessPdf';
 	const normalize = (p) => ({
 		source: 'Semantic Scholar',
 		id: p.paperId,
 		title: p.title || '未提供标题',
 		abstract: p.abstract || '',
-		date: String(p.year || ''),
+		date: p.publicationDate || String(p.year || ''),
 		doi: p.externalIds?.DOI || '',
 		url: p.url || '',
 		journal: p.venue || '',
@@ -92,40 +97,63 @@
 	});
 	E.discoverySearch=async(query,{signal,provider='semantic'}={})=>{if(provider==='crossref'){const data=JSON.parse(await E.requestProvider('https://api.crossref.org/works?query='+encodeURIComponent(query)+'&rows=8&filter=has-abstract:true',{signal}));const parser=new (Zotero.getMainWindow().DOMParser)();return (data.message?.items||[]).map(p=>({id:p.DOI,doi:p.DOI,title:p.title?.[0]||'',abstract:parser.parseFromString(p.abstract||'','text/html').body.textContent,url:p.URL||'https://doi.org/'+p.DOI,date:String(p.published?.['date-parts']?.[0]?.[0]||''),source:'Crossref'}));}const data=JSON.parse(await E.requestProvider(graph+'paper/search?query='+encodeURIComponent(query)+'&limit=8&fields='+fields,{signal}));return (data.data||[]).map(normalize);};
  // Metadata-first open-access browsing. Page cursors stay with their provider.
- const pageTasks=new Map();let pageTail=Promise.resolve(),pageLast=0;
- E.searchPaperPage=async(query,{provider='',page=1,cursor,filters={},limit=40,signal,researchScope,domain}={})=>{
-  const scope=Feed.normalizeResearchScope(researchScope||domain||{}),inputQuery=String(query||'').trim();query=Feed.buildResearchQuery(scope,inputQuery);if(!query)throw Error('请输入研究主题');limit=Math.min(100,Math.max(5,limit));page=Math.max(1,page);
-  const choice=Feed.discoveryFilters(filters),restricted=choice.journalOnly||choice.sourceIDs.length||choice.topOnly,key='pdf-search-v5:'+JSON.stringify([query,provider,page,cursor,choice,limit,scope]);let task=pageTasks.get(key);
-  if(!task){task=(async()=>{const cache=E.store.get().paperSearchPages?.[key];if(cache&&Date.now()-cache.at<3600000)return{...cache.result,records:Feed.applyDiscoveryFilters(cache.result.records.map(row=>Feed.enrichDiscoveryRecord(row,E)),choice),cacheHit:true};
-   const turn=pageTail.then(async()=>{await Zotero.Promise.delay(Math.max(0,pageLast+1000-Date.now()));pageLast=Date.now();});pageTail=turn.catch(()=>{});await turn;
-   let result,fallback,errors=[];for(const name of provider?[provider]:restricted?['openalex']:['openalex','semantic','arxiv'])try{
-    const offset=(page-1)*limit;let rows=[],more=false;
+ const pageTasks=new Map();
+ E.searchPaperPage=async(query,{provider='',page=1,cursor,filters={},limit=40,signal,researchScope,domain,onProgress,fillPage=false,refresh=false,domainMatch,queryExpansion,scanBudget}={})=>{
+  const scope=Feed.normalizeResearchScope(researchScope||domain||{}),inputQuery=String(query||'').trim(),discovery=['rank','strict'].includes(domainMatch);query=Feed.buildResearchQuery(scope,inputQuery);if(!query&&!scope.topicID)throw Error('请输入研究主题');limit=Math.min(100,Math.max(5,limit));page=Math.max(1,page);
+  if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});
+  // A discovery search prepares its query once, with at most one model call
+  // (translation and expansion together); every source then uses that result.
+  let prepared=discovery?await E.prepareDiscoveryQuery(inputQuery,scope,signal,{domainMatch,queryExpansion,onPhase:phase=>onProgress?.({records:[],phase,partial:true})}):null;
+  const choice=Feed.discoveryFilters(filters),topicRestricts=!!scope.topicID&&!(prepared?.domainMatch==='rank'&&prepared.groups?.length),restricted=choice.journalOnly||choice.sourceIDs.length||choice.topOnly||topicRestricts,key='pdf-search-v9-verified:'+JSON.stringify([prepared?prepared.query:query,provider,page,cursor,choice,limit,prepared?prepared.researchScope:scope,fillPage,prepared?.domainMatch||'',prepared?Number(scanBudget?.batches)||0:0]);if(topicRestricts&&provider&&provider!=='openalex')throw Error('所选在线研究主题需要 OpenAlex；可改用自定义领域名称检索其他来源。');if(['semantic','arxiv'].includes(provider)&&(choice.journalOnly||choice.sourceIDs.length))throw Error('当前来源不支持精确期刊筛选，请选择 OpenAlex、Crossref 或 Europe PMC。');if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});let active=pageTasks.get(key),task=active&&!active.signal?.aborted?active.promise:null;
+  // A cached page whose journal lookup failed or had no key is fetched again, as in the feed.
+  if(!task){task=(async()=>{const cache=Feed.discoveryBranch(E,'paperSearchPages',key);if(!refresh&&cache?.result?.records?.length&&Date.now()-cache.at<3600000&&!['failed','no-key'].includes(cache.result.scan?.metricLookup)){const snapshot=Feed.discoveryEnrichment(E);return{...cache.result,records:Feed.applyDiscoveryFilters(cache.result.records.map(row=>Feed.enrichDiscoveryRecord(row,E,snapshot)),choice),cacheHit:true};}
+   // Each request already carries cancellation and provider cooldowns. A
+   // global one-second queue here delayed unrelated and obsolete searches.
+   if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});
+   const started=Date.now(),scans=[];let result,fallback,errors=[];for(const name of provider?[provider]:restricted?['openalex']:['openalex','semantic','arxiv'])try{
+    const offset=(page-1)*limit;let rows=[],more=false,total=0;
     if(['openalex','crossref','europepmc'].includes(name)){
-     const feed=await E.recommendationFeed({mode:'latest',query:inputQuery,researchScope:scope,page,cursor,limit,signal,provider:name,filters:{...choice,sort:choice.sort||'relevance'}});if(feed.error&&!feed.records.length)throw Error(feed.error);result={...feed,provider:feed.providerID||name,providerName:feed.provider||'本地文库',query,limitations:[...errors,...(feed.limitations||[])]};if(!feed.error||provider||restricted)break;fallback=result;result=undefined;errors.push(feed.error);continue;
+     // Restricted searches may use the journal-aware fallback indexes; an
+     // unrestricted one moves on to Semantic Scholar and arXiv below.
+     const feed=await E.recommendationFeed({mode:'latest',query:inputQuery,researchScope:scope,page,cursor,limit,signal,provider:name,filters:{...choice,sort:choice.sort||'relevance'},onProgress,fillPage,refresh,...(prepared?{prepared,domainMatch:prepared.domainMatch,scanBudget,emptyFallback:!provider&&restricted}:{})});if(feed.error&&!feed.records.length)throw Error(feed.error);if(feed.scan)scans.push(feed.scan);result={...feed,provider:feed.providerID||name,providerName:feed.provider||'本地文库',query:prepared?prepared.query:query,limitations:[...errors,...(feed.limitations||[])]};
+     if(prepared&&!provider&&!restricted&&!feed.records.length&&!feed.hasMore&&!feed.fallback&&!feed.scan?.total){fallback=result;result=undefined;continue;}
+     if(!feed.error||provider||restricted)break;fallback=result;result=undefined;errors.push(feed.error);continue;
     }else if(name==='semantic'){
-     const data=JSON.parse(await E.requestProvider(graph+'paper/search?query='+encodeURIComponent(query)+'&openAccessPdf&offset='+offset+'&limit='+limit+'&fields='+fields+',citationCount',{signal},20000));rows=(data.data||[]).map(p=>({...normalize(p),oa:true,citationCount:p.citationCount??null,retracted:null}));more=data.next!=null;
-    }else if(name==='arxiv'){const data=await E.arxivSearchPage(query,{page,limit,signal});rows=data.records.map(p=>({...p,oa:true,retracted:null,citationCount:null,sourceType:'repository'}));more=data.hasMore;}else throw Error('不支持的文献来源');
-    const seen=new Set();rows=Feed.applyDiscoveryFilters(rows.map(row=>Feed.enrichDiscoveryRecord(row,E)),choice).filter(r=>{const id=String(r.doi||r.url||r.id).toLowerCase();if(!r.title||!id||seen.has(id)||!Feed.matchesResearchScope(r,scope))return false;seen.add(id);return true;});
-    result={records:rows,provider:name,page,nextPage:page+1,nextCursor:null,hasMore:more,cacheHit:false,filters:choice,filterOptions:{journals:Feed.discoveryJournalOptions(rows)},limitations:[...errors,...Feed.discoveryFilterLimitations(choice)],query};if(rows.length||provider)break;
+     prepared||=await E.prepareDiscoveryQuery(inputQuery,scope,signal);query=discovery?String(prepared.plainQuery||prepared.query):prepared.query;
+     const range=Feed.discoveryDateRange(choice),year=range.from||range.to?'&year='+encodeURIComponent((range.from?range.from.slice(0,4):'')+'-'+(range.to?range.to.slice(0,4):'')):'';const data=JSON.parse(await E.requestProvider(graph+'paper/search?query='+encodeURIComponent(query)+'&openAccessPdf&offset='+offset+'&limit='+limit+'&fields='+fields+',citationCount'+year,{signal},20000));rows=(data.data||[]).map(p=>({...normalize(p),oa:true,citationCount:p.citationCount??null,retracted:null}));more=data.next!=null;total=Number(data.total)||rows.length;
+    }else if(name==='arxiv'){prepared||=await E.prepareDiscoveryQuery(inputQuery,scope,signal);query=discovery?String(prepared.plainQuery||prepared.query):prepared.query;const data=await E.arxivSearchPage(query,{page,limit,signal,filters:choice});rows=data.records.map(p=>({...p,oa:true,retracted:null,citationCount:null,sourceType:'repository'}));more=data.hasMore;total=Number(data.total)||rows.length;}else throw Error('不支持的文献来源');
+    // Discovery counts what each step removed, as the feed does.
+    let scan=null;if(discovery){scan={scanned:0,matched:0,total,removed:{},relax:{},metricLookup:'',metricFailed:0};rows=E.screenDiscoveryBatch?await E.screenDiscoveryBatch(rows,{name,prepared,choice,stats:scan,signal,until:started+(Number(scanBudget?.ms)||20000)}):Feed.applyDiscoveryFilters(Feed.screenDiscoveryRows(rows,{name,prepared,stats:scan,choice,E}),choice);}
+    else{const seen=new Set(),snapshot=Feed.discoveryEnrichment(E);rows=Feed.applyDiscoveryFilters(rows.map(row=>Feed.enrichDiscoveryRecord(row,E,snapshot)),choice).filter(r=>{const id=String(r.doi||r.url||r.id).toLowerCase();if(!r.title||!id||seen.has(id)||!(prepared?Feed.matchesPreparedDiscoveryScope(r,prepared):Feed.matchesResearchScope(r,scope)))return false;seen.add(id);return true;});}
+    const verified=await Feed.verifiedDiscoveryRecords(E,rows,{signal,refresh,onProgress:progress=>onProgress?.({...progress,provider:name,page,nextPage:page,nextCursor:cursor,hasMore:true,effectiveResearchScope:prepared?.researchScope||scope,query,partial:true})}),failed=rows.length-verified.records.length;rows=scan?Feed.applyDiscoveryFilters(verified.records,choice):verified.records;
+    if(scan){if(failed>0)scan.removed.probe=(scan.removed.probe||0)+failed;scan.exhausted=!more;scan.budgetHit=more&&!rows.length;scans.push(scan);}
+    const notes=scan?[...(prepared.warning?[prepared.warning]:[]),...(prepared.notes||[]),...(scan.metricLookup==='no-key'?['未配置 easyScholar 密钥，期刊 TOP 无法核验；可在设置中保存密钥，或选择“包含未核验期刊”。']:[]),...(failed>0?[failed+' 篇论文的公开地址暂未通过 PDF 获取检查，已从可下载结果中排除。']:[])]:[];
+    result={records:rows,effectiveResearchScope:prepared?.researchScope||scope,searchQuery:query,provider:name,page,nextPage:page+1,nextCursor:null,hasMore:more,cacheHit:false,filters:choice,filterOptions:{journals:Feed.discoveryJournalOptions(rows)},limitations:[...errors,...Feed.discoveryFilterLimitations(choice),...notes],query,...(scan?{scan}:{}),...(scan&&prepared.queryExpansion?{queryExpansion:prepared.queryExpansion}:{})};if(rows.length||provider)break;
    }catch(e){if(signal?.aborted||e.name==='AbortError')throw e;errors.push(name+'：'+e.message);}
-   if(fallback&&!result?.records.length)result={...fallback,limitations:[...new Set([...(fallback.limitations||[]),...errors])]};if(!result)throw Error('联网检索失败：'+errors.join('；'));await E.store.update(s=>{s.paperSearchPages||={};s.paperSearchPages[key]={at:Date.now(),result};const keys=Object.keys(s.paperSearchPages);for(const k of keys.slice(0,Math.max(0,keys.length-80)))delete s.paperSearchPages[k];});return result;
-  })();pageTasks.set(key,task);task.finally(()=>pageTasks.delete(key)).catch(()=>{});}
+   if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});if(fallback&&!result?.records.length&&!result?.hasMore)result={...fallback,limitations:[...new Set([...(fallback.limitations||[]),...errors])]};if(!result)throw Error('联网检索失败：'+errors.join('；'));
+   // The status line counts every source this search scanned.
+   if(scans.length>1)result={...result,scan:{...Feed.mergeDiscoveryScanStats(...scans),exhausted:!result.hasMore,budgetHit:!!result.hasMore&&!result.records.length}};
+   if(['openalex','crossref','europepmc'].includes(result.provider))return result;await E.store.update(s=>{s.paperSearchPages||={};s.paperSearchPages[key]={at:Date.now(),result};const keys=Object.keys(s.paperSearchPages);for(const k of keys.slice(0,Math.max(0,keys.length-80)))delete s.paperSearchPages[k];});return result;
+  })();active={promise:task,signal};pageTasks.set(key,active);task.finally(()=>{if(pageTasks.get(key)===active)pageTasks.delete(key);}).catch(()=>{});}
   const result=await task;if(signal?.aborted)throw Error('已取消');return result;
  };
- E.candidateMetric=async record=>{if(!record.journal)return null;const item=new Zotero.Item('journalArticle');item.setField('publicationTitle',record.journal);if(record.issn)item.setField('ISSN',record.issn);return await E.ensurePaperMetrics(item);};
+ E.candidateMetric=async(record,{needTop=false}={})=>{if(!record.journal)return null;const item=new Zotero.Item('journalArticle');item.setField('publicationTitle',record.journal);if(record.issn)item.setField('ISSN',record.issn);return await E.ensurePaperMetrics(item,{needTop});};
  const oaTasks=new Map();
  E.obtainOpenPaper=async(record,options={})=>{
   const {onProgress=()=>{},signal}=options,target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID,collectionID:options.collectionID};
   if(!record.oa||record.retracted)throw Error('此候选未确认可公开获取，或已标记撤稿；请先核对来源。');
   const key=String(target.libraryID||'')+':'+(record.doi||record.url||record.id);if(oaTasks.has(key)){const result=await oaTasks.get(key);if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);return{...result,...target};}
-  const task=(async()=>{if(/arxiv.org\/(abs|pdf)\//i.test(record.url+' '+record.pdf))return E.importAcademicPDF(record,{open:false,onProgress,signal,...target});
-   onProgress({stage:'lookup',text:'正在匹配文库…'});
-   const saved=await E.importAcademic(record,{select:false,...target}),item=await Zotero.Items.getAsync(saved.id);let attachment=await E.library.localPDF(item);if(attachment)return{itemID:item.id,attachmentID:attachment.id,reused:true,...target};
-   if(!record.pdf||!/^https:\/\//.test(record.pdf))throw Error('题录已保留，暂无直接公开 PDF；可打开来源页面。');
+  const task=(async()=>{
+   // Only an arXiv record is filed as an arXiv preprint. A journal article
+   // whose open copy is on arxiv.org keeps its own item type and journal.
+   if(/arxiv\.org\/(abs|pdf)\//i.test(record.url+' '+record.id))return E.importAcademicPDF(record,{open:false,onProgress,signal,...target});
+   // The record is filed only after its PDF bytes have arrived.
+   let found=E.findAcademicItem&&await E.findAcademicItem(record,target),attachment=found&&await E.library.localPDF(found);if(attachment){await E.placeAcademicInCollection?.(found.id,target);return{itemID:found.id,attachmentID:attachment.id,reused:true,...target};}
+   if(!record.pdf||!/^https:\/\//.test(record.pdf))throw Error('暂无直接公开 PDF；文库没有变化，可打开来源页面。');
    if(Zotero.Libraries?.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件');if(signal?.aborted)throw Error('已取消');onProgress({stage:'download',text:'正在下载 PDF…'});
-   let response,xhr;const abort=()=>xhr?.abort();try{signal?.addEventListener('abort',abort,{once:true});response=await Zotero.HTTP.request('GET',record.pdf,{responseType:'arraybuffer',timeout:15000,followRedirects:true,successCodes:false,requestObserver:request=>{xhr=request;if(signal?.aborted)request.abort();}});}catch(_){throw Error(signal?.aborted?'已取消下载':'PDF 下载失败：15 秒内未完成或连接中断，题录已保留，可重试');}finally{signal?.removeEventListener('abort',abort);}
-   if(signal?.aborted)throw Error('已取消');if(response.status<200||response.status>=300){const error=Error('公开 PDF 下载失败（HTTP '+response.status+'），题录已保留');if([401,403,404,410].includes(response.status))await E.markDiscoveryPDFFailure?.(record.pdf,error);throw error;}const bytes=new Uint8Array(response.response);try{ChromeUtils.importESModule('chrome://zotero/content/research/shared/arxiv.mjs').assertPDF(bytes);}catch(error){await E.markDiscoveryPDFFailure?.(record.pdf,error);throw error;}
+   let bytes;try{bytes=await E.requestDiscoveryPDF(record.pdf,{signal,onProgress:progress=>onProgress({stage:'download',text:'正在下载 PDF…',...progress})});}catch(error){if(!signal?.aborted)await E.markDiscoveryPDFFailure?.(record.pdf,error);throw error;}
    onProgress({stage:'save',text:'正在保存 PDF…'});
+   let saved=await E.importAcademic(record,{select:false,...target}),item=await Zotero.Items.getAsync(saved.id);attachment=await E.library.localPDF(item);if(attachment)return{itemID:item.id,attachmentID:attachment.id,reused:true,...target};
    const path=PathUtils.join(Zotero.getTempDirectory().path,'easysch-oa-'+Zotero.Utilities.randomString(12)+'.pdf');try{await IOUtils.write(path,bytes);attachment=await Zotero.Attachments.importFromFile({file:Zotero.File.pathToFile(path),parentItemID:item.id,contentType:'application/pdf',title:record.title});attachment.setField('url',record.pdf);await attachment.saveTx({skipSelect:true});}finally{await IOUtils.remove(path,{ignoreAbsent:true});}
    await E.clearDiscoveryPDFFailure?.(record.pdf);E.manuscripts.queueArticle(attachment.id);return{itemID:item.id,attachmentID:attachment.id,downloaded:true,...target};
   })();oaTasks.set(key,task);try{return await task;}finally{oaTasks.delete(key);}
@@ -142,7 +170,7 @@
 				'当前论文没有 DOI。请先补全 DOI，或使用上方标题搜索；不会猜测引用关系。',
 			);
 		const key = paper.doi.toLowerCase() + ':' + kind,
-			cached = E.store.get().discovery?.[key];
+			cached = E.store.get('discovery',key);
 		if (!refresh && cached && Date.now() - Date.parse(cached.at) < 86400000)
 			return { ...cached, cacheHit: true };
 		let url, records;
@@ -193,33 +221,37 @@
 		return result;
 	};
  const obtaining=new Map();
+ let pdfReason=error=>{let text=String(error||'').replace(/[，,]\s*(?:请重试|未保存附件)$/,'');return /\p{Script=Han}/u.test(text)?text:'来源暂时无法访问';};
  E.obtainPaper=async(record,options={})=>{
   const{open=true,onProgress=()=>{},signal}=options,target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID,collectionID:options.collectionID},key=String(target.libraryID||'')+':'+(Ref.cleanDOI(record.doi)||record.url||record.id);
   let task=obtaining.get(key);
   if(!task){task=(async()=>{
    onProgress({stage:'lookup',text:'正在匹配文库…'});
-   const saved=await E.importAcademic(record,{select:false,...target}),item=await Zotero.Items.getAsync(saved.id);
-   const local=await E.library.localPDF(item);
-   if(local)return {itemID:item.id,attachmentID:local.id,reused:true,path:await local.getFilePathAsync()};
-   let candidate={...record};
-   if(!candidate.pdf&&candidate.doi){
+   // Nothing is filed until a public PDF is resolved and probed; obtainOpenPaper
+   // files the record only after the download.
+   let existing=E.findAcademicItem&&await E.findAcademicItem(record,target),local=existing&&await E.library.localPDF(existing);
+   if(local)return {itemID:existing.id,attachmentID:local.id,reused:true,path:await local.getFilePathAsync()};
+   let unchanged=existing?'文库中的这条题录没有改动':'文库没有变化',candidate={...record};
+   if(candidate.retracted)throw Error('该论文标记为撤稿，已停止自动下载');
+   if(!/^https:\/\//i.test(candidate.pdf||'')&&candidate.doi){
     onProgress({stage:'resolve',text:'正在查找公开全文…'});
     try{const data=JSON.parse(await E.requestProvider('https://api.openalex.org/works/https://doi.org/'+encodeURIComponent(candidate.doi),{signal},15000));
      if(data.is_retracted)throw Error('该论文标记为撤稿，已停止自动下载');
-     const location=[data.best_oa_location,...(data.locations||[])].find(x=>x?.is_oa&&x.pdf_url);
+     const location=[data.best_oa_location,...(data.locations||[])].find(x=>x?.is_oa&&/^https:\/\//i.test(x.pdf_url||''));
      if(location)candidate={...candidate,pdf:location.pdf_url,oa:true};
     }catch(error){if(error.message.includes('撤稿'))throw error;}
    }
-   if(!candidate.pdf)throw Error('未找到公开 PDF；题录与摘要已保留，不加入文献阅读。');
-   if(candidate.retracted)throw Error('该论文标记为撤稿，已停止自动下载');
+   if(!/^https:\/\//i.test(candidate.pdf||''))throw Error('未找到公开 PDF；'+unchanged+'，可稍后重试');
+   if(E.verifyDiscoveryPDF){onProgress({stage:'verify',text:'正在检查公开 PDF…'});let check=await E.verifyDiscoveryPDF(candidate.pdf,{signal});if(!check?.available){if(!check?.transient)await E.markDiscoveryPDFFailure?.(candidate.pdf,check?.error);throw Error('公开 PDF 暂不可用：'+pdfReason(check?.error)+'；'+unchanged+'，可稍后重试');}}
    const result=await E.obtainOpenPaper({...candidate,oa:true},{onProgress,signal,...target});
    const attachment=await E.library.localPDF(result.attachmentID);
    if(!attachment)throw Error('附件保存失败：本机文件不可用；题录已保留');
    return {...result,path:await attachment.getFilePathAsync()};
   })();obtaining.set(key,task);task.finally(()=>obtaining.delete(key)).catch(()=>{});}
-  const result=await task;if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);if(signal?.aborted)throw Error('已取消');onProgress({stage:'saved',text:'PDF 已保存'});if(open)await Zotero.Reader.open(result.attachmentID);return{...result,...target};
+  const result=await task;if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);if(signal?.aborted)throw Error('已取消');const saved={...result,...target};await E.workspaceOutputs.rememberDownload(record,saved);onProgress({stage:'saved',text:'PDF 已保存'});if(open)await Zotero.Reader.open(result.attachmentID);return saved;
  };
  Feed.installDiscoveryFeed(E,{Zotero});
+ const searchPage=E.searchPaperPage;E.searchPaperPage=(query,options={})=>E.runDiscoverySearchTask?E.runDiscoverySearchTask((signal,onProgress)=>searchPage(query,{...options,signal,onProgress}),options):searchPage(query,options);
  // Subscription checks stay inside the running application. No external
  // scheduler or browser tab is required, and disabled subscriptions do no I/O.
  Feed.installJournalSubscriptionTimer(E,{createController:()=>new (Zotero.getMainWindow().AbortController)(),onError:error=>Zotero.logError?.(error)});

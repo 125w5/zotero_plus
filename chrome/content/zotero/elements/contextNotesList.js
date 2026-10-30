@@ -102,6 +102,7 @@
 		}
 		
 		set hasParent(val) {
+			if (this._hasParent === val) return;
 			this._hasParent = val;
 			this.render();
 		}

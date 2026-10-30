@@ -20,6 +20,12 @@ export const THEMES = {
 };
 export const normalize = s => String(s||'').normalize('NFKC').replace(/([a-z])-\s*\n\s*([a-z])/g,'$1$2').replace(/-\s*\n\s*/g,'-').replace(/\s+/g,' ').trim();
 export function themeFor(draft) { return draft.theme?.bg ? draft.theme : THEMES[draft.themeID] || THEMES.light; }
+// The caption names where an image came from; only an imported experiment image is "我的实验".
+export function assetSourceLabel(asset) {
+ if(asset?.sourceType==='ai-illustration')return 'AI 构想图';
+ if(asset?.kind==='user_image')return !asset.sourceType||asset.sourceType==='experiment'?'我的实验':'我的图片';
+ return asset?.label||'图片';
+}
 export function initialOutline(templateID='single') {return structuredClone(CONTENT_TEMPLATES[templateID]||CONTENT_TEMPLATES.single).sections;}
 export function density(slide) {return (slide.explanation||'').length+(slide.blocks||[]).reduce((n,b)=>n+b.text.length,0);}
 export function validateDiagram(d,evidence=[],{allowManual=false}={}) {
@@ -35,7 +41,7 @@ export function validateDiagram(d,evidence=[],{allowManual=false}={}) {
  for(const e of d.edges)if(!ids.has(e.source)||!ids.has(e.target)||e.source===e.target||String(e.relation||'').length>50)throw Error('示意图存在断边、自连或过长关系标签');
  return d;
 }
-export {bindEvidenceBlocks,balancedSources} from './ppt-evidence.mjs';
+export {bindEvidenceBlocks,balancedSources,measurementContext,measurementIssues,CURRENT_ASSET_EXTRACTOR,staleAutomaticAsset,refreshedAutomaticAsset} from './ppt-evidence.mjs';
 export function validateStudioSlide(s,evidence,assets=[],{requireContent=true}={}) {
  if(!s.id||!s.title?.trim()||s.title.length>80)throw Error('页面标题为空或超过 80 字');
  if(!['balanced','text','visual','comparison'].includes(s.layout||'balanced'))throw Error('未知页面布局');

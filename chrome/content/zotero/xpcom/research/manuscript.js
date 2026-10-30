@@ -2,12 +2,62 @@
 (function(E){
  const M=ChromeUtils.importESModule('chrome://zotero/content/research/shared/manuscript-model.mjs');
  const Policy=ChromeUtils.importESModule('chrome://zotero/content/research/shared/research-ai-policy.mjs');
+ const Exclusions=ChromeUtils.importESModule('chrome://zotero/content/research/shared/material-exclusions.mjs');
  const closing=new Map();
  const A=E.manuscripts={model:M,all:()=>E.store.get('manuscripts')||{},get:id=>E.store.get('manuscripts',id)};
+ // Shared frozen projects for listings, IDs and revision checks; never mutate them.
+ const all=A.all;
+ A.allView=()=>A.all!==all?A.all():(E.store.peek?E.store.peek('manuscripts'):E.store.get('manuscripts'))||{};
+ A.materialExclusions=attachmentID=>{
+  if(!attachmentID)return [];let attachment;try{attachment=Zotero.Items.get(Number(attachmentID));if(!attachment||attachment.deleted)return [];const annotations=attachment.getAnnotations?.()||[];return Exclusions.annotationMaterialExclusions(annotations,Number(attachmentID)).map(row=>{const saved=E.store.get('materialExclusionQuotes',attachmentID+':'+row.annotationKey);return saved?{...row,quote:saved.text||row.quote,position:saved.position||row.position}:row;});}catch(error){if(error.name!=='UnloadedDataException')Zotero.logError(error);return [];}
+ };
+ const exclusionOptions=options=>{const cached=new Map();return {...options,exclusionsFor:id=>{if(!cached.has(id))cached.set(id,A.materialExclusions(id));return cached.get(id);}};};
+ A.filterAutomaticMaterials=(materials,options={})=>Exclusions.filterMaterialExclusions(materials,exclusionOptions(options));
+ A.materialAttachmentIDs=Exclusions.materialAttachmentIDs;
+ A.filterAutomaticParagraphs=(paragraphs,attachmentID)=>A.filterAutomaticMaterials(paragraphs.map((row,index)=>({...row,id:row.id||'source-'+index,attachmentID,anchor:{...row,attachmentID}})),{forAI:true});
+ A.filterMaterialEvidence=(excerpts,materials)=>Exclusions.filterEvidenceExclusions(excerpts,{...exclusionOptions({}),materials});
+ A.assertMaterialEvidenceCurrent=(excerpts,materials)=>{const current=A.filterMaterialEvidence(excerpts,materials),content=rows=>rows.map(({sourceID,start,end,quote})=>({sourceID,start,end,quote}));if(JSON.stringify(content(current))!==JSON.stringify(content(excerpts)))throw Error('候选依据中的选段已被排除，请重新生成；已有正文保留');};
+ A.materialExclusionSignature=materials=>E.assets.key(A.materialAttachmentIDs(materials).map(id=>[id,A.materialExclusions(id)]));
+ A.prepareMaterialExclusions=async attachmentIDs=>{for(const id of [...new Set(attachmentIDs.filter(Boolean))]){const attachment=await Zotero.Items.getAsync(Number(id));if(!attachment||attachment.deleted)continue;await attachment.loadDataType?.('childItems');const annotations=attachment.getAnnotations?.()||[];await Zotero.Items.loadDataTypes?.(annotations,['annotation','annotationDeferred','tags']);}};
+ let exclusionEvents;
+ A.onMaterialExclusionsChanged=(fn,options={})=>{
+  if(!exclusionEvents){const {createMaterialExclusionEvents}=ChromeUtils.importESModule('chrome://zotero/content/research/shared/material-exclusion-events.mjs');exclusionEvents=createMaterialExclusionEvents({
+   snapshot:async id=>{await A.prepareMaterialExclusions([id]);return A.materialExclusions(id);},item:id=>Zotero.Items.get(id),
+   subscribeItems:notify=>{const observer=Zotero.Notifier.registerObserver({notify},['item','item-tag'],'easysch-material-exclusions');return ()=>Zotero.Notifier.unregisterObserver(observer);},
+   subscribeStore:fn=>{let metadata=E.store.get('materialExclusionQuotes')||{};return E.store.subscribe(change=>{if(change?.changedBranches&&!change.changedBranches.includes('materialExclusionQuotes'))return;const latest=E.store.get('materialExclusionQuotes')||{},attachmentIDs=Exclusions.changedMaterialExclusionAttachments(metadata,latest);metadata=latest;if(attachmentIDs.length)fn({...change,attachmentIDs});});},
+   schedule:(fn,ms)=>E.setTimeout(fn,ms),cancel:timer=>E.clearTimeout(timer),onError:error=>Zotero.logError(error)
+  });}return exclusionEvents.subscribe(fn,options);
+ };
+ A.stopMaterialExclusionSync=()=>{exclusionEvents?.stop();exclusionEvents=null;};
  A.create=async(title,template)=>{const p=M.createProject(title,template);await E.store.update(s=>{s.manuscripts||={};s.manuscripts[p.id]=p;});await A.ensureLibraryItem(p.id);return p;};
- A.save=async(p)=>{M.assertProject(p);await E.store.update(s=>{const old=s.manuscripts?.[p.id];if(!old)throw Error('论文项目已删除');if(old.revision!==p.revision)throw Error('项目已在其他位置更新，请重新打开以避免覆盖');const next=M.clone(p);next.revision++;next.updatedAt=new Date().toISOString();s.manuscripts[p.id]=next;});await A.ensureLibraryItem(p.id);return A.get(p.id);};
- A.copy=async(id)=>{const original=A.get(id);if(!original)throw Error('项目不存在');const p=M.clone(original);p.id=M.id('manuscript');p.title+=' · 副本';p.revision=0;await E.store.update(s=>s.manuscripts[p.id]=p);await A.ensureLibraryItem(p.id);return p;};
+ A.save=async(p)=>{M.assertProject(p);await E.store.update(s=>{const old=s.manuscripts?.[p.id];if(!old)throw Error('论文项目已删除');if(old.revision!==p.revision)throw Error('项目已在其他位置更新，请重新打开以避免覆盖');s.manuscripts[p.id]={...p,revision:p.revision+1,updatedAt:new Date().toISOString()};});await A.ensureLibraryItem(p.id);return A.get(p.id);};
+	// A copy takes its chapter reads, task plan and research notebook (plan
+	// versions, decisions, drafts) along; researchPreparation.planVersionID points
+	// into that notebook. A running assessment stays with the original's job.
+	// Removing a project keeps them so the trash undo restores all three.
+	A.copy=async(id)=>{const original=A.get(id);if(!original)throw Error('项目不存在');const p=M.clone(original);p.id=M.id('manuscript');p.title+=' · 副本';p.revision=0;await E.store.update(s=>{s.manuscripts[p.id]=p;for(let key of ['projectReadings','projectTaskPlans','researchNotebooks'])if(s[key]?.[id]){let value=JSON.parse(JSON.stringify(s[key][id]));if(key==='researchNotebooks'&&value.assessment?.status==='running')delete value.assessment;s[key][p.id]=value;}});await A.ensureLibraryItem(p.id);return p;};
+	// Chapter reads (projectReadings) and task plans (projectTaskPlans) live in
+	// their own branches, one entry per project, so a status click or read edit
+	// does not re-save the manuscript. Views are frozen per entry; a replaced
+	// readings/taskPlan accessor (tests, integrations) stays authoritative.
+	A.readings=id=>E.store.get('projectReadings',id)||null;
+	A.taskPlan=id=>E.store.get('projectTaskPlans',id)||null;
+	let readings=A.readings,taskPlan=A.taskPlan;
+	A.readingsView=id=>A.readings!==readings?A.readings(id):(E.store.peek?E.store.peek('projectReadings',id):E.store.get('projectReadings',id))||null;
+	A.taskPlanView=id=>A.taskPlan!==taskPlan?A.taskPlan(id):(E.store.peek?E.store.peek('projectTaskPlans',id):E.store.get('projectTaskPlans',id))||null;
+	// Batched overlay ops (edit, revert, accept, dismiss, restore) in one write.
+	A.applyReadingOps=async(projectID,ops=[])=>{
+		if(!Array.isArray(ops)||!ops.length)return A.readingsView(projectID);
+		// Detach the batch now: the editor frame can close before the write runs.
+		ops=JSON.parse(JSON.stringify(ops));
+		let Thread=ChromeUtils.importESModule('chrome://zotero/content/research/shared/research-thread.mjs');
+		await E.store.update(state=>{if(!state.manuscripts?.[projectID])throw Error('论文项目已删除');state.projectReadings||={};let entry=state.projectReadings[projectID]?JSON.parse(JSON.stringify(state.projectReadings[projectID])):null;if(!entry)throw Error('本项目还没有装配速读');for(let op of ops)entry=Thread.applyReadingOp(entry,op);state.projectReadings[projectID]=entry;});
+		return A.readingsView(projectID);
+	};
  A.remove=async(id)=>{const win=Zotero.getMainWindow(),frame=win.document.getElementById('manuscript-'+id);if(frame)win.Zotero_Tabs.close(frame.parentElement.id);await E.store.update(s=>{s.manuscriptTrash||={};s.manuscriptTrash[id]=s.manuscripts[id];delete s.manuscripts[id];});};
+ // Undo of 删除项目: the trashed record comes back only while no project with
+ // that id exists again; its readings and task plan were never removed.
+ A.restore=async(id)=>{let restored=false;await E.store.update(s=>{const saved=s.manuscriptTrash?.[id];if(!saved||s.manuscripts?.[id])return;s.manuscripts[id]=saved;delete s.manuscriptTrash[id];restored=true;});if(!restored)throw Error('已删除的项目不可恢复，可能已被清理或恢复');return A.get(id);};
  A.open=async(id,{select=true}={})=>{if(closing.has(id))await closing.get(id);const p=A.get(id);if(!p)return;const win=Zotero.getMainWindow(),old=win.document.getElementById('manuscript-'+id);if(old){if(select)win.Zotero_Tabs.select(old.parentElement.id);return old.contentWindow;}
  const f=win.document.createElementNS('http://www.w3.org/1999/xhtml','iframe');f.id='manuscript-'+id;f.manuscriptID=id;f.style.cssText='width:100%;height:100%;border:0;flex:1';const {container}=win.Zotero_Tabs.add({type:'manuscript',title:'论文装配 · '+p.title,data:{projectID:id},select,onClose:()=>{const ui=f.contentWindow?.ManuscriptUI;if(ui){ui.closing=true;f.id='closing-'+id;const value=ui.projectSnapshot?ui.projectSnapshot():M.clone(ui.p);M.assertProject(value);const saved=E.store.update(s=>{const old=s.manuscripts?.[id];if(!old)return;value.revision=old.revision+1;value.updatedAt=new Date().toISOString();s.manuscripts[id]=value;});closing.set(id,saved);saved.finally(()=>{if(closing.get(id)===saved)closing.delete(id);});}}});container.style.display='flex';container.append(f);f.src='chrome://zotero/content/research/manuscript.html';return f.contentWindow;};
  // Library rows are stable native manuscript items, not another copy of the document.
@@ -27,7 +77,7 @@
  })();libraryJobs.set(id,job);job.finally(()=>libraryJobs.delete(id)).catch(()=>{});return job;};
  A.syncLibrary=()=>{if(librarySync)return librarySync;const job=(async()=>{
   await Zotero.Libraries?.get?.(Zotero.Libraries.userLibraryID)?.waitForDataLoad?.('item');
-  const ids=Object.keys(A.all()),refs=E.store.get('manuscriptLibrary')||{};
+  const ids=Object.keys(A.allView()),refs=E.store.get('manuscriptLibrary')||{};
   const itemIDs=[...new Set(ids.map(id=>refs[id]?.itemID).filter(Number.isInteger))];
   // Load mapped rows together and retain Zotero's data cache. Opening another
   // window must not reload every title separately or start a second full sync.
@@ -40,8 +90,8 @@
  const encoded=doc.querySelector('[data-annotation]')?.getAttribute('data-annotation');if(encoded){try{const a=JSON.parse(decodeURIComponent(encoded)),key=a.attachmentURI?.match(/items\/([A-Z0-9]+)/)?.[1];attachment=key&&Zotero.Items.getByLibraryAndKey(note.libraryID,key);position=a.position||null;pageIndex=position?.pageIndex??null;annotationKey=a.annotationKey||null;}catch(e){Zotero.logError(e);}}
  if(link){const key=link.href.match(/items\/([A-Z0-9]+)/)?.[1];attachment=key&&Zotero.Items.getByLibraryAndKey(note.libraryID,key);const u=new URL(link.href);pageIndex=Number(u.searchParams.get('page')||1)-1;const an=u.searchParams.get('annotation');annotationKey=an||annotationKey;if(an){const a=Zotero.Items.getByLibraryAndKey(note.libraryID,an);if(a)position=JSON.parse(a.annotationPosition);}}
  out.push(M.material({kind:'note',title:note.getNoteTitle()||'Zotero 笔记',sourceItemID:note.id,sourceText:text,anchor:{paperItemID:note.parentID||null,citationItemID:note.parentID||null,attachmentID:attachment?.id||null,pageIndex,position,annotationKey,sourceText:text}}));};
- const seen=new Set();for(const item of selected){const paper=item.isRegularItem()?item:item.parentItem;if(item.isNote())addNote(item);const items=paper?[paper,...paper.getNotes().map(id=>Zotero.Items.get(id)),...paper.getAttachments().map(id=>Zotero.Items.get(id))]:[item];for(const i of items){if(seen.has(i.id))continue;seen.add(i.id);if(i.isNote()&&i.id!==item.id)addNote(i);if(i.isPDFAttachment())for(const annotation of i.getAnnotations()){const position=JSON.parse(annotation.annotationPosition),text=annotation.annotationText||annotation.annotationComment;out.push(M.material({kind:'annotation',sourceItemID:annotation.id,title:'批注 · 第 '+(position.pageIndex+1)+' 页',sourceText:text,comment:annotation.annotationComment,anchor:{paperItemID:paper?.id||null,citationItemID:paper?.id||null,attachmentID:i.id,pageIndex:position.pageIndex,position,sourceText:text,annotationKey:annotation.key}}));}}}
- const store=E.store.get();for(const d of Object.values(store.pptDrafts||{}))for(const c of d.contributions||[])out.push(M.material({kind:'experiment',sourceRecordID:d.id+':'+c.id,title:'实验记录 · '+(c.title||d.title),sourceText:c.text||c.content||'',anchor:{sourceText:c.text||c.content||''}}));return out;};
+ const seen=new Set();for(const item of selected){const paper=item.isRegularItem()?item:item.parentItem;if(item.isNote())addNote(item);const items=paper?[paper,...paper.getNotes().map(id=>Zotero.Items.get(id)),...paper.getAttachments().map(id=>Zotero.Items.get(id))]:[item];await A.prepareMaterialExclusions(items.filter(i=>i.isPDFAttachment()).map(i=>i.id));for(const i of items){if(seen.has(i.id))continue;seen.add(i.id);if(i.isNote()&&i.id!==item.id)addNote(i);if(i.isPDFAttachment())for(const annotation of i.getAnnotations()){if(Exclusions.isMaterialExclusionAnnotation(annotation))continue;let position;try{position=JSON.parse(annotation.annotationPosition);}catch{continue;}const text=annotation.annotationText||annotation.annotationComment;if(!text?.trim())continue;out.push(M.material({kind:'annotation',sourceItemID:annotation.id,title:'批注 · 第 '+(position.pageIndex+1)+' 页',sourceText:text,comment:annotation.annotationComment,anchor:{paperItemID:paper?.id||null,citationItemID:paper?.id||null,attachmentID:i.id,pageIndex:position.pageIndex,position,sourceText:text,annotationKey:annotation.key}}));}}}
+ for(const d of Object.values(E.store.get('pptDrafts')||{}))for(const c of d.contributions||[])out.push(M.material({kind:'experiment',sourceRecordID:d.id+':'+c.id,title:'实验记录 · '+(c.title||d.title),sourceText:c.text||c.content||'',anchor:{sourceText:c.text||c.content||''}}));return A.filterAutomaticMaterials(out,{forAI:true});};
  A.openAnchor=async(m)=>{const a=m.anchor;if(a.attachmentID){await Zotero.Reader.open(a.attachmentID,{pageIndex:a.pageIndex||0,...(a.position?{position:a.position}:{}),...(a.annotationKey?{annotationID:a.annotationKey}:{})});}else if(m.sourceItemID)await Zotero.getActiveZoteroPane().selectItem(m.sourceItemID);};
  // Focus checks often reach the same workbook through several linked
  // materials. Reuse one parser result only while its file and interpreter are
@@ -66,11 +116,12 @@
  A.image=async()=>{const result=await E.importWritingImage();return result?.path;};
  A.refreshMaterial=async(m)=>{if(m.file){const data=await A.dataset(m.file);return {data,sourceText:JSON.stringify(data.rows)};}if(m.sourceItemID){const item=await Zotero.Items.getAsync(m.sourceItemID);if(!item||item.deleted)throw Error('原始素材已删除');const text=item.isAnnotation()?item.annotationText:new(Zotero.getMainWindow().DOMParser)().parseFromString(item.getNote(),'text/html').body.textContent.trim();return {sourceText:text};}return null;};
  A.propose=async()=>{Policy.assertAIAction('manuscript_write');};
- A.check=async(p)=>{const issues=M.validate(p);for(const b of p.blocks){if(b.type==='image'&&b.imagePath&&!await IOUtils.exists(b.imagePath))issues.push({blockID:b.id,message:'图片文件不存在',severity:'error'});if(b.type==='citation'&&b.citationItemID){const item=await Zotero.Items.getAsync(b.citationItemID);if(!item?.isRegularItem()||item.deleted)issues.push({blockID:b.id,message:'引用条目无效',severity:'error'});}}return issues;};
+ A.check=async(p)=>{const issues=M.validate(p,{titleFor:m=>A.titleFor?.(m)||m.title});for(const b of p.blocks){if(b.type==='image'&&b.imagePath&&!await IOUtils.exists(b.imagePath))issues.push({blockID:b.id,message:'图片文件不存在',severity:'error'});if(b.type==='citation'&&b.citationItemID){const item=await Zotero.Items.getAsync(b.citationItemID);if(!item?.isRegularItem()||item.deleted)issues.push({blockID:b.id,message:'引用条目无效',severity:'error'});}}return issues;};
  A.ensureJournalStyle=async styleID=>{if(Zotero.Styles.get(styleID))return true;if(styleID==='http://www.zotero.org/styles/american-physics-society'){const string=await Zotero.File.getContentsFromURLAsync('chrome://zotero/content/research/third-party/csl/american-physics-society.csl');await Zotero.Styles.install({string},'EasySch 内置 APS 引文格式',true);if(Zotero.Styles.get(styleID))return true;}throw Error('所选引文格式未安装，请在设置中重新安装该格式');};
- A.export=async(p,folder,status,signal)=>{const issues=await A.check(p);if(issues.length)throw Error('请先处理检查项：'+issues[0].message);
+ A.export=async(p,folder,status,signal)=>{const issues=await A.check(p),blocking=issues.filter(issue=>issue.severity!=='warning');if(blocking.length)throw Error('请先处理检查项：'+blocking[0].message);
+ const warnings=issues.filter(issue=>issue.severity==='warning');p=M.manuscriptExportSnapshot(p);
  const ids=[...new Set(p.blocks.filter(b=>b.type==='citation').map(b=>b.citationItemID))],citationText={},bibliography=[];
  if(ids.length){await A.ensureJournalStyle(p.citationStyle);const style=Zotero.Styles.get(p.citationStyle);const engine=style.getCiteProc(p.language,'text');try{engine.updateItems(ids);for(const id of ids)citationText[id]=engine.makeCitationCluster([{id}]);const bib=engine.makeBibliography();if(bib)bibliography.push(...bib[1]);}finally{engine.free?.();}}
- return E.runArtifactEngine({operation:'manuscript-export',python:Zotero.Prefs.get('extensions.easysch.assetPython',true),pandoc:E.settings().pandoc,directory:folder,project:p,citationText,bibliography,referenceDoc:p.template.referenceDoc||null},status,signal);};
+ const result=await E.runArtifactEngine({operation:'manuscript-export',python:Zotero.Prefs.get('extensions.easysch.assetPython',true),pandoc:E.settings().pandoc,directory:folder,project:p,citationText,bibliography,referenceDoc:p.template.referenceDoc||null},status,signal);return {...result,exportWarnings:warnings};};
  A.preview=async(p,status,signal)=>{const folder=PathUtils.join(E.dataDir,'manuscript-previews');await IOUtils.makeDirectory(folder,{ignoreExisting:true});const result=await A.export(p,folder,status,signal);Zotero.launchFile(result.path);return result;};
 })(Zotero.Research);

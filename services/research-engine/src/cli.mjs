@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { importTemplate } from './studio-template.mjs';
 import { layoutDiagram, diagramSVG, diagramDrawio } from './studio-diagram.mjs';
+import { publishDeck } from './deck-files.mjs';
 const emit = event => process.stdout.write(JSON.stringify(event)+'\n');
 let runtime, cancellationWatcher;
 const abort=new AbortController();
@@ -40,8 +41,10 @@ try {
     emit({type:'result',value:await runtime.call('validate_research_plan',{plan:request.plan})});
   } else if(request.operation==='export') {
     if(!path.isAbsolute(request.directory)) throw new Error('Output directory must be absolute');
-    // Parent chosen by native file picker. A unique job directory is created exclusively.
-    const directory=await fs.mkdtemp(path.join(request.directory,'easysch-deck-'));
+    if(request.workRoot&&!path.isAbsolute(request.workRoot)) throw new Error('Work directory must be absolute');
+    // A unique job directory is created exclusively. With workRoot it is private:
+    // audit JSON and renderer output stay there, and only the PPTX is published.
+    const directory=await fs.mkdtemp(path.join(request.workRoot||request.directory,'easysch-deck-'));
     const evidence=request.record?.sources || [];
     runtime=await createRuntime({directory,evidence,datasets:request.datasets||[],assets:request.assets||[],onEvent:e=>emit({type:'progress',...e})});
     const plan=request.plan || outlinePlan(request.title,request.record);
@@ -58,6 +61,7 @@ try {
     }
     log.push({at:new Date().toISOString(),stage:'exported',visualReview:result.visualReview});
     await fs.writeFile(path.join(directory,'manifest.json'),JSON.stringify({version:1,...result,log},null,2));
+    if(request.workRoot) result={...result,jobPath:result.path,path:await publishDeck(result.path,request.directory,plan.title)};
     emit({type:'result',value:result});
   } else throw new Error('Unknown operation');
 } catch(error) {emit({type:'error',message:error.message});process.exitCode=1;}

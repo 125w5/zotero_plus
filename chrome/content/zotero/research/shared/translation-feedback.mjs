@@ -13,10 +13,14 @@ export function translationFailure(error) {
 
 export function renderTranslationFeedback(host, error, {Zotero, onRetry, onOriginal, onError = () => {}} = {}) {
  const doc = host.ownerDocument, info = translationFailure(error);
- if (Zotero?.HTTP?.request) {
-  void prepareReaderPaneStyles(doc,{Zotero,name:'translation-feedback',url:'chrome://zotero/content/research/shared/translation-feedback.css'}).catch(onError);
- } else if (!doc.querySelector('link[data-translation-feedback]')) {
-  const link = doc.createElement('link');link.rel = 'stylesheet';link.href = 'chrome://zotero/content/research/shared/translation-feedback.css';link.dataset.translationFeedback = 'true';doc.head.append(link);
+ for (const [name,file,marker] of [['reader-surface-tokens','reader-surface-tokens.css','translationFeedbackTokens'],['translation-feedback','translation-feedback.css','translationFeedback']]) {
+  if (Zotero?.HTTP?.request) {
+   void prepareReaderPaneStyles(doc,{Zotero,name,url:'chrome://zotero/content/research/shared/'+file}).catch(onError);
+  } else {
+   const selector=marker==='translationFeedbackTokens'?'link[data-translation-feedback-tokens]':'link[data-translation-feedback]';
+   if (doc.querySelector(selector)) continue;
+   const link=doc.createElement('link');link.rel='stylesheet';link.href='chrome://zotero/content/research/shared/'+file;link.dataset[marker]='true';doc.head.append(link);
+  }
  }
  const el = (tag, value, cls) => {const node = doc.createElement(tag);if (value !== undefined) node.textContent = value;if (cls) node.className = cls;return node;};
  const card = el('section', undefined, 'translation-feedback');card.dataset.kind = info.kind;card.lang = 'zh-CN';card.setAttribute('aria-label', info.title);

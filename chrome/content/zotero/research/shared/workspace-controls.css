@@ -1,0 +1,115 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Application chrome only. Document fonts, formulas, slide themes and the
+   existing conversation sizing/dragging behaviour retain their own rules. */
+html[data-appearance] body[data-workspace-chrome] {
+	font-family:var(--ui-font);
+	font-size:14px;
+	line-height:1.6;
+}
+html[data-appearance] body[data-workspace-chrome] :is(button,input,select,textarea,summary,label):not(.formula-latex-input):not([data-font-preview]) {
+	font-family:var(--ui-font)!important;
+	letter-spacing:normal;
+}
+html[data-appearance] body[data-workspace-chrome] :is(h1,h2,h3,h4,small,.badge,.pane-title,.muted):not(:where(.paper *, .slide-canvas *, .ppt-page-canvas *, .ppt-theme-preview *, .katex *, pre *, code *)) {
+	font-family:var(--ui-font)!important;
+}
+/* The ordinary actions share a softly raised surface. Stateful swatches,
+   slide previews, icon actions and conversation controls keep their roles. */
+html[data-appearance] body[data-workspace-chrome] :is(
+	.project-create-actions,.project-create-heading,.project-toolbar,
+	.preparation-actions,.preparation-source-selection,.source-actions,
+	.resource-actions,.resource-toolbar,.direction-actions,
+	.workflow-insert-actions,.assembly-export-actions,
+	.ppt-actions,.ppt-contribution-actions,.ppt-data-actions
+) > button {
+	min-height:34px;
+	padding:6px 12px;
+	border:1px solid var(--ui-soft-border,var(--ui-border));
+	border-radius:var(--ui-radius-control);
+	background:var(--ui-control-bg,var(--ui-card));
+	color:var(--ui-text);
+	box-shadow:var(--ui-control-shadow);
+	font-size:13px;
+	font-weight:400;
+	line-height:1.5;
+}
+html[data-appearance] body[data-workspace-chrome] :is(
+	.project-create-actions,.preparation-actions,.source-actions,
+	.resource-actions,.resource-toolbar,.direction-actions,
+	.workflow-insert-actions,.assembly-export-actions,
+	.ppt-actions,.ppt-contribution-actions,.ppt-data-actions
+) > button:hover:not(:disabled) {
+	background:var(--ui-card);
+	border-color:color-mix(in srgb,var(--ui-secondary) 20%,var(--ui-border));
+}
+html[data-appearance] body[data-workspace-chrome] :is(
+	button.primary,button.ppt-primary,button.direction-primary,
+	#continue-assembly,.project-new-button
+) {
+	background:var(--ui-primary);
+	color:var(--ui-primary-text);
+	border-color:color-mix(in srgb,var(--ui-primary-text) 16%,transparent);
+	box-shadow:var(--ui-control-shadow);
+}
+html[data-appearance] body[data-workspace-chrome] :is(
+	button.primary,button.ppt-primary,button.direction-primary,
+	#continue-assembly,.project-new-button
+):hover:not(:disabled) {
+	background:var(--ui-primary-hover);
+	border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent);
+}
+html[data-appearance] body[data-workspace-chrome] :is(
+	.project-create-dialog,.preparation-input-card,.preparation-option-row,
+	.ppt-settings,.ppt-contribution-form,.ppt-data-panel,
+	#sources,#artifacts,#workflow-panel,#details,dialog
+) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]),select,textarea) {
+	border-color:var(--ui-soft-border,var(--ui-border));
+	border-radius:var(--ui-radius-control);
+	background:var(--ui-card);
+	color:var(--ui-text);
+	box-shadow:var(--ui-field-shadow);
+}
+html[data-appearance] body[data-workspace-chrome] :is(.project-create-dialog,.preparation-input-card,.ppt-contribution-form) :is(label,summary) {
+	font-size:13px;
+	font-weight:500;
+	color:var(--ui-secondary);
+}
+html[data-appearance] body[data-workspace-chrome] :is(button,input,select,textarea,summary):focus-visible {
+	outline:2px solid #829cb5;
+	outline-offset:2px;
+}
+html[data-appearance] body[data-workspace-chrome] #view-ppt :is(.ppt-slide-thumb,.ppt-template,.ppt-theme):focus-visible {
+	outline:2px solid #829cb5;
+	outline-offset:2px;
+}
+/* Headers describe each page; they are not extra raised cards. */
+html[data-appearance] body[data-workspace-chrome] :is(
+	.discovery-heading,.workbench-projects-heading,.preparation-heading,
+	.ppt-stage-heading,.ppt-page-heading
+) {
+	background:transparent;
+	border:0;
+	border-radius:0;
+	box-shadow:none;
+}
+html[data-appearance] body[data-workspace-chrome] :is(
+	.discovery-heading,.workbench-projects-heading,.preparation-heading,
+	.ppt-stage-heading,.ppt-page-heading,
+	.discovery-page-heading,.project-library-heading,.workbench-home-heading
+) :is(h1,h2) {
+	font-family:var(--ui-font);
+	font-size:22px;
+	font-weight:600;
+	line-height:1.45;
+	letter-spacing:0;
+}
+/* The editable scope fields already communicate these instructions. Keep
+   their status node available to the existing controller without a prose row. */
+html[data-appearance] body[data-workspace-chrome] #scope-hint {
+	display:none;
+}
+/* Native library and reader chrome use the same font as the embedded pages. */
+#easysch-home-navigation,#easysch-library-bottom,#easysch-library-top-tools,
+#easysch-home-navigation button,.academic-chat,.research-fields-toggle {
+	font-family:var(--ui-font);
+}

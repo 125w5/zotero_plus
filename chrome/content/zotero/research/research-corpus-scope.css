@@ -1,0 +1,13 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Corpus research scope (domain and keywords) on creation and in the corpus
+   header, and the provenance note of entries the user edited. */
+.research-resources .corpus-scope-fields{display:grid;gap:6px;margin:6px 0 10px;font-size:12px;color:var(--ui-secondary,var(--muted))}
+.research-resources .corpus-scope-fields summary{cursor:pointer}
+.research-resources .corpus-scope-fields label{display:grid;gap:3px}
+.research-resources .corpus-scope-fields :is(input,select){box-sizing:border-box;width:100%;min-width:0}
+.research-resources #corpus-scope-form{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));align-items:end;margin:0 0 12px}
+.research-resources #corpus-scope-form[hidden]{display:none}
+.research-resources .corpus-scope-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ui-secondary,var(--muted));font-size:12px}
+.research-resources #entries article[data-provenance=edited]{border-inline-start:2px solid #b0782a}
+.research-resources .resource-entry-original{margin-top:6px;font-size:12px;color:var(--ui-secondary,var(--muted))}
+.research-resources .resource-entry-original p{white-space:pre-wrap;overflow-wrap:anywhere}

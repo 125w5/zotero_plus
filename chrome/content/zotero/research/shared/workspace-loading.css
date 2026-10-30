@@ -1,0 +1,11 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.workspace-loading{position:absolute;inset:0;z-index:20;display:grid;place-items:center;box-sizing:border-box;padding:24px;pointer-events:none;background:#f3f6f966;backdrop-filter:blur(3px);font:13px/1.5 var(--ui-font,Bahnschrift),"Noto Sans SC","Microsoft YaHei",sans-serif;color:#303c4c}
+.workspace-loading[hidden]{display:none!important}
+.workspace-loading[data-placement=page]{position:fixed;z-index:1000}
+.workspace-loading-card{display:flex;align-items:center;gap:15px;box-sizing:border-box;width:min(340px,100%);padding:23px 25px;border:1px solid #e2e7ed;border-radius:14px;background:#ffffffed;box-shadow:0 14px 44px #243a5117,0 2px 8px #243a510a,inset 0 1px #fff}
+.workspace-loading-spinner{flex:none;width:24px;height:24px;box-sizing:border-box;border:2px solid #e2e9f0;border-top-color:#657f9d;border-radius:50%;animation:workspace-loading-spin .85s linear infinite}
+.workspace-loading-copy{display:flex;flex-direction:column;gap:5px;min-width:0}
+.workspace-loading-title{font-size:14px;font-weight:550;line-height:1.5}
+.workspace-loading-detail{color:#788594;font-size:12px}
+@keyframes workspace-loading-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.workspace-loading-spinner{animation:none}}

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
+export {selectPaperContext,sourcePageMetadata} from './chat-evidence.mjs';
 // Conversation attachments are references to existing Zotero Sources/Materials,
 // never a second file database or a copy of a material card.
 export const CHAT_ATTACHMENT_MIME = 'application/x-easysch-chat-attachment';
@@ -110,9 +111,12 @@ export function chatAttachmentDropPayload(dataTransfer) {
  // now so the real drop is permitted, then read its actual payload on drop.
  return payload.files.length || payload.items.length || payload.materialIDs.length || types.some(type=>['Files',CHAT_ATTACHMENT_MIME,'application/x-easysch-material','application/x-manuscript-material','text/x-zotero-item','zotero/item'].includes(type)) ? payload : null;
 }
+// Read-only UTF-8 text under the 2 MB text limit; never executed.
+export const CHAT_TEXT_EXTENSIONS = Object.freeze(['txt','md','json','yaml','yml','toml','py','js','ts','sh']);
+export const CHAT_FILE_ACCEPT = ['.pdf','.docx','.xlsx','.xls','.csv','.png','.jpg','.jpeg','.webp',...CHAT_TEXT_EXTENSIONS.map(name=>'.'+name)].join(',');
 export function chatAttachmentFileKind(name) {
  const extension = String(name || '').match(/\.([^.]+)$/)?.[1]?.toLowerCase();
- const kind = ({pdf:'pdf',docx:'docx',xlsx:'spreadsheet',xls:'spreadsheet',csv:'spreadsheet',png:'image',jpg:'image',jpeg:'image',webp:'image',txt:'text',md:'text'})[extension];
- if (!kind) throw Error('请选择 PDF、DOCX、Excel（XLSX/XLS）、CSV、图片或 UTF-8 文本文件。');
+ const kind = ({pdf:'pdf',docx:'docx',xlsx:'spreadsheet',xls:'spreadsheet',csv:'spreadsheet',png:'image',jpg:'image',jpeg:'image',webp:'image',...Object.fromEntries(CHAT_TEXT_EXTENSIONS.map(name=>[name,'text']))})[extension];
+ if (!kind) throw Error('请选择 PDF、DOCX、Excel（XLSX/XLS）、CSV、图片，或 UTF-8 文本、Markdown、JSON、YAML、TOML 与代码文件。');
  return kind;
 }

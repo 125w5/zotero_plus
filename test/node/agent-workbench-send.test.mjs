@@ -80,3 +80,7 @@ test('rapid conversation clicks keep the last selection and retain the outgoing 
 test('generated image outcomes remain on the saved answer and do not become cited sources',async()=>{
  const {E,ui}=await fixture({unified:true});ui.agentMode.value='auto';E.runWorkbenchTask=async()=>({text:'已生成研究流程示意图。',sources:[],generatedImages:[{kind:'image',sourceType:'ai-illustration',imagePath:'E:/workspace/test-writing-images/concept.png',title:'研究流程',model:'image-model'}]});await ui.runAgentTask();const answer=E.workbenchConversations.get(ui.agentData.activeSessionID).messages.at(-1);assert.equal(answer.generatedImages[0].title,'研究流程');assert.equal(answer.generatedImages[0].imagePath,'E:/workspace/test-writing-images/concept.png');assert.deepEqual(copy(answer.sources),[]);
 });
+
+test('plan-edit preview metadata survives the actual research send and shared conversation save',async()=>{
+ const {E,ui}=await fixture({unified:true}),proposal={id:'candidate-1',kind:'research-plan-edit',projectID:'project-1',versionID:'plan-1',path:'feasibility',status:'pending',before:'计划比较',selectedBefore:'计划',selectedAfter:'拟',selectedStart:0,selectedEnd:2,value:'拟比较'};ui.agentMode.value='auto';E.runWorkbenchTask=async()=>({text:'方案修改候选待采用。',sources:[],projectID:'project-1',planEditProposal:copy(proposal)});await ui.runAgentTask();const answer=E.workbenchConversations.get(ui.agentData.activeSessionID).messages.at(-1);assert.deepEqual(copy(answer.planEditProposal),proposal);assert.equal(answer.projectID,'project-1');
+});

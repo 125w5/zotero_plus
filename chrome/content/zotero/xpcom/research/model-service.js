@@ -1,10 +1,30 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 (function (E) {
 	const requests = new Map(), cache = new Map();
+	const researchPurposes = new Set(['research', 'plan', 'assessment', 'direction', 'framework', 'writing']);
+	// Task defaults are request-local. They never change translation settings,
+	// stored content, or a model deliberately selected for this request.
+	E.researchModelConfig = (config, purpose = 'default') => {
+		const next = { ...config }, host = new URL(E.core.endpoint(config.endpoint)).hostname;
+		if (/^gpt6luna$/i.test(next.model || '')) next.model = 'gpt-6-luna';
+		if (/^gpt6[.-]?1sol$/i.test(next.model || '')) next.model = 'gpt-6.1-sol';
+		if (researchPurposes.has(purpose)) {
+			// researchModelRouting 'configured' is the user's one-click opt-out after
+			// a routed model failed; the documented Sol default applies otherwise.
+			if (!next.selectedModel && next.researchModelRouting !== 'configured' && ['api.openai.com', 'openai.goldgom.top'].includes(host) && (!next.model || next.model === 'gpt-6-luna')) next.model = 'gpt-6.1-sol';
+			// Writing and assessment also default to high: under xhigh the routed
+			// model's reasoning could use up the whole cap before any answer.
+			// A level the user chose is kept.
+			if (!next.thinkingLevel || !next.selectedModel && next.thinkingLevel === 'off') next.thinkingLevel = 'high';
+		}
+		next.reasoningParameter ||= ['api.openai.com', 'openai.goldgom.top'].includes(host) ? 'reasoning_effort' : host === 'api.deepseek.com' ? 'thinking' : '';
+		return next;
+	};
 	// Custom providers keep their explicit model; /models is not universal.
-	E.resolveModel = async (config, { signal, refresh = false } = {}) => {
+	E.resolveModel = async (config, { signal, refresh = false, purpose = 'default' } = {}) => {
+		config = E.researchModelConfig(config, purpose);
 		const endpoint = E.core.endpoint(config.endpoint);
-		if (new URL(endpoint).hostname === 'openai.goldgom.top') return { ...config, model: 'gpt-6-luna' };
+		if (config.selectedModel) return config;
 		if (new URL(endpoint).hostname !== 'api.deepseek.com') return { ...config };
 		let entry = cache.get(endpoint);
 		if (refresh || !entry || Date.now() - entry.at > 3600000) {

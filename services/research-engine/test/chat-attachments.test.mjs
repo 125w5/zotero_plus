@@ -50,14 +50,14 @@ test('listing conversation files never reads its transcript when the narrow atta
  }finally{await h.cleanup();}
 });
 
-test('an explicit file drop reselects the existing source and links its project folder without copying the file',async()=>{
+test('an explicit file drop reselects the existing source without copying the file or changing its folders',async()=>{
  const h=await fixture();try{
   const file=fileURLToPath(new URL('test/tests/data/test.pdf',root));await h.E.chatAttachments.attach(h.session.id,{files:[file]});const ref=h.E.chatAttachments.get(h.session.id)[0],item=h.items.get(ref.attachmentID),collections=new Set();let saves=0;
   item.getCollections=()=>[...collections];item.inCollection=id=>collections.has(id);item.addToCollection=id=>collections.add(id);item.saveTx=async()=>saves++;
   h.Zotero.Collections={get:id=>id===77?{id,libraryID:1,name:'核心论文'}:null};h.E.manuscripts.get=id=>id==='project'?{id,paperCollectionID:77}:null;await h.E.workbenchConversations.update(h.session.id,{projectID:'project'});
   await h.E.chatAttachments.setState(h.session.id,ref.id,{selected:false,featured:true});await h.E.chatAttachments.attach(h.session.id,{items:[{sessionID:h.session.id,attachmentID:ref.id}]},{source:'drop'});
-  assert.equal(h.imports,1);assert.equal(h.E.chatAttachments.get(h.session.id).length,1);assert.equal(h.E.chatAttachments.get(h.session.id)[0].selected,true);assert.equal(h.E.chatAttachments.get(h.session.id)[0].featured,true);assert.deepEqual([...collections],[77]);assert.equal(saves,1);
-  const location=await h.E.chatAttachments.location(h.session.id,ref.id);assert.equal(location.path,await item.getFilePathAsync());assert.deepEqual(Array.from(location.folders),['核心论文']);let revealed;h.Zotero.File.reveal=path=>revealed=path;await h.E.chatAttachments.reveal(h.session.id,ref.id);assert.equal(revealed,location.path);
+  assert.equal(h.imports,1);assert.equal(h.E.chatAttachments.get(h.session.id).length,1);assert.equal(h.E.chatAttachments.get(h.session.id)[0].selected,true);assert.equal(h.E.chatAttachments.get(h.session.id)[0].featured,true);assert.deepEqual([...collections],[]);assert.equal(saves,0);
+  const location=await h.E.chatAttachments.location(h.session.id,ref.id);assert.equal(location.path,await item.getFilePathAsync());assert.deepEqual(Array.from(location.folders),[]);let revealed;h.Zotero.File.reveal=path=>revealed=path;await h.E.chatAttachments.reveal(h.session.id,ref.id);assert.equal(revealed,location.path);
   await h.E.chatAttachments.remove(h.session.id,ref.id);await assert.rejects(()=>h.E.chatAttachments.location(h.session.id,ref.id),/移除/);
  }finally{await h.cleanup();}
 });
@@ -81,8 +81,38 @@ test('real PDF bytes are fingerprint-deduplicated before controlled native impor
   await h.E.chatAttachments.remove(h.session.id,h.E.chatAttachments.get(h.session.id)[0].id);await h.E.chatAttachments.attach(h.session.id,{files:[file]});assert.equal(h.imports,1);assert.equal(h.items.size,1);
  }finally{await h.cleanup();}
 });
+
+test('eleven selected PDFs each supply bounded question-relevant evidence with actual file and page coverage',async()=>{
+ const h=await fixture();try{
+  const file=fileURLToPath(new URL('test/tests/data/test.pdf',root)),refs=[];
+  for(let i=1;i<=11;i++){h.items.set(i,h.makeItem(i,file,'pdf','论文 '+i));refs.push({id:'attachment:'+i,attachmentID:i,kind:'pdf',title:'论文 '+i});}
+  h.E.library.sources=async papers=>({sources:Array.from({length:80},(_,i)=>({id:'P1-L'+i,text:(i===47?'camera scheduling constraint. ':'general content. ').repeat(500),attachmentID:papers[0].id,pageIndex:i%17})),warnings:[]});
+  const before=JSON.stringify(refs),read=await h.E.chatAttachments.read(refs,{query:'camera scheduling'}),groups=new Set(read.rows.map(row=>row.attachmentID));
+  assert.equal(groups.size,11);assert.equal(read.coverage.length,11);assert.ok(read.coverage.every(row=>row.excerptCount>0&&row.truncated&&row.physicalPages.length));assert.ok(read.rows.reduce((sum,row)=>sum+row.text.length,0)<=45000);
+  for(let i=1;i<=11;i++){assert.ok(read.rows.some(row=>row.attachmentID===i&&row.text.includes('camera scheduling')));assert.ok(read.rows.filter(row=>row.attachmentID===i).every(row=>row.paperItemID===i&&row.pageNumber===row.pageIndex+1&&row.pageNumbering==='physical'));}
+  assert.equal(JSON.stringify(refs),before);assert.ok(read.rows.every(row=>row.sourceText===row.text));
+ }finally{await h.cleanup();}
+});
+
+test('a broad Chinese question does not discard every English paragraph through literal query filtering',async()=>{
+ const h=await fixture();try{const file=fileURLToPath(new URL('test/tests/data/test.pdf',root));h.items.set(7,h.makeItem(7,file,'pdf','English paper'));const read=await h.E.chatAttachments.read([{id:'attachment:7',attachmentID:7,kind:'pdf'}],{query:'请比较这些文章的研究方法'});assert.equal(read.rows.length,1);assert.equal(read.coverage[0].status,'excerpts');assert.match(read.rows[0].text,/Actual controlled/);
+ }finally{await h.cleanup();}
+});
+
+test('a metadata-only fallback remains visibly distinct from extracted PDF body coverage',async()=>{
+ const h=await fixture();try{const file=fileURLToPath(new URL('test/tests/data/test.pdf',root));h.items.set(7,h.makeItem(7,file,'pdf','Metadata fallback'));h.E.library.sources=async()=>({sources:[{id:'metadata',text:'Supplied abstract only.'}],warnings:[]});const read=await h.E.chatAttachments.read([{id:'attachment:7',attachmentID:7,kind:'pdf'}]);assert.equal(read.coverage[0].status,'metadata');assert.match(read.rows[0].coverage,/题录与摘要/);assert.deepEqual(Array.from(read.coverage[0].physicalPages),[]);
+ }finally{await h.cleanup();}
+});
 test('existing local Zotero attachment is reused even before the conversation fingerprint cache exists',async()=>{
  const h=await fixture();try{const file=fileURLToPath(new URL('test/tests/data/test.pdf',root));h.items.set(77,h.makeItem(77,file,'pdf','已有论文'));await h.E.chatAttachments.attach(h.session.id,{files:[file]});assert.equal(h.imports,0);assert.equal(h.E.chatAttachments.get(h.session.id)[0].attachmentID,77);
+ }finally{await h.cleanup();}
+});
+
+test('native false parent IDs on standalone PDF and CSV attachments retain filename identity without a parent title call',async()=>{
+ const h=await fixture();try{const pdf=fileURLToPath(new URL('test/tests/data/test.pdf',root)),csv=path.join(h.folder,'standalone.csv');await fs.writeFile(csv,'name,value\nactual,1\n');
+  for(const [id,file,kind]of [[71,pdf,'pdf'],[72,csv,'spreadsheet']]){const item=h.makeItem(id,file,kind);item.parentID=false;item.getField=()=>'';item.attachmentFilename=path.basename(file);h.items.set(id,item);const ref=await h.E.chatAttachments.fromItem(id);assert.equal(ref.paperItemID,id);assert.equal(ref.title,path.basename(file));assert.equal(ref.paperTitle,undefined);assert.equal(ref.kind,kind);}
+  h.items.get(71).parentID=80;h.items.set(80,{id:80,getField:()=> 'Actual parent paper'});assert.equal((await h.E.chatAttachments.fromItem(71)).paperTitle,'Actual parent paper');
+  h.items.set(80,{id:80});assert.equal((await h.E.chatAttachments.fromItem(71)).paperTitle,undefined);
  }finally{await h.cleanup();}
 });
 test('a file modified after caching cannot be incorrectly reused under its old fingerprint',async()=>{

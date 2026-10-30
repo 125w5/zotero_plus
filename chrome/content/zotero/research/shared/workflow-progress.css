@@ -1,0 +1,46 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Preparation, manuscript and PPT share one control vocabulary. Each host
+   retains its own step count, navigation placement and completion rules.
+   This sheet loads after page-local styles in all three documents. */
+html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps){
+ --workflow-ink:var(--ui-text,#20242a);--workflow-muted:var(--ui-secondary,#59636f);--workflow-line:var(--ui-soft-border,var(--ui-border,#dbe1e8));
+ display:flex;align-items:center;justify-content:safe center;gap:16px;flex-wrap:nowrap;min-height:50px;max-width:100%;overflow-x:auto;box-sizing:border-box;
+ color:var(--workflow-ink);font:13px/1.5 var(--ui-font,system-ui);scrollbar-width:thin;
+ padding:7px 12px;border:1px solid var(--workflow-line);border-radius:var(--ui-radius-panel,14px);background:var(--ui-panel-bg,var(--ui-card,#fff));box-shadow:var(--ui-card-shadow);
+}
+html[data-appearance] body[data-workspace-chrome]>header:has(>#steps){height:auto;min-height:64px;padding-block:8px}
+html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button{
+ position:relative;display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:none;min-height:34px;
+ margin:0;padding:6px 10px;border:1px solid transparent;border-radius:var(--ui-radius-control,8px);background:transparent;box-shadow:none;
+ color:var(--workflow-muted);font:400 13px/1.45 var(--ui-font,system-ui);white-space:nowrap;transition:background-color 140ms,color 140ms;
+}
+html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button:hover:not(:disabled){background:var(--ui-hover,#eceff3);color:var(--workflow-ink)}
+html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button:is(.active,[aria-current=step]){
+ background:var(--ui-selection,#e9f2ff);color:var(--workflow-ink);border-color:color-mix(in srgb,var(--ui-primary-text,#405e82) 12%,transparent);font-weight:600;box-shadow:inset 0 1px var(--ui-glint,#ffffff9c);
+}
+html[data-appearance] body :is(#evaluation .workflow-progress>button>span:first-child,#steps .assembly-step-number,#view-ppt .ppt-step-number){
+ display:inline-grid;place-items:center;flex:none;width:21px;height:21px;min-width:21px;padding:0;border:1px solid var(--workflow-line);border-radius:50%;
+ background:var(--ui-card,#fff);color:var(--workflow-muted);font:400 11px/1 var(--ui-font,system-ui);box-sizing:border-box;
+}
+html[data-appearance] body #view-ppt .ppt-steps button:not(.active) .ppt-step-number{display:inline-grid}
+html[data-appearance] body :is(#evaluation .workflow-progress>button[aria-current=step]>span:first-child,#steps .assembly-step.active .assembly-step-number,#view-ppt .ppt-steps>button.active .ppt-step-number){
+ background:var(--workflow-ink);border-color:var(--workflow-ink);color:var(--ui-card,#fff);
+}
+html[data-appearance] body :is(#steps .assembly-step.done:not(.active) .assembly-step-number,#view-ppt .ppt-steps>button.complete:not(.active) .ppt-step-number,#evaluation .workflow-progress>button.done:not([aria-current=step])>span:first-child){
+ background:var(--ui-selection,#e9f2ff);border-color:var(--workflow-line);color:var(--workflow-ink);
+}
+html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button:not(:first-child)::before{
+ content:'';position:absolute;inset-inline-start:-14px;top:50%;width:12px;height:1px;background:var(--workflow-line);pointer-events:none;
+}
+html[data-appearance] body #evaluation .workflow-progress .step-connector{display:none}
+html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button:disabled{opacity:.48;cursor:default}
+/* A blocked assembly stage stays clickable to explain its reason, but reads as blocked. */
+html[data-appearance] body #steps>button[aria-disabled=true]:not(.active){opacity:.52;cursor:default;color:var(--workflow-muted)}
+html[data-appearance] body #steps>button[aria-disabled=true]:not(.active):hover{background:transparent;color:var(--workflow-muted)}
+html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button:focus-visible{outline:2px solid #829cb5;outline-offset:2px}
+@media(max-width:760px){
+ html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps){justify-content:flex-start;overflow-x:auto;gap:12px;padding-inline:10px}
+ html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button{font-size:12px;padding-inline:7px;gap:5px}
+ html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button:not(:first-child)::before{width:8px;inset-inline-start:-11px}
+}
+@media(prefers-reduced-motion:reduce){html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button{transition:none}}

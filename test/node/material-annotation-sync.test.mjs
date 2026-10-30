@@ -17,14 +17,14 @@ function fixture(){
  return {A:E.manuscripts,E,state,items,saved,material,highlight,renderToolbar:reader=>toolbar({reader}),notify:async(event,id)=>{observer.notify(event,'item',[id]);await E.manuscripts.flushMaterialAnnotationSync();}};
 }
 test('whole-source annotations persist native PDF coordinates and repeated saves reuse the same annotation',async()=>{
- const f=fixture();assert.deepEqual(await f.A.syncMaterialHighlights(f.material),{synced:1,pending:0,removed:0});const link=Object.values(f.state.materialAnnotationLinks)[0];
+ const f=fixture();assert.deepEqual(await f.A.syncMaterialHighlights(f.material),{synced:1,pending:0,removed:0,reasons:[]});const link=Object.values(f.state.materialAnnotationLinks)[0];
  assert.equal(f.items.get(link.annotationID).annotationType,'underline');assert.equal(f.saved[0].color,'#78b99a');assert.deepEqual(f.saved[0].position,f.material.anchor.position);
  f.material.highlights[0].comment='保存第二次';await f.A.syncMaterialHighlights(f.material);assert.equal(Object.values(f.state.materialAnnotationLinks)[0].annotationID,link.annotationID);assert.equal(f.items.size,2);
  assert.equal(f.saved[1].comment,'保存第二次');
  await f.A.syncMaterialHighlights(f.material);assert.equal(f.saved.length,2,'unchanged marks do not rewrite native annotations or the entire workspace');
 });
 test('partial source without glyph coordinates stays pending and never highlights the entire paragraph',async()=>{
- const f=fixture();f.material.highlights=[createMaterialHighlight(f.material,'validation data.',{id:'partial'})];assert.deepEqual(await f.A.syncMaterialHighlights(f.material),{synced:0,pending:1,removed:0});assert.equal(f.saved.length,0);assert.match(Object.values(f.state.materialAnnotationLinks)[0].reason,/坐标/);
+ const f=fixture();f.material.highlights=[createMaterialHighlight(f.material,'validation data.',{id:'partial'})];assert.deepEqual(await f.A.syncMaterialHighlights(f.material),{synced:0,pending:1,removed:0,reasons:['尚无可核对的原文选段坐标']});assert.equal(f.saved.length,0);assert.match(Object.values(f.state.materialAnnotationLinks)[0].reason,/坐标/);
 });
 test('reader changes and removals flow back to the same material highlight',async()=>{
  const f=fixture();f.state.researchMaterials.asset=structuredClone(f.material);await f.A.syncMaterialHighlights(f.material);const link=Object.values(f.state.materialAnnotationLinks)[0],item=f.items.get(link.annotationID);
@@ -35,7 +35,7 @@ test('reader changes and removals flow back to the same material highlight',asyn
 });
 test('removing a material highlight removes only its linked native annotation',async()=>{
  const f=fixture();await f.A.syncMaterialHighlights(f.material);const link=Object.values(f.state.materialAnnotationLinks)[0];f.items.set(999,{id:999,annotationComment:'unrelated'});f.material.highlights=[];
- assert.deepEqual(await f.A.syncMaterialHighlights(f.material,{previousHighlights:[f.highlight]}),{synced:0,pending:0,removed:1});assert.equal(f.items.get(link.annotationID).deleted,true);assert.equal(f.items.get(999).deleted,undefined);
+ assert.deepEqual(await f.A.syncMaterialHighlights(f.material,{previousHighlights:[f.highlight]}),{synced:0,pending:0,removed:1,reasons:[]});assert.equal(f.items.get(link.annotationID).deleted,true);assert.equal(f.items.get(999).deleted,undefined);
 });
 test('Chinese highlights keep the original block geometry and retain selected Chinese in the native comment',async()=>{
  const f=fixture(),text='使用独立验证数据选择阈值。',context={text,textHash:writingSnapshotHash(text),sourceText:f.material.sourceText,sourceHash:writingSnapshotHash(f.material.sourceText),sourceVersion:f.material.sourceVersion,sourceAnchor:{...f.material.anchor,sourceVersion:f.material.sourceVersion},materialSourceHash:writingSnapshotHash(f.material.sourceText)};

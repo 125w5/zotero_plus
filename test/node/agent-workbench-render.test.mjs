@@ -35,3 +35,9 @@ test('middle conversation accepts remote recommendations and retained answers th
  await ui.receiveAgentConversationDrop(dropped);assert.equal(render,3);assert.equal(ui.agentRunStatus.textContent,'已下载并加入资料');assert.equal(ui.agentAttach.disabled,false);
  let release;ui.agentFilesTools.receiveConversationDrop=async({sessionID,onProgress})=>{assert.equal(sessionID,'a');await new Promise(resolve=>release=resolve);onProgress('旧对话完成');return '旧对话完成';};const pending=ui.receiveAgentConversationDrop(dropped);ui.agentData.activeSessionID='b';ui.agentRunStatus.textContent='新对话状态';release();await pending;assert.equal(ui.agentRunStatus.textContent,'新对话状态');assert.equal(render,3,'finishing a prior import cannot rerender the newly selected conversation');
 });
+
+test('saved-note actions show pending and completed state and retained completed messages cannot be saved twice',async()=>{
+ const {ui}=await fixture();let release,calls=0;ui.E.saveResearchMessageNote=async()=>{calls++;await new Promise(resolve=>release=resolve);return {noteID:88};};ui.agentData.messages=[{id:'saved',role:'assistant',text:'Answer'}];ui.renderAgentMessages();
+ const article=ui.agentMessages.children[0],actions=article.children.find(row=>row.className==='agent-message-actions'),button=actions.children.find(row=>row.className==='agent-message-save');const task=button.onclick();await Promise.resolve();assert.equal(button.disabled,true);assert.equal(button.textContent,'保存中…');release();await task;assert.equal(button.textContent,'已保存笔记');assert.equal(button.disabled,true);assert.equal(ui.agentData.messages[0].savedNoteID,88);assert.equal(calls,1);
+ ui.renderAgentMessages();const saved=ui.agentMessages.children[0].children.find(row=>row.className==='agent-message-actions').children.find(row=>row.className==='agent-message-save');assert.equal(saved.textContent,'已保存笔记');assert.equal(saved.disabled,true);
+});

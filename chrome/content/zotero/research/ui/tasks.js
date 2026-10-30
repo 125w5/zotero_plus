@@ -62,7 +62,7 @@ Object.assign(EasySchUI, {
 		end.setHours(23, 59, 59, 999);
 		const week = new Date(end);
 		week.setDate(week.getDate() + 7);
-		const all = this.E.store.get().tasks || [];
+		const all = (this.E.store.peek?this.E.store.peek('tasks'):this.E.store.get().tasks) || [];
 		const tasks = all
 			.filter((t) =>
 				filter === 'all' || filter === 'done'

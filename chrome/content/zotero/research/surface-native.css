@@ -2,6 +2,7 @@
 @import url('shared/surface-tokens.css');
 @import url('shared/compact-ui.css');
 @import url('shared/reader-surface-tokens.css');
+@import url('shared/workspace-controls.css');
 /* The reader rail is the workspace; sections are tonal trays and individual
    evidence cards are raised white surfaces. No extra headings or action rows. */
 #easysch-home-navigation{display:flex;gap:5px;flex-wrap:wrap;padding:12px 8px;border-bottom:1px solid var(--color-border,#d7dbe1)}#easysch-home-navigation button,.academic-chat button,.research-fields-toggle{font:inherit;border:1px solid var(--color-border,#d7dbe1);border-radius:9px;padding:7px 11px;background:var(--color-background,Canvas);color:var(--color-foreground,CanvasText);cursor:pointer;max-width:100%;white-space:normal}#easysch-home-navigation button:hover,.academic-chat button:hover{background:var(--color-quinary,#e9ebee)}.academic-chat{padding:12px;display:flex;flex-direction:column;gap:12px;min-width:0;color:var(--color-foreground,CanvasText);font:13px/1.65 system-ui,'Microsoft YaHei',sans-serif}.academic-chat-heading{display:flex;flex-direction:column;gap:3px}.academic-chat-heading strong{font-size:16px}.academic-chat-heading small,.academic-chat-status{opacity:.75;font-size:12px}.academic-chat-messages{max-height:45vh;overflow:auto}.academic-chat.focused .academic-chat-messages{max-height:62vh;min-height:220px}.academic-turn{padding:12px 0;border-bottom:1px solid var(--color-border,#d7dbe1)}.academic-turn>p:first-child{background:var(--color-quinary,#e9ebee);border-radius:10px;padding:10px 12px;font-weight:600}.academic-turn details{margin-top:8px}.academic-chat-suggestions{display:flex;flex-direction:column;gap:6px}.academic-chat-suggestions button{text-align:left;font-size:12px}.academic-chat form{position:sticky;bottom:0;padding:10px 0;background:var(--color-background,Canvas);display:flex;gap:8px;flex-wrap:wrap}.academic-chat textarea{box-sizing:border-box;flex-basis:100%;width:100%;border:1px solid var(--color-border,#d7dbe1);border-radius:10px;padding:10px;font:inherit;resize:vertical;color:inherit;background:inherit}.academic-chat button.primary{background:#315e89;color:white}.academic-chat button:disabled{opacity:.55}.research-fields-toggle{font-size:11px;margin:6px}.research-paper-metric{font:12px/1.6 system-ui,'Microsoft YaHei',sans-serif;padding:8px 10px;margin:6px;border-radius:8px;background:var(--color-quinary,#e9ebee);color:var(--color-foreground,CanvasText)}
@@ -51,7 +52,7 @@
  --easysch-selection:#414954;--easysch-hover:#343b44;
  --easysch-highlight:#ffffff0d;--easysch-shadow:#00000024;
 }
-#zotero-collections-pane,#easysch-home-navigation{font-family:system-ui,'Microsoft YaHei',sans-serif;font-size:13px}
+#zotero-collections-pane,#easysch-home-navigation{font-family:var(--ui-font);font-size:13px}
 #zotero-collections-pane{min-width:188px}#easysch-home-navigation{padding:8px 8px 6px;gap:2px}#easysch-home-navigation button{font-size:13px;min-height:30px;padding:5px 10px;border-radius:8px}.native-workbench>summary{font-size:13px;padding:6px 10px}
 #zotero-tag-selector-container,#zotero-tags-splitter{display:none!important}#easysch-library-bottom{padding:8px;border-top:1px solid var(--color-border,#d7dbe1);flex:none;overflow:visible;position:relative}#easysch-library-bottom>.compact-settings{display:block;width:100%;text-align:left;margin-top:5px;border-color:transparent;background:transparent}
 #zotero-items-tree .row.selected,#zotero-collections-tree .row.selected,.virtualized-table .row.selected{background:var(--easysch-selection)!important;color:var(--easysch-ink)!important;border-radius:5px}.virtualized-table .row:not(.selected):hover{background:var(--easysch-hover)!important}.virtualized-table .row.selected .twisty svg{fill:var(--easysch-ink)!important}.virtualized-table .row.selected .cell{color:var(--easysch-ink)}.virtualized-table .row.focused{outline:1px solid #929ca8;outline-offset:-1px}
@@ -81,17 +82,17 @@ item-details related-box{display:none!important}
 .reference-pane .reference-actions[aria-busy=true] .reference-count::after{content:' ·';opacity:.5}
 .reference-pane .reference-retry{border:0;border-radius:5px;width:22px;height:22px;padding:0;background:transparent;color:var(--fill-secondary,GrayText);font:15px system-ui;cursor:pointer}
 .reference-pane .reference-list{display:flex;flex-direction:column;gap:0;padding:0}
-.reference-pane .reference-row{position:relative;display:grid;grid-template-columns:4px 14px 16px minmax(0,1fr) auto 22px;align-items:center;column-gap:4px;row-gap:0;box-sizing:border-box;min-width:0;min-height:36px;border:0;border-bottom:1px solid var(--reference-border);border-radius:0;padding:4px 5px;margin:0;background:transparent;box-shadow:none;transition:background-color 100ms;cursor:pointer}
-.reference-pane .reference-row[data-available=false]{grid-template-columns:4px 14px 16px minmax(0,1fr) auto 0}
+.reference-pane .reference-row{position:relative;display:grid;grid-template-columns:4px 14px 26px minmax(0,1fr) auto 22px;align-items:center;column-gap:4px;row-gap:0;box-sizing:border-box;min-width:0;min-height:36px;border:0;border-bottom:1px solid var(--reference-border);border-radius:0;padding:4px 5px;margin:0;background:transparent;box-shadow:none;transition:background-color 100ms;cursor:pointer}
+.reference-pane .reference-row[data-available=false]{grid-template-columns:4px 14px 26px minmax(0,1fr) auto 0}
 .reference-pane .reference-row:hover,.reference-pane .reference-row:focus-within{background:var(--reference-card-hover);box-shadow:none}
 .reference-pane .reference-row[data-selected=true]{background:var(--reference-card-selected);box-shadow:none}
 .reference-pane .reference-row:active{background:var(--easysch-selection)}
 .reference-pane .reference-marker{grid-column:1;grid-row:1;height:15px;width:4px;border-radius:3px;background:#d4d7ed}
 .reference-pane .reference-expand{grid-column:2;grid-row:1;display:flex;align-items:center;justify-content:center;width:14px;height:22px!important;min-height:0!important;padding:0;margin:0;border:0;background:transparent;color:var(--reference-muted);font:16px/1 system-ui;transition:transform 100ms;cursor:pointer}
 .reference-pane .reference-expand[aria-expanded=true]{transform:rotate(90deg)}
-.reference-pane .reference-number{grid-column:3;grid-row:1;min-width:0;margin:0;border-radius:0;background:transparent;color:var(--reference-muted);font-size:10px;line-height:1.3;font-weight:400;font-variant-numeric:tabular-nums;text-align:center}
+.reference-pane .reference-number{grid-column:3;grid-row:1;min-width:0;max-width:26px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0;border-radius:0;background:transparent;color:var(--reference-muted);font-size:10px;line-height:1.3;font-weight:400;font-variant-numeric:tabular-nums;text-align:center}
 .reference-pane .reference-content{grid-column:4;grid-row:1;min-width:0;overflow:hidden}
-.reference-pane .reference-title{width:100%;display:block;box-sizing:border-box;height:24px!important;min-height:0!important;max-height:24px!important;margin:0;padding:0;border:0;white-space:nowrap!important;text-align:start;line-height:24px;font-size:12px;font-weight:400;overflow:hidden;text-overflow:ellipsis;background:transparent;color:var(--easysch-ink)}
+.reference-pane .reference-title{width:100%;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;box-sizing:border-box;height:auto!important;min-height:24px!important;max-height:36px!important;margin:0;padding:0;border:0;white-space:normal!important;text-align:start;line-height:18px;font-size:12px;font-weight:400;overflow:hidden;text-overflow:ellipsis;background:transparent;color:var(--easysch-ink)}
 .reference-pane .reference-title:hover{background:transparent}.reference-pane .reference-title:focus-visible{outline:1px solid var(--reference-muted);outline-offset:2px;border-radius:3px}
 .reference-pane .reference-details{grid-column:2/-1;grid-row:2;margin:3px 0 5px;padding:6px 8px;background:var(--reference-card);border-inline-start:2px solid var(--reference-border);cursor:text;overflow-wrap:anywhere}
 .reference-pane .reference-full-title{margin:0 0 5px;font-size:12px;line-height:1.6;font-weight:500;color:var(--easysch-ink)}
@@ -276,10 +277,17 @@ item-details[data-easysch-navigation=paper] .reference-pane .reference-row:hover
 #tab-bar-container .tab-name{font:400 13px/1.5 var(--easysch-ui-font);}
 #tab-bar-container .tab.selected .tab-name{font-weight:500;}
 #easysch-home-navigation{border-bottom-color:var(--easysch-line);}
+/* The two existing left rails share a surface; their splitters, row metrics
+   and native collection operations remain owned by the original layout. */
+#zotero-collections-pane,
+#zotero-collections-tree,
+#easysch-home-navigation,
+#zotero-toolbar-collection-tree.native-library-search-tools{background:var(--easysch-surface);}
+#zotero-toolbar-collection-tree.native-library-search-tools{border-top-color:transparent;}
 #easysch-home-navigation :is(button,.native-workbench>summary){
  font:400 13px/1.5 var(--easysch-ui-font);
  color:var(--easysch-ink);
- border-radius:8px;
+ border-radius:7px;
  transition:background-color 130ms,box-shadow 130ms;
 }
 #easysch-home-navigation :is(button,.native-workbench>summary):hover{
@@ -295,7 +303,7 @@ item-details[data-easysch-navigation=paper] .reference-pane .reference-row:hover
  outline-offset:1px;
 }
 #easysch-home-navigation .native-conversation-controls{display:flex;align-items:center;gap:5px;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--easysch-line)}
-#easysch-home-navigation .native-conversation-controls button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:34px;margin:0;border:1px solid var(--easysch-line);background:linear-gradient(180deg,var(--easysch-surface),color-mix(in srgb,var(--easysch-panel) 70%,var(--easysch-surface)));box-shadow:0 2px 5px var(--easysch-shadow),inset 0 1px var(--easysch-highlight)}
+#easysch-home-navigation .native-conversation-controls button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:34px;margin:0;border:1px solid var(--easysch-line);background:linear-gradient(180deg,var(--easysch-surface),color-mix(in srgb,var(--easysch-panel) 30%,var(--easysch-surface)));box-shadow:0 1px 2px var(--easysch-shadow),inset 0 1px var(--easysch-highlight)}
 #easysch-home-navigation .native-conversation-new{flex:1;width:auto;text-align:center}
 #easysch-home-navigation .native-conversation-new::before{content:'+';font-size:20px;font-weight:350;line-height:1;color:var(--easysch-muted)}
 #easysch-home-navigation .native-conversation-controls .native-conversation-history{flex:0 0 34px;width:34px;height:34px;min-height:34px;padding:6px;white-space:nowrap}
@@ -310,7 +318,7 @@ item-details[data-easysch-navigation=paper] .reference-pane .reference-row:hover
 #easysch-home-navigation .native-workbench button::before{margin:0;width:18px;height:18px}
 #easysch-home-navigation .native-workbench button::after{content:'';width:18px;height:18px}
 #zotero-collections-tree .row[data-source-type=library] .cell-text{flex:1;text-align:center;padding-inline-end:24px;font-weight:500}
-#zotero-toolbar-collection-tree.native-library-search-tools{margin:0;padding:6px 10px;min-height:36px;border-block:1px solid var(--easysch-line);background:var(--easysch-panel);box-shadow:none}
+#zotero-toolbar-collection-tree.native-library-search-tools{margin:0;padding:6px 10px;min-height:36px;border-block:1px solid var(--easysch-line);box-shadow:none}
 #zotero-toolbar-collection-tree.native-library-search-tools #zotero-collections-toolbar{width:100%}
 #zotero-toolbar-collection-tree.native-library-search-tools .zotero-tb-button{border-radius:7px;width:30px;height:30px;min-height:30px}
 #easysch-home-navigation .native-workbench [data-page=agent]::before{mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 4h16v12H9l-5 4Z'/%3E%3C/svg%3E")}
@@ -401,25 +409,53 @@ item-details[data-easysch-navigation=paper] #easysch-asset-panel{
 }
 /* Plain note previews are raised cards in the same recessed rail. This does
    not select note-editor, iframe content or saved note body formatting. */
+#zotero-context-pane notes-context .zotero-context-notes-list{
+ background:var(--easysch-panel);
+ isolation:isolate;
+}
 #zotero-context-pane notes-context .notes-list-container{
  background:var(--easysch-panel);
- border-top-color:var(--easysch-line);
+ border-top:0;
+ padding:4px 10px 12px;
+ scrollbar-width:thin;
+}
+#zotero-context-pane notes-context .zotero-context-notes-list>hbox{
+ position:relative;
+ z-index:2;
+ align-items:center;
+ padding:4px 2px 5px;
+ background:color-mix(in srgb,var(--easysch-surface) 86%,transparent);
+ backdrop-filter:blur(20px) saturate(1.08);
+ box-shadow:0 5px 12px var(--easysch-shadow),inset 0 1px var(--easysch-highlight);
+}
+#zotero-context-pane notes-context search-textbox{
+ min-height:32px;
+ border:1px solid var(--ui-soft-border,var(--easysch-line));
+ border-radius:var(--ui-radius-control,8px);
+ background:var(--easysch-surface);
+ box-shadow:var(--ui-field-shadow,inset 0 1px 3px var(--easysch-shadow));
 }
 #zotero-context-pane notes-context context-notes-list{
  font:13px/1.6 var(--easysch-ui-font);
  color:var(--easysch-ink);
 }
 #zotero-context-pane notes-context context-notes-list collapsible-section>.head{
- border-radius:8px;
- background:var(--easysch-panel);
+ min-height:36px;
+ padding-block:7px;
+ border:0;
+ border-radius:0;
+ background:transparent;
  color:var(--easysch-muted);
 }
+#zotero-context-pane notes-context context-notes-list :is(.item-notes,.all-notes)>.body{gap:9px}
+#zotero-context-pane notes-context context-notes-list .item-notes-container{padding-bottom:8px}
 #zotero-context-pane notes-context note-row{
- border:1px solid var(--easysch-line);
- border-radius:10px;
+ overflow:hidden;
+ border:1px solid var(--ui-soft-border,var(--easysch-line));
+ border-radius:var(--ui-radius-card,10px);
  background:var(--easysch-surface);
  color:var(--easysch-ink);
- box-shadow:0 2px 6px var(--easysch-shadow),inset 0 1px var(--easysch-highlight);
+ box-shadow:var(--ui-card-shadow,0 2px 6px var(--easysch-shadow));
  transition:background-color 130ms,border-color 130ms,box-shadow 130ms;
 }
 #zotero-context-pane notes-context note-row:hover{
@@ -428,7 +464,7 @@ item-details[data-easysch-navigation=paper] #easysch-asset-panel{
  box-shadow:0 4px 10px var(--easysch-shadow),inset 0 1px var(--easysch-highlight);
 }
 #zotero-context-pane notes-context note-row:active{background:var(--easysch-selection);}
-#zotero-context-pane notes-context note-row>.head{border-bottom-color:var(--easysch-line);}
+#zotero-context-pane notes-context note-row>.head{border:0;}
 #zotero-context-pane notes-context note-row :is(.parent-title,.note-date){
  color:var(--easysch-muted);
  font-size:11px;
@@ -436,14 +472,14 @@ item-details[data-easysch-navigation=paper] #easysch-asset-panel{
 }
 #zotero-context-pane notes-context note-row .note-title{font-size:13px;font-weight:550;}
 #zotero-context-pane notes-context note-row .note-content{font-size:12px;line-height:1.65;}
-#zotero-context-pane notes-context note-row>.head{padding:6px 10px;background:var(--easysch-panel);}
-#zotero-context-pane notes-context note-row>.body{padding:9px 11px;}
+#zotero-context-pane notes-context note-row>.head{padding:9px 11px 0;background:transparent;}
+#zotero-context-pane notes-context note-row>.body{padding:6px 11px 10px;}
 #zotero-context-pane notes-context note-row .note-title{line-height:1.5;margin-bottom:4px;}
-#zotero-context-pane notes-context note-row .note-content-container{display:flex;align-items:flex-end;gap:8px;}
-#zotero-context-pane notes-context note-row .note-content{flex:1;min-width:0;max-height:3.3em;overflow:hidden;overflow-wrap:anywhere;color:var(--easysch-muted);}
+#zotero-context-pane notes-context note-row .note-content-container{display:flex;flex-direction:column;align-items:stretch;gap:6px;}
+#zotero-context-pane notes-context note-row .note-content{min-width:0;max-height:4.95em;overflow:hidden;overflow-wrap:anywhere;color:var(--easysch-muted);}
 #zotero-context-pane notes-context note-row .note-content p{margin:0;font:inherit;}
 #zotero-context-pane notes-context note-row .note-content .katex{font-size:1em;}
-#zotero-context-pane notes-context note-row .note-date{flex-shrink:0;white-space:nowrap;font-size:10px;line-height:1.5;}
+#zotero-context-pane notes-context note-row .note-date{align-self:flex-end;flex-shrink:0;white-space:nowrap;font-size:10px;line-height:1.5;}
 #zotero-context-pane note-editor .custom-head:has(.easysch-note-insert){background:color-mix(in srgb,var(--easysch-surface) 90%,transparent);border-bottom:1px solid var(--easysch-line);}
 #zotero-context-pane note-editor .easysch-note-insert{font:12px/1.5 var(--easysch-ui-font);padding:6px 10px!important;}
 #zotero-context-pane note-editor .easysch-note-insert button{border-color:var(--easysch-line)!important;background:var(--easysch-surface)!important;border-radius:7px!important;box-shadow:0 1px 3px var(--easysch-shadow);}
@@ -488,3 +524,9 @@ item-pane-sidenav[data-easysch-navigation=paper] .btn[aria-selected=true]{backgr
  --easysch-selection:var(--es-read-selection);--easysch-hover:color-mix(in srgb,var(--es-read-muted) 8%,var(--es-read-surface));
  --easysch-highlight:var(--es-read-highlight);--easysch-shadow:var(--es-read-shadow);
 }
+/* Native home and reader chrome retain the same radius hierarchy as the
+   embedded workspaces. PDF pages and editable note bodies are not framed. */
+#easysch-home-navigation button{border-radius:var(--ui-radius-control,8px);box-shadow:none}
+#easysch-library-bottom :is(.calendar,.compact-calendar){border-radius:var(--ui-radius-card,10px);background-clip:padding-box}
+item-details[data-easysch-navigation=paper] collapsible-section{border-radius:var(--ui-radius-card,10px);background-clip:padding-box}
+item-details[data-easysch-navigation=paper] collapsible-section>.head{border-start-start-radius:9px;border-start-end-radius:9px}

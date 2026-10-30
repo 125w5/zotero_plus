@@ -66,9 +66,13 @@ html[data-appearance] :is(dialog,.assembly-context,.search-filter-popover) {bord
 
 /* Selection is a quiet shared fill, independent of evidence/revision colours. */
 html[data-appearance] :is(.agent-source-row[aria-selected=true],.agent-session-row[aria-current=true],.agent-preview-tabs button[aria-selected=true],.agent-source-tabs button[aria-selected=true],.library-workspace-tabs button[aria-selected=true],.rail nav button.active){background:var(--ui-selection)!important;box-shadow:none!important;color:var(--ui-text);border-color:var(--ui-border);outline:0}
-html[data-appearance] #library :is(.outline-content.selected,.outline-section.active,.material-collection-root[aria-current=true],.topic-tile[aria-current=true]),html[data-appearance] #material-results .material.selected,html[data-appearance] .block.material-frame.selected{background:var(--ui-selection)!important;box-shadow:none!important;border-color:var(--ui-border)!important;outline:0}
+html[data-appearance] #library :is(.outline-content.selected,.outline-section.active,.material-collection-root[aria-current=true],.topic-tile[aria-current=true]),html[data-appearance] #material-results .material.selected,html[data-appearance] #source-list .source-row.selected,html[data-appearance] .block.material-frame.selected{background:var(--ui-selection)!important;box-shadow:none!important;border-color:var(--ui-border)!important;outline:0}
 html[data-appearance] .material[aria-selected=true],html[data-appearance] .outline-block.selected{background:var(--ui-selection)!important;outline:0;box-shadow:none}
-html[data-appearance] #left-tabs button[aria-selected=true],html[data-appearance] #tools.writing-ribbon .writing-ribbon-tabs button[aria-selected=true]{background:var(--ui-selection)!important;box-shadow:none}
+html[data-appearance] #left-tabs button[aria-selected=true],html[data-appearance] #tools.writing-ribbon .writing-ribbon-tabs button[aria-selected=true],html[data-appearance] :is(.conversation-file-detail-tabs,.assembly-file-detail-tabs,.selection-assistant-tabs) button[aria-selected=true]{background:var(--ui-selection)!important;box-shadow:none}
+/* The palette's active row is the pointer/arrow-key target, so it uses the hover fill. */
+html[data-appearance] #assembly-command-menu .assembly-command-row[aria-selected=true]{background:var(--ui-hover)}
+/* No sheet defines --selected-bg; the active task tab reads it, so dark mode needs the shared fill. */
+html[data-appearance] .assembly-task-tabs{--selected-bg:var(--ui-selection)}
 /* Sources and the input share one width and a single glass vocabulary. */
 html[data-appearance] .agent-workbench .agent-topbar{min-height:48px;height:auto;padding:8px 18px;gap:10px;background:var(--ui-glass);box-shadow:inset 0 1px color-mix(in srgb,var(--ui-card) 80%,transparent);backdrop-filter:blur(20px) saturate(1.08)}
 html[data-appearance] .agent-workbench .agent-topbar button{min-height:32px;padding:6px 11px;border-radius:8px;font-size:12px}

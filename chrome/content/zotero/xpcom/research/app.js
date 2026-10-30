@@ -1,5 +1,5 @@
 (function (E) {
-	E.settings = () => ({ ...E.core.defaults, ...E.store.get().settings });
+	E.settings = () => ({ ...E.core.defaults, ...E.store.get('settings') });
 	E.getItem = id => Zotero.Items.getAsync(id);
 	E.getCachedItem = id => Zotero.Items.get(id);
 	E.reveal = path => Zotero.File.reveal(path);
@@ -44,12 +44,16 @@
 		Zotero.Reader.registerEventListener('renderTextSelectionPopup', E.readerHandler, E.id);
 		E.installReaderContext();
 		E.installReaderTools();
+		E.startReaderPreparation?.();
 		E.rapidReadingImportObserver = Zotero.Notifier.registerObserver({
 			notify(event, type, ids) {
 				if (type !== 'item' || !['add', 'modify'].includes(event)) return;
 				for (const id of ids) {
 					const item = Zotero.Items.get(id);
-					if (item?.isPDFAttachment?.() && !item.deleted) E.queueReaderRapidReading?.(id, {origin:'import'});
+					if (item?.isPDFAttachment?.() && !item.deleted) {
+						if (E.queueReaderPreparation) E.queueReaderPreparation(id, {origin:'import'});
+						else E.queueReaderRapidReading?.(id, {origin:'import'});
+					}
 				}
 			}
 		}, ['item'], 'easysch-rapid-import');
@@ -62,6 +66,7 @@
 	};
 	E.addWindow = function (win) {
 		if (E.windows.has(win)) return;
+		E.installTaskProgress?.(win);
 		win.MozXULElement.insertFTLIfNeeded('easysch.ftl');
 		let entry = win.document.createXULElement('menuitem');
 		entry.id = 'easysch-open';
@@ -100,6 +105,7 @@
 		E.addReaderAIOrbWindow?.(win);
 	};
 	E.removeWindow = function (win) {
+		E.disposeTaskProgress?.(win);
 		win._researchWorkspaceOverlay?.dispose();
 		win._researchLibraryWorkspace?.dispose();
 		win.document.getElementById('easysch-home-navigation')?._dispose?.();
@@ -169,16 +175,24 @@
 		return frame.contentWindow;
 	};
 	E.stop = async function () {
-		E.stopRapidReadingPreparation?.();
+		E.taskProgress?.clear();
+		E.manuscripts?.stopMaterialExclusionSync?.();
+		await E.stopReaderPreparation?.();
+		await E.stopRapidReadingPreparation?.();
 		if (E.rapidReadingImportObserver) {
 			Zotero.Notifier.unregisterObserver(E.rapidReadingImportObserver);
 			E.rapidReadingImportObserver = null;
 		}
 		E.readerAIOrbUninstall?.();
-		E.ai?.cancel();
-		if (E.sidebarID) Zotero.ItemPaneManager.unregisterSection(E.sidebarID);
-		if (E.overviewID) Zotero.ItemPaneManager.unregisterSection(E.overviewID);
-		for (const id of E.readerPaneIDs || []) Zotero.ItemPaneManager.unregisterSection(id);
+		E.ai?.cancelAll();
+		// Unregistering schedules unawaitable database refresh transactions.
+		// During application exit the panes disappear with the process, and those
+		// transactions can outlive Zotero's database shutdown barrier.
+		if (!Zotero.closing) {
+			if (E.sidebarID) Zotero.ItemPaneManager.unregisterSection(E.sidebarID);
+			if (E.overviewID) Zotero.ItemPaneManager.unregisterSection(E.overviewID);
+			for (const id of E.readerPaneIDs || []) Zotero.ItemPaneManager.unregisterSection(id);
+		}
 		if (E.noteLinkObserver) Zotero.Notifier.unregisterObserver(E.noteLinkObserver);
 		if (E.readerToolHandlers) {
 			Zotero.Reader.unregisterEventListener('renderToolbar', E.readerToolHandlers.toolbar);

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sourceAliases,citedSources,evidenceCitationText,questionForAnswer,answerWithQuestion,sourceGroups,historySourceContext,selectPaperContext} from '../../chrome/content/zotero/research/shared/chat-evidence.mjs';
+import {sourceAliases,citedSources,evidenceCitationText,numberedCitationText,questionForAnswer,answerWithQuestion,sourceGroups,historySourceContext,selectPaperContext,sourcePageMetadata,sourceLocationLabel} from '../../chrome/content/zotero/research/shared/chat-evidence.mjs';
 
 test('legacy PDF ID-only lines expose exact saved evidence without changing prose, formula, code or ambiguous IDs',()=>{
  const a={id:'P1-T7',stableID:'evidence:paper:4:P1-T7'},b={id:'P1-T6',stableID:'evidence:paper:4:P1-T6'},sources=[a,b],text='原文记录为 28 GHz。\nP1-T7 P1-T6\n\n$x_{P1-T7}$\n```\nP1-T7\n```\nP1-T70\n普通正文 P1-T7';
@@ -38,4 +38,19 @@ test('a long paper supplies bounded relevant excerpts and distributed coverage w
  const rows=Array.from({length:429},(_,i)=>({id:'P'+i,text:(i===287?'robustness under unknown channel. ':'generic CNN architectures. ').repeat(150),pageIndex:Math.floor(i/6),position:{pageIndex:Math.floor(i/6),rects:[[1,2,3,4]]}})),before=JSON.stringify(rows),context=selectPaperContext(rows,'robustness unknown channel');
  assert.ok(context.sources.length<=24);assert.ok(context.sources.some(row=>row.id==='P287'));assert.ok(context.sources.some(row=>row.pageIndex>=70));assert.ok(context.sources.reduce((sum,row)=>sum+row.text.length,0)<=48000);assert.equal(context.total,429);assert.equal(context.truncated,true);assert.equal(JSON.stringify(rows),before);
  assert.deepEqual(selectPaperContext([],''),{sources:[],total:0,selected:0,truncated:false});
+});
+
+test('observed fullwidth compound passage references render and save as actual citations without touching code or unknown IDs',()=>{
+ const a={id:'passage:hash:pymupdf-blocks-v3:2',stableID:'evidence:passage:hash:pymupdf-blocks-v3:2',attachmentID:239},b={id:'P1-L290',stableID:'evidence:paper:238:239:P1-L290',attachmentID:239},sources=[a,b];
+ const text='依据原文。［'+a.stableID+'；'+b.stableID+'］',normalized='依据原文。['+a.stableID+'] ['+b.stableID+']';
+ assert.equal(evidenceCitationText(text,sources),normalized);assert.deepEqual(citedSources({text,sources}),sources);assert.equal(numberedCitationText({text,sources}),'依据原文。[1] [2]');
+ const preserved='`［'+a.stableID+'］`\n$［'+a.stableID+'］$\n```\n'+text+'\n```\n［unknown；'+b.stableID+'］';assert.equal(evidenceCitationText(preserved,sources),preserved);
+ assert.equal(sourceGroups([...sources,{stableID:'evidence:other',attachmentID:240}]).length,2);
+});
+
+test('physical page metadata uses only an actual zero-based page location and preserves independent labels',()=>{
+ assert.deepEqual(sourcePageMetadata({id:'passage:hash:144',sourceRecordID:'P1-L290'}),{});
+ assert.deepEqual(sourcePageMetadata({pageIndex:9,pageLabel:'x'}),{pageIndex:9,pageNumber:10,pageNumbering:'physical',pageLabel:'x'});
+ assert.equal(sourceLocationLabel({anchor:{pageIndex:9,pageLabel:'x'}}),'PDF 第 10 页 · 页标签 x');
+ assert.equal(sourceLocationLabel({pageIndex:-1}),'');assert.equal(sourceLocationLabel({pageIndex:'9'}),'');
 });

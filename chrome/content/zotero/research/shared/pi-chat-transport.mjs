@@ -6,9 +6,10 @@ const MESSAGES = {
 	protocol: '模型流式响应格式不完整，请重试',
 	incomplete: '模型响应在完成前中断，请重试',
 	arguments: '模型返回的工具参数不完整，未执行本轮工具，请重试',
-	lengthTool: '模型达到输出上限，工具参数尚未完成，未执行本轮工具',
+	lengthTool: '模型达到输出上限，工具参数尚未完成，未执行本轮工具；原有内容未改动，可重试',
 	filtered: '模型未完成本次回答，请调整问题后重试',
-	limit: '已达到本轮处理上限，请缩小任务范围后继续',
+	limit: '已达到本轮处理上限（模型调用轮次已满），本次任务已停止',
+	budget: '本轮研究任务已超过处理时长上限，已停止；可重试或降低思考强度',
 	network: '无法连接服务，请检查网络或代理',
 	aborted: '已停止，本次未完成内容不会写入',
 	configuration: '模型传输配置不完整，请检查接口设置',
@@ -22,7 +23,7 @@ const fail = code => { throw new TransportFailure(code); };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const textOf = parts => typeof parts === 'string' ? parts : (parts || []).filter(part => part.type === 'text').map(part => String(part.text || '')).join('');
 const imageOf = part => ({ type: 'image_url', image_url: { url: `data:${part.mimeType};base64,${part.data}` } });
-const REQUEST_PARAMETERS = new Set(['model', 'messages', 'stream', 'tools', 'tool_choice', 'max_tokens', 'max_completion_tokens', 'reasoning_effort', 'thinking', 'stream_options']);
+const REQUEST_PARAMETERS = new Set(['model', 'messages', 'stream', 'tools', 'tool_choice', 'max_tokens', 'max_completion_tokens', 'reasoning_effort', 'thinking', 'temperature', 'stream_options']);
 // Numeric structure only: no prompts, answers, source titles, URLs, tool
 // arguments, headers or credentials can enter a diagnostic report.
 export function chatRequestStats(payload) {
@@ -137,6 +138,9 @@ export function createPiChatStream({ request, endpoint, key, config = {}, EventS
 	const url = String(endpoint || '').replace(/\/+$/, '');
 	const budget = Number.isInteger(maxTurns) && maxTurns > 0 ? maxTurns : 8;
 	let turns = 0, explainedReasoning = false;
+	// config.timeouts {firstByte,idle,total,run}: run is a wall-clock budget
+	// across every turn of one task; each request also gets its own limits.
+	let limits = object(config.timeouts) ? config.timeouts : null, deadline = limits && Number(limits.run) > 0 ? Date.now() + Number(limits.run) : 0;
 	const progress = text => { try { Promise.resolve(onProgress(text)).catch(() => {}); } catch (_) { /* UI callbacks cannot break transport. */ } };
 	return (model, context, options = {}) => {
 		const stream = new EventStream(), signal = options.signal;
@@ -164,6 +168,7 @@ export function createPiChatStream({ request, endpoint, key, config = {}, EventS
 		void Promise.resolve().then(async () => {
 			if (signal?.aborted) { cancel(); return; }
 			if (++turns > budget) fail('limit');
+			if (deadline && deadline - Date.now() < 15000) fail('budget');
 			if (!/^https?:\/\//i.test(url) || !model?.id) fail('configuration');
 			const payload = { model: config.model || model.id, messages: chatMessages(context, config), stream: true };
 			const tools = chatTools(context.tools);
@@ -186,8 +191,13 @@ export function createPiChatStream({ request, endpoint, key, config = {}, EventS
 			const stats=chatRequestStats(payload);
 			try { Promise.resolve(onDiagnostics({ requestIndex: turns, ...stats })).catch(() => {}); } catch (_) { /* Diagnostics cannot alter requests. */ }
 			if(stats.invalidToolMessageCount)fail('messages');
-			let finishReason = null, sawDone = false, textIndex = -1, thinkingIndex = -1;
+			let finishReason = null, sawDone = false, textIndex = -1, thinkingIndex = -1, touch = () => {};
 			const calls = new Map();
+			let timeout = Number(config.timeout) > 0 ? Number(config.timeout) : 120000;
+			if (limits) {
+				let total = Math.min(Number(limits.total) || timeout, deadline ? deadline - Date.now() : Infinity);
+				timeout = { firstByte: Math.min(Number(limits.firstByte) || total, total), idle: Number(limits.idle) || 0, total };
+			}
 			const emitText = (kind, delta) => {
 				if (typeof delta !== 'string' || !delta) return;
 				let index = kind === 'text' ? textIndex : thinkingIndex;
@@ -218,6 +228,7 @@ export function createPiChatStream({ request, endpoint, key, config = {}, EventS
 				const delta = choice.delta || {};
 				if (!object(delta) || (delta.tool_calls != null && !Array.isArray(delta.tool_calls))) fail('protocol');
 				if (finishReason && (delta.content || delta.reasoning_content || delta.tool_calls?.length)) fail('protocol');
+				if (delta.content || delta.reasoning_content || delta.tool_calls?.length) touch();
 				emitText('thinking', delta.reasoning_content);
 				emitText('text', delta.content);
 				for (const part of delta.tool_calls || []) {
@@ -243,11 +254,25 @@ export function createPiChatStream({ request, endpoint, key, config = {}, EventS
 					finishReason = choice.finish_reason;
 				}
 			};
-			await request(/\/chat\/completions$/.test(url) ? url : url + '/chat/completions', {
+			const send = readResponse => request(/\/chat\/completions$/.test(url) ? url : url + '/chat/completions', {
 				method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(key ? { Authorization: 'Bearer ' + key } : {}) },
 				body: JSON.stringify(payload), signal,
-			}, Number(config.timeout) > 0 ? Number(config.timeout) : 120000, async response => {
+			}, timeout, readResponse);
+			const tokenKey = 'max_completion_tokens' in payload ? 'max_completion_tokens' : 'max_tokens', baseTokens = Number(config.tokenBase);
+			// A cap raised for reasoning may exceed a model's own limit. Retry
+			// once at the caller's base cap and say so; nothing else changes.
+			const sendWithCap = async readResponse => {
+				try { return await send(readResponse); }
+				catch (error) {
+					if (signal?.aborted || error?.providerCode !== 'invalid_parameter' || error?.providerParam !== tokenKey || !(baseTokens > 0) || !(payload[tokenKey] > baseTokens)) throw error;
+					payload[tokenKey] = Math.floor(baseTokens);
+					progress('接口不接受放宽后的输出上限，已按原上限重试');
+					return send(readResponse);
+				}
+			};
+			await sendWithCap(async (response, activity) => {
 				if (ended) return;
+				if (typeof activity === 'function') touch = activity;
 				if (response.ok === false) fail('protocol');
 				const contentType = response.headers?.get?.('content-type') || '';
 				if (contentType && !/text\/event-stream/i.test(contentType)) fail('protocol');
@@ -313,7 +338,7 @@ export function createPiChatStream({ request, endpoint, key, config = {}, EventS
 			if (thinkingIndex >= 0) stream.push({ type: 'thinking_end', contentIndex: thinkingIndex, content: message.content[thinkingIndex].thinking, partial: message });
 			for (const call of orderedCalls) stream.push({ type: 'toolcall_end', contentIndex: call.contentIndex, toolCall: message.content[call.contentIndex], partial: message });
 			message.stopReason = finishReason === 'tool_calls' ? 'toolUse' : finishReason;
-			if (message.stopReason === 'length') progress('模型达到输出上限，已保留本次回答，可继续讨论');
+			if (message.stopReason === 'length') progress(textIndex >= 0 && message.content[textIndex].text.trim() ? '模型达到输出上限，已保留本次回答，可继续讨论' : '模型的推理用尽了输出预算，没有返回回答');
 			ended = true;
 			stream.push({ type: 'done', reason: message.stopReason, message }); stream.end(message);
 		}).catch(finishError).finally(() => signal?.removeEventListener('abort', cancel));

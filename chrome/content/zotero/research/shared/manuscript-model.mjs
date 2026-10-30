@@ -43,9 +43,12 @@ export function makeTable(rows,cols){
 export function bindTable(p,b,m){if(!m.data?.rows?.length)throw Error('素材没有表格数据');const rows=m.data.rows;b.table=makeTable(rows.length,rows[0].length);b.table.rows=rows.map(row=>row.map(text=>({text:String(text??''),rowspan:1,colspan:1,align:'auto',vertical:'center'})));b.table.binding={materialID:m.id,revision:m.revision};b.materials=[{id:m.id,role:'primary',revision:m.revision}];b.review='missing';}
 export function invalidate(p,materialID){const affected=new Set(p.blocks.filter(b=>b.materials.some(m=>m.id===materialID)||b.table?.binding?.materialID===materialID).map(b=>b.id));let more=true;while(more){more=false;for(const b of p.blocks)if(!affected.has(b.id)&&b.dependsOn?.some(id=>affected.has(id))){affected.add(b.id);more=true;}}for(const b of p.blocks)if(affected.has(b.id))b.review='stale';}
 export function updateMaterial(p,materialID,change){const m=p.materials.find(m=>m.id===materialID);if(!m)throw Error('素材不存在');Object.assign(m,change);if(change.sourceText!==undefined)m.anchor.sourceText=change.sourceText;m.revision++;invalidate(p,materialID);}
-export function validate(p){const issues=[];const push=(b,message,severity='error')=>issues.push({blockID:b?.id,message,severity});if(!p.blocks.some(b=>b.text?.trim()||['table','image'].includes(b.type)))push(null,'论文尚未装配内容');for(const b of p.blocks){
+// The 有待填写的内容 message names the section and the linked material, so the
+// list tells cards apart and each entry leads to its own visible card.
+const pendingLabel=(p,b,titleFor)=>{const section=p.sections?.find(s=>s.id===b.sectionID)?.title,material=(b.materials||[]).map(x=>p.materials?.find(m=>m.id===x.id)).find(Boolean);return ['有待填写的内容',section,material?String(titleFor(material)||material.title||'素材').replace(/\s+/g,' ').slice(0,60):b.type==='placeholder'?'待填内容卡':'空白段落'].filter(Boolean).join(' · ');};
+export function validate(p,{titleFor=m=>m.title}={}){const issues=[];const push=(b,message,severity='error')=>issues.push({blockID:b?.id,message,severity});if(!p.blocks.some(b=>b.text?.trim()||['table','image'].includes(b.type)))push(null,'论文尚未装配内容');for(const b of p.blocks){
  if(b.emptyStarter&&!b.text?.trim()&&!b.materials.length)continue;
- if(b.type==='placeholder'||(!b.text?.trim()&&!['table','image','citation'].includes(b.type)))push(b,'有待填写的内容');
+ if(b.type==='placeholder'||(!b.text?.trim()&&!['table','image','citation'].includes(b.type)))push(b,pendingLabel(p,b,titleFor),!b.text?.trim()&&['paragraph','list','heading','placeholder'].includes(b.type)?'warning':'error');
  if(b.claim&&!b.materials.length)push(b,'论点缺少来源');
  if(['stale','conflict'].includes(b.review))push(b,'来源或数据已变化，需要重新核验');
  if(b.materials.some(x=>!p.materials.some(m=>m.id===x.id)))push(b,'关联素材不存在');
@@ -54,6 +57,11 @@ export function validate(p){const issues=[];const push=(b,message,severity='erro
  if(b.type==='table'&&b.table.rows.some(r=>r.some(c=>!c.hidden&&!c.text?.trim())))push(b,'表格有缺失数据');
  if(b.type==='formula'&&!b.text.trim())push(b,'公式为空');
  }return issues;}
+// A partial draft can be saved without turning unfilled material/task cards
+// into authored prose. The editable project keeps every card and source link.
+export function manuscriptExportSnapshot(project){
+ const copy=clone(project);copy.blocks=copy.blocks.filter(block=>block.text?.trim()||!['paragraph','list','heading','placeholder'].includes(block.type));return copy;
+}
 export function validateProposal(p,b,value){
  if(typeof value.text!=='string'||!value.text.trim()||value.text.length>16000)throw Error('AI 返回的修改内容无效');
  if(b.locked)throw Error('此段已锁定');protectEdit(b.text,value.text);

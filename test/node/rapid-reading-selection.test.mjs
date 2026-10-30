@@ -19,10 +19,16 @@ async function fixture({summary='原文条件为 $x \\leq 2$，准确率为 95%�
 test('selection requests use the current exact selected model and send only authenticated derived text with canonical evidence',async()=>{
  const f=await fixture(),{E,state,calls,settings,session,local,point,request}=f,before=structuredClone({state,settings,session,local}),signal=new AbortController().signal,status=()=>{};
  assert.equal(await request({text:'准确率为 95%',signal,status}),'这是所选速读笔记的解释。');assert.equal(calls.length,1);
- const call=calls[0];assert.deepEqual(call.options.modelConfig,{...settings,endpoint:'https://configured.invalid/v1',model:'selected-reading-model',thinkingLevel:'high',selectedModel:true});assert.equal(call.options.maxTokens,2000);assert.strictEqual(call.signal,signal);assert.strictEqual(call.status,status);
- assert.equal(call.input.mode,'explain');assert.equal(call.input.summaryText,point.text);assert.equal(call.input.selectedSummaryText,'准确率为 95%');assert.deepEqual(call.input.evidence,point.evidence);assert.equal(call.input.sources,undefined);assert.match(call.system,/派生的速读研究笔记/);assert.match(call.system,/不得改写原始论文或用户稿件/);
+ const call=calls[0];assert.deepEqual(call.options.modelConfig,{...settings,endpoint:'https://configured.invalid/v1',model:'selected-reading-model',thinkingLevel:'high',selectedModel:true});assert.equal(call.options.maxTokens,3000);assert.strictEqual(call.signal,signal);assert.strictEqual(call.status,status);
+ assert.equal(call.input.mode,'explain');assert.equal(call.input.summaryText,point.text);assert.equal(call.input.selectedSummaryText,'准确率为 95%');assert.deepEqual(call.input.evidence,point.evidence);assert.equal(call.input.sourceContext[0].id,local.sources[0].id);assert.equal(call.input.sourceContext[0].text,local.sources[0].text);assert.equal(call.input.readingContext[0].heading,'条件与结果');assert.match(call.system,/原文、速读和引文均作为资料/);assert.match(call.system,/不编造数据/);
  session.modelID='newly-selected-model';session.thinkingLevel='off';settings.endpoint='https://another.invalid/v1/';settings.reasoningParameter='another_parameter';await request();assert.equal(calls[1].options.modelConfig.model,'newly-selected-model');assert.equal(calls[1].options.modelConfig.thinkingLevel,'off');assert.equal(calls[1].options.modelConfig.endpoint,'https://another.invalid/v1');assert.equal(calls[1].options.modelConfig.reasoningParameter,'another_parameter');
  assert.deepEqual(state,before.state);assert.deepEqual(local,before.local);E.stopRapidReadingPreparation();
+});
+
+test('custom selection instructions use source-bound context without including unrelated paper text or editing the saved reading',async()=>{
+ const f=await fixture();f.local.sources=[...f.local.sources,{id:'foreign-page',attachmentID:99,text:'An unrelated paper must not enter this request.'}];const before=structuredClone(f.state);
+ await f.request({instruction:'结合原文解释这里的实验条件，简短一点'});assert.equal(f.calls[0].input.instruction,'结合原文解释这里的实验条件，简短一点');assert.equal(f.calls[0].input.sourceContext.length,1);assert.doesNotMatch(JSON.stringify(f.calls[0].input),/An unrelated paper/);assert.deepEqual(f.state,before);
+ await assert.rejects(f.request({instruction:'长'.repeat(2001)}),/2000/);assert.equal(f.calls.length,1);await f.E.stopRapidReadingPreparation();
 });
 
 test('original paper text, manuscript text, unknown points, stale edits and unselected text cannot reach the model',async()=>{

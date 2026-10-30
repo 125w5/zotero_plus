@@ -60,6 +60,7 @@
 				throw new Error(`ContextPane.mode must be one of ["item", "notes"], but got ${mode}`);
 			}
 			this._panesDeck.selectedIndex = modeMap[mode];
+			if (mode === 'notes') this._getCurrentNotesContext()?.update();
 		}
 
 		get activeEditor() {
@@ -92,6 +93,7 @@
 			if (prevState === "true" && (!newState || newState === "false")) {
 				let itemContext = this._getItemContext(Zotero_Tabs.selectedID);
 				itemContext?.render();
+				this._getCurrentNotesContext()?.update();
 			}
 		}
 

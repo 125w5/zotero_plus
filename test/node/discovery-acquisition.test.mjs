@@ -1,3 +1,4 @@
+import * as WorkspaceOutputs from '../../chrome/content/zotero/research/shared/workspace-outputs.mjs';
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -48,8 +49,8 @@ test('the embedded workspace opens only its requested page rather than preparing
 
 test('the public acquisition API reports actual resolve/download/save stages and opens only when requested',async()=>{
  const stages=[],opened=[],item={id:11},attachment={id:27,getFilePathAsync:async()=>'/actual/local.pdf'};
- const E={store:{get:()=>({})},library:{localPDF:async value=>value===27?attachment:null},importAcademic:async()=>({id:item.id}),requestProvider:async()=>JSON.stringify({best_oa_location:{is_oa:true,pdf_url:'https://example.org/actual.pdf'}})};
- const context=vm.createContext({Zotero:{Research:E,addShutdownListener(){},Items:{getAsync:async()=>item},Reader:{open:async id=>opened.push(id)}},ChromeUtils:{importESModule:url=>url.includes('reference-matcher')?references:{installDiscoveryFeed(){},installJournalSubscriptionTimer}}});
+ const E={workspaceOutputs:{rememberDownload:async()=>{}},store:{get:()=>({})},library:{localPDF:async value=>value===27?attachment:null},importAcademic:async()=>({id:item.id}),requestProvider:async()=>JSON.stringify({best_oa_location:{is_oa:true,pdf_url:'https://example.org/actual.pdf'}})};
+ const context=vm.createContext({Zotero:{Research:E,addShutdownListener(){},Items:{getAsync:async()=>item},Reader:{open:async id=>opened.push(id)}},ChromeUtils:{importESModule:url=>url.includes('workspace-outputs')?WorkspaceOutputs:url.includes('reference-matcher')?references:{installDiscoveryFeed(){},installJournalSubscriptionTimer}}});
  vm.runInContext(await readFile(new URL('../../chrome/content/zotero/xpcom/research/discovery.js',import.meta.url),'utf8'),context);
  E.obtainOpenPaper=async(record,options)=>{assert.equal(record.pdf,'https://example.org/actual.pdf');options.onProgress({stage:'download',text:'正在下载 PDF…'});options.onProgress({stage:'save',text:'正在保存 PDF…'});return{itemID:11,attachmentID:27};};
  const result=await E.obtainPaper({id:'remote',doi:'10.1000/stages'},{open:false,onProgress:value=>stages.push(value.stage)});assert.deepEqual(stages,['lookup','resolve','download','save','saved']);assert.deepEqual(opened,[]);assert.equal(result.path,'/actual/local.pdf');

@@ -87,7 +87,25 @@
 		if(selection?.text && selection.attachmentID){
 			const attachment=await Zotero.Items.getAsync(selection.attachmentID);
 			const docx=attachment.attachmentContentType==='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-			return {sources:[{id:'P1-S',paperKey:E.core.paperKey(papers[0]),label:docx?'DOCX 当前选段':`当前选段 · PDF 第 ${(selection.pageIndex??0)+1} 页`,text:selection.text,uri:Z.uri(attachment,selection.pageIndex),attachmentID:attachment.id,pageIndex:selection.pageIndex,docx}],warnings};
+			const paperKey=E.core.paperKey(papers[0]);
+			sources.push({id:'P1-S',paperKey,label:docx?'DOCX 当前选段':`当前选段 · PDF 第 ${(selection.pageIndex??0)+1} 页`,text:selection.text,uri:Z.uri(attachment,selection.pageIndex),attachmentID:attachment.id,pageIndex:selection.pageIndex,docx});
+			// A selection alone hides symbol definitions and assumptions. Add the
+			// paper metadata and same-page/adjacent paragraphs within a budget.
+			try{
+				const parent=attachment.parentID?await Zotero.Items.getAsync(attachment.parentID):attachment,paper=papers[0]||{};
+				const metadata={title:paper.title||parent?.getField?.('title'),authors:paper.authors,journal:paper.journal,date:paper.year,DOI:paper.doi,abstract:parent?.getField?.('abstractNote')};
+				if(Object.values(metadata).some(Boolean))sources.push({id:'P1-M',paperKey,label:metadata.title||'题录与摘要',text:JSON.stringify(metadata).slice(0,3000),uri:Z.uri(parent||attachment)});
+				if(!docx&&Number.isInteger(selection.pageIndex)){
+					const read=(...path)=>E.store.peek?E.store.peek(...path):E.store.get(...path);
+					const index=read('manuscriptIndex',String(attachment.id)),document=index?.documentKey&&read('manuscriptDocuments',index.documentKey);
+					const selected=String(selection.text).replace(/\s+/g,' ').trim().slice(0,80);let budget=8000;
+					const nearby=(document?.paragraphs||[]).filter(row=>row.sourceText?.trim()&&Math.abs(row.pageIndex-selection.pageIndex)<=1&&!(selected&&row.sourceText.replace(/\s+/g,' ').includes(selected)));
+					nearby.sort((a,b)=>Math.abs(a.pageIndex-selection.pageIndex)-Math.abs(b.pageIndex-selection.pageIndex));
+					for(const [i,row]of nearby.entries()){if(budget<200)break;const text=row.sourceText.slice(0,Math.min(1600,budget));budget-=text.length;sources.push({id:`P1-C${i+1}`,paperKey,label:`选段上下文 · PDF 第 ${row.pageIndex+1} 页`,text,uri:Z.uri(attachment,row.pageIndex),attachmentID:attachment.id,pageIndex:row.pageIndex,position:row.position});}
+				}
+			}
+			catch(_){warnings.push('选段之外的上下文未能读取，回答仅依据选段。');}
+			return {sources,warnings};
 		}
 		let budget = Math.floor(60000 / Math.max(1, papers.length));
 		for (let [index, paper] of papers.entries()) {
@@ -140,7 +158,9 @@
 			try {
 				// Prefer paragraph anchors; fall back to page text, never pretend a
 				// random full-document slice has an exact PDF position.
-				const state=E.store.get(),index=state.manuscriptIndex?.[pdf.id],document=state.manuscriptDocuments?.[index?.documentKey];
+				// Read-only: the paragraphs are filtered and sliced, never mutated.
+				const read=(...path)=>E.store.peek?E.store.peek(...path):E.store.get(...path);
+				const index=read('manuscriptIndex',String(pdf.id)),document=index?.documentKey&&read('manuscriptDocuments',index.documentKey);
 				let paragraphs=document?.paragraphs?.filter(p=>p.sourceText?.trim());
 				if(!paragraphs?.length&&E.runArtifactEngine){
 					try{const extracted=await E.runArtifactEngine({operation:'assets-text',pdf:await pdf.getFilePathAsync()});paragraphs=extracted.pages.map(p=>({sourceText:p.text,pageIndex:p.pageIndex}));}catch(_){/* PDFWorker fallback below */}
@@ -240,14 +260,23 @@
 		await translator.translate();
 		return { text: translator.string, translator: chosen.label };
 	};
+	// Keys are stored by normalized address. Academic translation reads its key
+	// by address alone (reader-results.js), so the chat model and translation on
+	// one address share one key; the settings page says so and asks before one
+	// service's save replaces the other's key.
+	let logins = async (endpoint) => {
+		let all = await Services.logins.getAllLogins();
+		return all.filter(login => login.hostname === 'chrome://easysch' && login.httpRealm === endpoint);
+	};
 	E.credentials = {
-		async all(endpoint) {
-			return (await Services.logins.getAllLogins()).filter(login =>
-				login.hostname === 'chrome://easysch' && login.httpRealm === endpoint);
+		all: logins,
+		async get(endpoint) {
+			return (await logins(endpoint))[0]?.password || '';
 		},
-		async get(endpoint) { return (await this.all(endpoint))[0]?.password || ''; },
 		async set(endpoint, key) {
-			for (let login of await this.all(endpoint)) {
+			// An earlier build kept a second, unread translation key at
+			// endpoint#translation; it goes when this address's key is replaced.
+			for (let login of [...await logins(endpoint), ...await logins(endpoint + '#translation')]) {
 				if (Services.logins.removeLoginAsync) await Services.logins.removeLoginAsync(login);
 				else Services.logins.removeLogin(login);
 			}

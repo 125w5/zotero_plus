@@ -3,7 +3,7 @@ import hashlib, json, os, re, sqlite3, sys, time, uuid, shutil
 from pathlib import Path
 import pymupdf as fitz
 
-VERSION = 'mupdf-assets-16'
+VERSION = 'mupdf-assets-18'
 COVER_VERSION = 'paper-cover-2'
 
 
@@ -11,8 +11,8 @@ def caption_label(text):
     # Springer/BMC separates Fig. 1 and its caption with a typographic space,
     # without a colon/full stop. The capitalized caption start distinguishes
     # these labels from prose such as "Fig. 1 shows ...".
-    match = re.match(r'^\s*((?:Fig(?:ure)?\.?)\s*\d+[a-z]?|(?:TABLE|Table)\s*[\dIVX]+)'
-                     r'(?:[.:]\s*|\s+(?=[A-Z\u3400-\u9fff]))', text)
+    match = re.match(r'^\s*((?:Fig(?:ure)?\.?)\s*(?:[AS]\s*)?\d+[a-z]?|(?:TABLE|Table)\s*(?:[AS]\s*)?[\dIVX]+)'
+                     r'(?:\s*[.:|｜│]\s*|\s+(?=[A-Z\u3400-\u9fff]))', text)
     return re.sub(r'\s+', ' ', match.group(1)).strip() if match else None
 def emit(kind, **kw):
     print(json.dumps(dict(type=kind, **kw), ensure_ascii=False), flush=True)
@@ -169,10 +169,18 @@ def figure_region(page, cap, drawings, images, blocks):
             if prose(b[4], fitz.Rect(b[:4]))
             and not caption_label(b[4])]
     pending = [r for r in regions if r != nearest]
+    # A shaded title/abstract panel may end just above the first diagram.
+    # Its background is real vector ink, but proximity alone must not merge
+    # the article's long abstract into the figure below it.
+    prose_panels = [fitz.Rect(b[:4]) for b in blocks
+                    if len(b[4].strip()) > 400 and fitz.Rect(b[:4]).height > 65
+                    and not caption_label(b[4])]
     changed = True
     while changed:
         changed = False
         for r in pending[:]:
+            if r.y1 < nearest.y0 and any(r.contains(b) for b in prose_panels):
+                continue
             dx = max(0, r.x0-rect.x1, rect.x0-r.x1)
             dy = max(0, r.y0-rect.y1, rect.y0-r.y1)
             if dx > 24 or dy > 32:
@@ -220,6 +228,50 @@ def figure_region(page, cap, drawings, images, blocks):
             rect.x1 = min(rect.x1, midpoint-2)
     return rect
 
+def table_region(page, cap, drawings, images, blocks):
+    """Locate a ruled table on either side of its printed caption.
+
+    Table captions occur above *and* below tables. Cluster rules by their
+    endpoints so page headers and a neighbouring plot cannot widen the crop.
+    The nearest complete rule group owns the caption, not the next paragraph.
+    """
+    caption = fitz.Rect(cap[:4]); centre = (caption.x0+caption.x1)/2
+    rules = [fitz.Rect(d['rect']) for d in page.get_drawings()
+             if d['rect'].height < 3 and d['rect'].width > 80
+             and d['rect'].x0 < centre < d['rect'].x1
+             and caption.y0-280 < d['rect'].y0 < caption.y1+280]
+    groups = []
+    for rule in sorted(rules, key=lambda r:r.y0):
+        group = next((g for g in groups if abs(g[0].x0-rule.x0)<8
+                      and abs(g[0].x1-rule.x1)<8
+                      and 0 <= rule.y0-g[-1].y1 <= 55
+                      and not g[-1].y1 <= caption.y0 <= rule.y0), None)
+        if group is None: groups.append([rule])
+        else: group.append(rule)
+    candidates = []
+    for group in groups:
+        if len(group)<2: continue
+        top, bottom = min(r.y0 for r in group), max(r.y1 for r in group)
+        gap = caption.y0-bottom if bottom<=caption.y0 else top-caption.y1 if top>=caption.y1 else -1
+        if not 0<=gap<=45 or bottom-top>260: continue
+        rect = fitz.Rect(min(r.x0 for r in group)-4,top-3,max(r.x1 for r in group)+4,bottom+4)
+        # Do not let padding include the caption itself.
+        if bottom<=caption.y0: rect.y1=min(rect.y1,caption.y0-.5)
+        else: rect.y0=max(rect.y0,caption.y1+.5)
+        candidates.append((gap,rect))
+    if candidates:
+        return min(candidates,key=lambda item:item[0])[1] & page.rect
+    # Borderless or raster tables still use graphic geometry, from either
+    # side. A conservative fallback remains explicitly marked for review.
+    graphics=[fitz.Rect(r) for r in drawings]+[fitz.Rect(i['bbox']) for i in images]
+    graphics=[r for r in graphics if r.width>40 and r.height>12 and r.x0<centre<r.x1
+              and (0<=caption.y0-r.y1<=45 or 0<=r.y0-caption.y1<=45)]
+    if graphics:
+        rect=min(graphics,key=lambda r:min(abs(caption.y0-r.y1),abs(r.y0-caption.y1)))
+        return (rect+(-3,-3,3,3)) & page.rect
+    return fitz.Rect(caption.x0,caption.y1+3,caption.x1,min(page.rect.height-25,caption.y1+173))
+
+
 _EQUATION_NUMBER = re.compile(r'^\s*\((\d{1,3}[a-z]?)\)\s*$', re.I)
 _MATH_FONT = re.compile(r'(?:CM(?:MIB|MI|BSY|SY|EX|BX|R)\d|MS[AB]M\d|math|symbol)', re.I)
 
@@ -230,7 +282,9 @@ def _math_block(block):
              if not _EQUATION_NUMBER.fullmatch(s['text'])]
     text = ' '.join(s['text'] for s in spans)
     if not text.strip():
-        return False
+        # TeX extension fonts encode visible braces as CR/FF glyph codes.
+        # They must remain in the visual crop, even though strip() is empty.
+        return any(s['text'] and _MATH_FONT.search(s.get('font','')) for s in spans)
     total = sum(len(s['text'].strip()) for s in spans)
     mathematical = sum(len(s['text'].strip()) for s in spans
                        if _MATH_FONT.search(s.get('font', '')))
@@ -499,7 +553,9 @@ def formula_regions(page, layout=None, mask_regions=None):
                 continue
             if crop.y0 < bound.y1 <= region.y0:
                 crop.y0=min(region.y0,bound.y1+.3)
-            if region.y1 <= bound.y0 < crop.y1:
+            # Font boxes of a number and the following prose can overlap by a
+            # fraction of a point despite their ink being on separate rows.
+            if region.y1-.75 <= bound.y0 < crop.y1:
                 crop.y1=max(region.y1,bound.y0-.3)
         text = '\n'.join(''.join(s['text'] for line in b['lines'] for s in line['spans'])
                          for b in sorted(chosen, key=lambda b:(b['bbox'][1], b['bbox'][0])))
@@ -795,32 +851,8 @@ def index(request, cache):
                     rect=figure_region(page,cap,drawings,images,blocks)
                     candidates.append((rect,'figure',label,cap[4].strip(),True,any(rect.intersects(r) for r in drawings)))
                     continue
-                x0,x1=cap[0],cap[2]
-                # Academic three-rule tables have horizontal rules, often no
-                # vertical borders. Do not mistake the next figure for a table.
-                rules=[d['rect'] for d in page.get_drawings() if d['rect'].height<3 and d['rect'].width>80 and cap[3]<=d['rect'].y0<cap[3]+240 and d['rect'].x0<(x0+x1)/2<d['rect'].x1] if is_table else []
-                if rules:
-                    first=min(rules,key=lambda r:r.y0)
-                    aligned=[r for r in rules if abs(r.x0-first.x0)<8 and abs(r.x1-first.x1)<8]
-                    if len(aligned)>=2:
-                        rect=fitz.Rect(first.x0-4,first.y0-3,first.x1+4,max(r.y1 for r in aligned)+4)
-                        candidates.append((rect,'table',label,cap[4].strip(),True,True));continue
-                relevant=[fitz.Rect(r) for r in drawings]+[fitz.Rect(i['bbox']) for i in images]
-                relevant=[r for r in relevant if r.width>12 and r.height>12 and r.x1>x0 and r.x0<x1 and ((cap[3]<=r.y0<cap[3]+260) if is_table else (cap[1]-300<r.y1<=cap[1]+3))]
-                if relevant:
-                    nearest=min(relevant,key=lambda r:abs((r.y0-cap[3]) if is_table else (cap[1]-r.y1)))
-                    relevant=[r for r in relevant if r.y0<nearest.y1+8 and r.y1>nearest.y0-8]
-                    rect=fitz.Rect(relevant[0])
-                    for r in relevant[1:]: rect |= r
-                    rect += (-5,-5,5,5)
-                    # Include axis labels between the vector boundary and caption.
-                    if not is_table: rect.y1=max(rect.y1,cap[1]-3)
-                else:
-                    # A conservative proposed crop, explicitly pending user confirmation.
-                    top=max(25,cap[1]-200) if not is_table else cap[3]+3
-                    bottom=cap[1]-3 if not is_table else min(page.rect.height-25,top+170)
-                    rect=fitz.Rect(x0,top,x1,bottom)
-                candidates.append((rect,'table' if is_table else 'figure',label,cap[4].strip(),True,any(rect.intersects(r) for r in drawings)))
+                rect=table_region(page,cap,drawings,images,blocks)
+                candidates.append((rect,'table',label,cap[4].strip(),True,any(rect.intersects(r) for r in drawings)))
             formula_masks={}
             # Preserve-spans extraction used for caption typography splits a
             # sentence into individual font spans. Formula ownership needs the

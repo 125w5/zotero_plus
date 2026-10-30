@@ -40,7 +40,7 @@ describe('Compact research surfaces', function () {
  it('opens filters inside search in both material views without replacing input nodes',async()=>{
   const frame=win.document.getElementById('manuscript-'+project.id),doc=frame.contentDocument;
   await wait(()=>doc.getElementById('material-search'));const input=doc.getElementById('material-search'),wrap=input.closest('.compact-search-field');assert.exists(wrap);assert.isTrue(wrap.querySelector('.search-filter-popover').hidden);wrap.querySelector('button').click();assert.isFalse(wrap.querySelector('.search-filter-popover').hidden);
-  await E.notebook.open(project.id);const notebook=win.document.getElementById('research-notebook-'+project.id);await wait(()=>notebook.contentWindow.NotebookUI?.ready);const nd=notebook.contentDocument,search=nd.getElementById('search');assert.exists(search.closest('.compact-search-field'));assert.exists(nd.querySelector('.compact-select-all input'));
+  await E.notebook.open(project.id);const notebook=win.document.getElementById('research-notebook-'+project.id);await wait(()=>notebook.contentWindow.NotebookUI?.ready);const nd=notebook.contentDocument,search=nd.getElementById('search'),field=search.closest('.compact-search-field');assert.exists(field);const filters=field.querySelector('.search-filter-popover');assert.isTrue(filters.hidden);field.querySelector('.search-filter-toggle').click();assert.isFalse(filters.hidden,'素材库筛选在搜索框内展开');assert.exists(filters.querySelector('#source-filters'));
   await E.notebook.update(project.id,{query:'卷积神经网络'});assert.equal(nd.getElementById('search'),search);results.push('两种素材视图共用折叠筛选；查询更新保留搜索输入节点');
  });
  it('supports page addition and context menus on non-paper tabs',async()=>{

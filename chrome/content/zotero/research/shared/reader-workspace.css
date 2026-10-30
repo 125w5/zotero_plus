@@ -8,10 +8,10 @@
  --ui-shadow:0 2px 7px var(--es-read-shadow),inset 0 1px var(--es-read-highlight);--ui-glass:var(--es-read-surface);
  --bg:var(--es-read-tray);--surface:var(--es-read-surface);--soft:var(--es-read-tray);--line:var(--es-read-line);--text:var(--es-read-ink);--muted:var(--es-read-muted);--selected:var(--es-read-selection);
  --assembly-bar:var(--es-read-tray);--assembly-tray:var(--es-read-tray);--assembly-control:var(--es-read-surface);--assembly-border:var(--es-read-line);--assembly-shadow:var(--es-read-shadow);--assembly-highlight:var(--es-read-highlight);
- color:var(--es-read-ink);font-family:system-ui,'Microsoft YaHei',sans-serif;
+ color:var(--es-read-ink);font-family:var(--ui-font);
 }
 body{color:var(--es-read-ink);background:var(--es-read-tray)}
-body :is(button,input,select,textarea){font-family:system-ui,'Microsoft YaHei',sans-serif}
+body :is(button,input,select,textarea){font-family:var(--ui-font)}
 body :is(button,input,select,textarea):focus-visible{outline:2px solid #829cb5;outline-offset:2px}
 body :is(.card,.project-card,.preparation-input-card,.plan-content-card,.plan-empty-card,.plan-result-tabs>button,.project-create,.material-origin-card,.material-explanation-editor,.module-detail-options,.workflow-journal,.resource-entry){
  border-radius:var(--es-read-radius);border-color:var(--es-read-line);background:var(--es-read-surface);background-clip:padding-box;color:var(--es-read-ink);box-shadow:var(--ui-shadow);backdrop-filter:none;isolation:isolate;
@@ -22,9 +22,19 @@ body :is(.plan-result-tabs>button,.resource-actions>button,.resource-toolbar>but
 body :is(.preparation-input-card,.plan-content-card,.plan-empty-card){border-radius:10px}
 body :is(.research-scope-fields,.material-research-filters) :is(input,select){background:var(--es-read-surface);border-color:var(--es-read-line);color:var(--es-read-ink);border-radius:8px}
 body :is(.resource-entry,.plan-content-card,.material-origin-card) h3{font-size:14px;line-height:1.6}
-html[data-appearance] #left-tabs>button{border-radius:7px;font:13px/1.5 system-ui,'Microsoft YaHei',sans-serif;color:var(--es-read-muted)}
+html[data-appearance] #left-tabs>button{border-radius:7px;font:13px/1.5 var(--ui-font);color:var(--es-read-muted)}
 html[data-appearance] #left-tabs>button.active{background:var(--es-read-selection);border-color:var(--es-read-line);box-shadow:none;color:var(--es-read-ink)}
 html[data-appearance] :is(#left,#right,#sources,#artifacts){background:var(--es-read-tray);border-color:var(--es-read-line)}
 html[data-appearance] :is(.material-inline-detail,.material-description,.material-explanation-body,.material-local-comment){color:var(--es-read-ink)}
 html[data-appearance] :is(.material-origin-card,.material-explanation-editor,.module-detail-surface,.assembly-writing-result){border-radius:10px;background:var(--es-read-surface);background-clip:padding-box;box-shadow:var(--ui-shadow);backdrop-filter:none}
 html[data-appearance] .material-local-comment{border-radius:10px;background:var(--es-read-surface);box-shadow:0 2px 7px var(--es-read-shadow)}
+/* Polish the existing chrome only. Keep every pane, action and conversation
+   surface in place; manuscript prose and PDF/note contents are not targeted. */
+html[data-appearance] .workspace>header{background:var(--ui-card);border-bottom-color:var(--ui-border);box-shadow:inset 0 1px var(--ui-glint)}
+html[data-appearance] .workspace>header h1{font-weight:500;letter-spacing:0}
+html[data-appearance] .rail,
+html[data-appearance] .agent-workbench .agent-sources{background:var(--ui-card);border-color:var(--ui-border)}
+html[data-appearance] .rail nav button{border-radius:7px}
+html[data-appearance] .workbench-home-heading button{border-radius:7px;border-color:var(--ui-border);box-shadow:0 1px 2px var(--es-read-shadow),inset 0 1px var(--ui-glint)}
+html[data-appearance] body.library-embedded :is(.collection-search-form,.workbench-home-search){border-radius:10px;background:var(--ui-card);box-shadow:0 1px 3px var(--es-read-shadow),inset 0 1px var(--ui-glint)}
+html[data-appearance] body.library-embedded .collection-search-form>button{border-radius:7px}

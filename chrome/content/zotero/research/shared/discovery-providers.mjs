@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
+import {discoveryDateRange} from './discovery-dates.mjs';
 // Alternate providers expose publication metadata. A full-text link alone is
 // not evidence that a publisher PDF is open access: Crossref also indexes TDM.
 const cleanText=value=>String(value||'').replace(/<[^>]*>/g,' ').replace(/&(?:amp|lt|gt|quot|apos);/g,value=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'"}[value])).replace(/\s+/g,' ').trim();
 const journalKey=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
 const issnKey=value=>String(value||'').replace(/[^0-9x]/gi,'').toUpperCase();
 const isoDate=parts=>Array.isArray(parts)&&Number(parts[0])?parts.slice(0,3).map((part,index)=>String(part).padStart(index?2:4,'0')).join('-'):'';
-const dateStart=({mode,filters,now=Date.now()})=>{if(!filters.years&&mode!=='trends')return'';const start=new Date(now);start.setUTCFullYear(start.getUTCFullYear()-Number(filters.years||1));return start.toISOString().slice(0,10);};
 
 export function discoveryContinuation(provider,cursor,page){return 'discovery-v1:'+encodeURIComponent(JSON.stringify({provider,cursor:String(cursor||''),page:Math.max(1,Number(page)||1)}));}
 export function parseDiscoveryContinuation(value){
@@ -39,18 +39,22 @@ export function europePMCFeedRecord(p){
 export function crossrefFeedURL({mode,query='',filters={},sources=[],cursor,page=1,limit=20,now=Date.now()}={}){
  const parameters=new URLSearchParams({rows:String(Math.min(100,Math.max(5,Number(limit)||20)))}),restrictions=['has-full-text:true'];
  if(query.trim())parameters.set('query',query.trim());if(sources.length)parameters.set('query.container-title',sources.map(source=>source.name||source.issn).filter(Boolean).join(' '));
- if(filters.journalOnly)restrictions.push('type:journal-article');const start=dateStart({mode,filters,now});if(start)restrictions.push('from-pub-date:'+start);
+ if(filters.journalOnly)restrictions.push('type:journal-article');const range=discoveryDateRange(filters,{mode,now});if(range.from)restrictions.push('from-pub-date:'+range.from);if(range.to)restrictions.push('until-pub-date:'+range.to);
  parameters.set('filter',restrictions.join(','));if(cursor!=null||page===1)parameters.set('cursor',cursor||'*');else parameters.set('offset',String((page-1)*limit));
  if(filters.sort!=='relevance'){parameters.set('sort',filters.sort==='citations'||!filters.sort&&mode==='trends'?'is-referenced-by-count':'published');parameters.set('order','desc');}
  return 'https://api.crossref.org/works?'+parameters;
 }
 export function europePMCFeedURL({mode,query='',filters={},sources=[],cursor='*',limit=20,now=Date.now()}={}){
  const clauses=['OPEN_ACCESS:Y','HAS_PDF:Y','NOT PUB_TYPE:"Retracted Publication"','NOT PUB_TYPE:"Retraction of Publication"'];
- // Reserve API query syntax for our own filters. Topic text remains a phrase,
- // so a user's colon or parenthesis cannot remove the OA/PDF restriction.
- if(query.trim())clauses.unshift('"'+query.replace(/["\\]/g,' ').trim()+'"');
+ // Reserve API query syntax for our own filters. Each topic word is a quoted
+ // term joined with AND, so a user's colon or parenthesis cannot remove the
+ // OA/PDF restriction and a multi-word topic does not need the exact phrase.
+ let words=query.trim().split(/\s+/)
+  .map(word=>word.replace(/["\\]/g,''))
+  .filter(Boolean);
+ if(words.length)clauses.unshift(words.map(word=>'"'+word+'"').join(' AND '));
  const issns=sources.map(source=>source.issn).filter(issn=>/^\d{4}-\d{3}[\dX]$/i.test(issn||''));if(issns.length===sources.length&&issns.length)clauses.push('('+issns.map(issn=>'ISSN:'+issn).join(' OR ')+')');
- const start=dateStart({mode,filters,now});if(start)clauses.push('FIRST_PDATE:['+start+' TO 3000-12-31]');
+ const range=discoveryDateRange(filters,{mode,now});if(range.from||range.to)clauses.push('FIRST_PDATE:['+(range.from||'1000-01-01')+' TO '+(range.to||'3000-12-31')+']');
  if(filters.journalOnly)clauses.push('PUB_TYPE:"Journal Article"');
  const parameters=new URLSearchParams({query:clauses.join(' AND '),format:'json',resultType:'core',pageSize:String(Math.min(100,Math.max(5,Number(limit)||20))),cursorMark:cursor||'*'});
  if(filters.sort!=='relevance')parameters.set('sort',filters.sort==='citations'||!filters.sort&&mode==='trends'?'CITED desc':'FIRST_PDATE_D desc');

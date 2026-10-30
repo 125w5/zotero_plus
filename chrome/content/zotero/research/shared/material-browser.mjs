@@ -35,7 +35,7 @@ export function stableMaterialResults(results, priorIDs=[]) {
  return [...ordered,...remaining.values()];
 }
 export function materialResultKey(query,state={}) {
- return JSON.stringify([query||'',state.topic||'',state.type||'',state.categoryID||'',state.sort||'relevance',Object.entries(state.facets||{}).sort(([a],[b])=>a.localeCompare(b))]);
+ return JSON.stringify([query||'',state.topic||'',state.type||'',state.categoryID||'',state.sort||'relevance',state.sourceScope||'',Object.entries(state.facets||{}).sort(([a],[b])=>a.localeCompare(b))]);
 }
 export function captureMaterialViewport(host,list,{edge=host.getBoundingClientRect().top,selector='[data-material]'}={}) {
  const row=[...list.querySelectorAll(selector)].find(node=>node.getBoundingClientRect().bottom>edge);

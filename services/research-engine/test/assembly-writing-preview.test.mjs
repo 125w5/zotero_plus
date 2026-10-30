@@ -8,6 +8,7 @@ import * as Writing from '../../../chrome/content/zotero/research/shared/assembl
 import * as Framework from '../../../chrome/content/zotero/research/shared/writing-framework.mjs';
 import * as Direction from '../../../chrome/content/zotero/research/shared/assembly-direction.mjs';
 import * as M from '../../../chrome/content/zotero/research/shared/manuscript-model.mjs';
+import * as JsonStream from '../../../chrome/content/zotero/research/shared/json-stream.mjs';
 import {requestAssemblyWritingPreview} from '../../../chrome/content/zotero/research/manuscript/assembly-writing-result.mjs';
 const root=new URL('../../../chrome/content/zotero/xpcom/research/',import.meta.url),codes=await Promise.all(['ppt-studio-ai.js','manuscript-writing.js','manuscript-direction.js'].map(file=>readFile(new URL(file,root),'utf8')));
 function fixture(){
@@ -18,7 +19,7 @@ function fixture(){
   requestProvider:async(url,options,timeout,reader)=>{requests.push({url,body:JSON.parse(options.body)});const response=await reader({});afterResponse();return response;}
  };
  const imported={Policy,Writing};
- const ChromeUtils={importESModule:uri=>{if(uri.endsWith('/research-ai-policy.mjs'))return Policy;if(uri.endsWith('/assembly-writing-preview.mjs'))return Writing;if(uri.endsWith('/writing-framework.mjs'))return Framework;if(uri.endsWith('/assembly-direction.mjs'))return Direction;if(uri.endsWith('/topic-materials.mjs')||uri.endsWith('/material-content.mjs'))return {};if(uri.endsWith('/chat-completion.mjs'))return {chatRequiresStreaming:()=>false,readChatCompletion:async()=>({finishReason:'stop',text:JSON.stringify(controlledReply||{variants:[{label:'结果先行',text:'独立批次的准确率为 92%，采样率为 20 Hz；记录了测试条件。',quoteIDs:['W1','W2']},{label:'条件先行',text:'在 20 Hz 的采样条件下，独立批次的准确率为 92%。',quoteIDs:['W1','W2']}]})})};throw Error('Unknown import '+uri);}};
+ const ChromeUtils={importESModule:uri=>{if(uri.endsWith('/research-ai-policy.mjs'))return Policy;if(uri.endsWith('/assembly-writing-preview.mjs'))return Writing;if(uri.endsWith('/writing-framework.mjs'))return Framework;if(uri.endsWith('/assembly-direction.mjs'))return Direction;if(uri.endsWith('/topic-materials.mjs')||uri.endsWith('/material-content.mjs'))return {};if(uri.endsWith('/json-stream.mjs'))return JsonStream;if(uri.endsWith('/chat-completion.mjs'))return {chatRequiresStreaming:()=>false,readChatCompletion:async()=>({finishReason:'stop',text:JSON.stringify(controlledReply||{variants:[{label:'结果先行',text:'独立批次的准确率为 92%，采样率为 20 Hz；记录了测试条件。',quoteIDs:['W1','W2']},{label:'条件先行',text:'在 20 Hz 的采样条件下，独立批次的准确率为 92%。',quoteIDs:['W1','W2']}]})})};throw Error('Unknown import '+uri);}};
  const Zotero={Research:E,getMainWindow:()=>({AbortController}),Utilities:{randomString:()=> 'stable-fixture'}};
  for(const code of codes)vm.runInNewContext(code,{ChromeUtils,Zotero,URL,AbortController});
  return {p,E,requests,write:()=>persisted=structuredClone(p),read:()=>structuredClone(persisted),onResponse:fn=>afterResponse=fn,reply:value=>controlledReply=value};
@@ -34,7 +35,7 @@ test('assembly prose uses the same language contract without framework fields an
  const reply={variants:[{label:'指标先行',text:'独立批次准确率为 92%，采样率为 20 Hz。',quoteIDs:['W1']},{label:'条件先行',text:'在 20 Hz 的采样条件下，独立批次准确率为 92%。',quoteIDs:['W1']}]};f.reply(reply);
  const result=await f.E.manuscripts.previewWriting('p',{capture,modelID:'explicit-model'}),system=f.requests[0].body.messages[0].content,input=JSON.parse(f.requests[0].body.messages[1].content);
  assert.equal(input.mode,'assemble');assert.equal(result.variants.length,2);assert.match(system,/不输出AI身份说明、能力声明、道歉、免责模板/);assert.match(system,/实际不确定性、作者归属和论断强度仍须准确保留/);assert.doesNotMatch(system,/写作速读的narrative|放入questions|status、planned/);assert.deepEqual(f.read(),before);
- f.reply({...reply,variants:reply.variants.map(row=>({...row,quoteIDs:['W404']}))});await assert.rejects(f.E.manuscripts.previewWriting('p',{capture,modelID:'explicit-model'}),/不存在的原文依据/);assert.deepEqual(f.read(),before);
+ f.reply({...reply,variants:reply.variants.map(row=>({...row,quoteIDs:['W404']}))});await assert.rejects(f.E.manuscripts.previewWriting('p',{capture,modelID:'explicit-model'}),error=>error.code==='WRITING_EVIDENCE_GAP');assert.deepEqual(f.read(),before);
 });
 test('real service rejects a concurrently changed source after response instead of offering stale prose',async()=>{
  const f=fixture(),capture=Writing.captureWritingPreview(f.p);f.onResponse(()=>{f.p.materials[0].sourceText+=' Updated by user.';f.p.materials[0].revision++;f.write();});await assert.rejects(f.E.manuscripts.previewWriting('p',{capture,modelID:'explicit-model'}),/来源已变化/);assert.equal(f.read().proposals.length,0);assert.equal(f.read().blocks[0].text,f.p.blocks[0].text);

@@ -18,11 +18,29 @@ export function insertAssemblyPage(project,M,{sectionID,position='after',anchorI
  return {projectID:project.id,sectionID,pageID:marker.id,blockID:marker.id,position};
 }
 
+// The block of a section that already shows a material: its card (a card a
+// re-extraction linked as support counts), otherwise a block that holds it as
+// primary, as the library's 插入正文 does. A paragraph that only cites it
+// (support) does not show the table or figure, so it gets its own card.
+export function assemblyMaterialBlock(project,sectionID,materialID){
+ let rows=(project?.blocks||[]).filter(row=>row.sectionID===sectionID&&row.materials?.some(link=>link.id===materialID));
+ let primary=row=>row.materials.some(link=>link.id===materialID&&(link.role||'primary')==='primary');
+ return rows.find(row=>row.assembly&&primary(row))||rows.find(row=>row.assembly)||rows.find(primary)||null;
+}
+
 export function placeAssemblyMaterial(project,M,material,{sectionID,anchorID='',pageID=''}={}){
  sectionFor(project,sectionID);const anchor=pageID?anchorFor(project,sectionID,pageID):anchorFor(project,sectionID,anchorID);
  if(pageID&&!anchor.explicitPage)throw Error('目标新增页已经变化，请重新创建或选择');
  if(!material?.id||!Number.isInteger(material.revision))throw Error('素材身份或版本不完整，请重新读取');
  let saved=project.materials.find(row=>row.id===material.id);if(saved&&saved.revision!==material.revision)throw Error('素材已变化，请重新读取后再加入装配');
+ // Inserting a material into a section that already carries it selects that
+ // block: a retry or a repeated request adds no second card.
+ const linked=assemblyMaterialBlock(project,sectionID,material.id);
+ if(linked){
+  if(!saved)project.materials.push(M.clone(material));
+  project.ui||={};project.ui.sectionID=sectionID;project.ui.blockID=linked.id;project.ui.caret=0;
+  return {projectID:project.id,sectionID,pageID:linked.assemblyPageID||'',blockID:linked.id,materialID:material.id,sourceID:'material:'+material.id,reused:true};
+ }
  const addSource=!saved;if(!saved)saved=M.clone(material);
  if(saved.data?.rows?.length&&(!Array.isArray(saved.data.rows)||saved.data.rows.some(row=>!Array.isArray(row)||!row.length||row.length!==saved.data.rows[0]?.length)))throw Error('原素材表格数据不完整，请先修复数据再加入装配');
  let block,index;const reuse=pageID&&anchor.emptyStarter&&!anchor.text?.trim()&&!anchor.materials.length;

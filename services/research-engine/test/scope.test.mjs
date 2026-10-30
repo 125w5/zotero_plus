@@ -1,3 +1,4 @@
+import * as WorkspaceOutputs from '../../../chrome/content/zotero/research/shared/workspace-outputs.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -26,7 +27,7 @@ test('native collection never adds full text or figures to a selected excerpt',a
  const pdf={id:2,key:'PDF',isPDFAttachment:()=>true,getFilePathAsync:async()=>'/paper.pdf',getAnnotations:()=>[]};
  const item={id:1,key:'PAPER',isAttachment:()=>false,getAttachments:()=>[2],getField:()=> 'OUTSIDE ABSTRACT'};
  const E={store:{get:(...keys)=>structuredClone(keys.reduce((value,key)=>value?.[key],state)),update:async fn=>{fn(state);}},library:{selection:()=>[],uri:()=> 'zotero://test'},runArtifactEngine:async()=>({pdfHash:'hash',pages:[{pageIndex:0,text:'PAGE ONE'},{pageIndex:1,text:'OUTSIDE PAGE'}]}),assets:{index:async()=>({assets:[{id:'a',kind:'figure',pageIndex:0},{id:'b',kind:'figure',pageIndex:1}]})}};
- vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/ppt-studio.js',import.meta.url),'utf8'),{Zotero:{Research:E,Utilities:{randomString:()=> 'draft'},Items:{getAsync:async id=>Array.isArray(id)?[pdf]:item}},ChromeUtils:{importESModule:uri=>uri.includes('ppt-scope')?scopeModule:uri.includes('ppt-outline')?outlineModule:model},structuredClone});
+ vm.runInNewContext(await fs.readFile(new URL('../../../chrome/content/zotero/xpcom/research/ppt-studio.js',import.meta.url),'utf8'),{Zotero:{Research:E,Utilities:{randomString:()=> 'draft'},Items:{getAsync:async id=>Array.isArray(id)?[pdf]:item}},ChromeUtils:{importESModule:uri=>uri.includes('workspace-outputs')?WorkspaceOutputs:uri.includes('ppt-scope')?scopeModule:uri.includes('ppt-outline')?outlineModule:model},structuredClone});
  await E.studio.create([{id:1,title:'Paper'}],{mode:'selection',selection:{attachmentID:2,text:'ONLY THIS',pageIndex:0}});
  await E.studio.collect('draft',()=>{});assert.deepEqual(E.studio.get('draft').sources.map(s=>s.text),['ONLY THIS']);assert.equal(E.studio.get('draft').assets.length,0);
  await E.studio.patch('draft',d=>d.scope={mode:'pages',range:'1'});await E.studio.collect('draft',()=>{});assert.deepEqual(E.studio.get('draft').sources.map(s=>s.text),['PAGE ONE']);assert.deepEqual(E.studio.get('draft').assets.map(a=>a.id),['a']);

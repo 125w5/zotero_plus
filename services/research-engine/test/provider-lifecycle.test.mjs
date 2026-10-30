@@ -65,7 +65,7 @@ test('an unsupported chat parameter yields actionable HTTP 400 diagnostics witho
  const sensitive='sk-controlled-secret-must-never-appear';
  const h=setup(async()=>new Response(JSON.stringify({error:{code:'unsupported_parameter',param:'max_tokens',message:'Unsupported parameter max_tokens. Echoed '+sensitive+' at https://private.invalid'}}),{status:400})),cancel=h.external();
  const result=await h.E.requestProvider('https://controlled.invalid/http',{signal:cancel.signal},50).then(()=>null,error=>error);
- assert.equal(result.message,'服务返回 HTTP 400：接口不支持参数 max_tokens，请调整模型兼容设置');assert.equal(result.providerCode,'unsupported_parameter');assert.equal(result.providerParam,'max_tokens');assert.ok(!JSON.stringify(result).includes(sensitive));assert.ok(!result.message.includes('private.invalid'));h.assertClean(cancel);
+ assert.equal(result.message,'服务返回 HTTP 400：接口不支持参数 max_tokens，请换用兼容的模型或接口');assert.equal(result.providerCode,'unsupported_parameter');assert.equal(result.providerParam,'max_tokens');assert.ok(!JSON.stringify(result).includes(sensitive));assert.ok(!result.message.includes('private.invalid'));h.assertClean(cancel);
 });
 test('provider errors with unknown payload details retain only HTTP status',async()=>{
  const h=setup(async()=>new Response(JSON.stringify({error:{code:'custom-private-error',message:'https://private.invalid sk-controlled-secret'}}),{status:400}));

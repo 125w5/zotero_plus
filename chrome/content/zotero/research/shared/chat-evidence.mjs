@@ -4,8 +4,14 @@ export function sourceAliases(source){if(!source||typeof source!=='object')retur
 // turn an exact, unambiguous saved source into a citation; ordinary prose, code,
 // mathematics and unknown/duplicate paper-local IDs remain untouched.
 export function evidenceCitationText(text,sources=[]){
- const aliases=new Map();for(const source of Array.isArray(sources)?sources:[]){for(const id of sourceAliases(source)){if(!/^P\d+-[A-Z]\d+$/u.test(id))continue;const prior=aliases.get(id),key=source.stableID||source.id;aliases.set(id,prior&&(prior.ambiguous||prior.key!==key)?{ambiguous:true}:{source,key});}}
- let fenced=false,math=false;return String(text||'').split('\n').map(line=>{if(/^\s*(?:```|~~~)/u.test(line)){fenced=!fenced;return line;}if(!fenced&&/^\s*(?:\$\$|\\\[|\\\])\s*$/u.test(line)){math=!math;return line;}if(fenced||math||!/^\s*P\d+-[A-Z]\d+(?:[\s,，;；、]+P\d+-[A-Z]\d+)*\s*$/u.test(line))return line;
+ const aliases=new Map();for(const source of Array.isArray(sources)?sources:[]){for(const id of sourceAliases(source)){if(/^\d+$/u.test(id))continue;const prior=aliases.get(id),key=source.stableID||source.id;aliases.set(id,prior&&(prior.ambiguous||prior.key!==key)?{ambiguous:true}:{source,key});}}
+ const resolve=id=>aliases.get(id)?.ambiguous?null:aliases.get(id)?.key;
+ // Chinese models may use fullwidth brackets or several exact IDs in one
+ // bracket. Normalize those saved identities, never arbitrary bare IDs.
+ const normalized=String(text||'').replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|\$\$[\s\S]*?\$\$|(?<!\\)\$(?:\\.|[^$\\])*?(?<!\\)\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|`[^`\n]+`|\[([^\]\n]+)\]|［([^］\n]+)］/gu,(full,ascii,wide)=>{
+  const id=ascii??wide;if(id===undefined)return full;const parts=id.split(/[,，;；]\s*/u).map(value=>value.trim());return parts.every(resolve)?parts.map(value=>'['+resolve(value)+']').join(' '):full;
+ });
+ let fenced=false,math=false;return normalized.split('\n').map(line=>{if(/^\s*(?:```|~~~)/u.test(line)){fenced=!fenced;return line;}if(!fenced&&/^\s*(?:\$\$|\\\[|\\\])\s*$/u.test(line)){math=!math;return line;}if(fenced||math||!/^\s*P\d+-[A-Z]\d+(?:[\s,，;；、]+P\d+-[A-Z]\d+)*\s*$/u.test(line))return line;
   const ids=line.match(/P\d+-[A-Z]\d+/gu);if(ids.some(id=>!aliases.get(id)?.key||aliases.get(id).ambiguous))return line;
   return ids.map(id=>'['+aliases.get(id).key+']').join(' ');
  }).join('\n');
@@ -25,17 +31,27 @@ export function questionForAnswer(messages,message){
 export function answerWithQuestion(messages,message){return {...message,question:questionForAnswer(messages,message)};}
 export function numberedCitationText(message){
  const aliases=new Map();citedSources(message).forEach((source,index)=>{for(const id of sourceAliases(source))aliases.set(id,index+1);});
- return String(message?.text||'').replace(/\[([^\]\n]+)\]/g,(full,id)=>aliases.has(id)?'['+aliases.get(id)+']':full);
+ return evidenceCitationText(message?.text,message?.sources).replace(/\[([^\]\n]+)\]/g,(full,id)=>aliases.has(id)?'['+aliases.get(id)+']':full);
 }
 
 // A paper can provide hundreds of excerpt anchors. They remain separate for
 // navigation, but are not hundreds of different papers in the conversation UI.
 export function sourceGroups(sources){
  const groups=new Map();for(const source of sources||[]){if(!source||typeof source!=='object')continue;
-  const paperID=source.paperItemID||source.anchor?.paperItemID,key=paperID?'paper:'+paperID:source.doi?'doi:'+source.doi:source.paperTitle?'title:'+source.paperTitle:source.stableID||source.id;
+  const paperID=source.paperItemID||source.anchor?.paperItemID,attachmentID=source.attachmentID||source.anchor?.attachmentID,key=paperID?'paper:'+paperID:attachmentID?'attachment:'+attachmentID:source.doi?'doi:'+source.doi:source.paperTitle?'title:'+source.paperTitle:source.stableID||source.id;
   if(!key)continue;if(!groups.has(key))groups.set(key,{key,title:source.paperTitle||source.title||source.label||'来源',sources:[]});groups.get(key).sources.push(source);
  }return [...groups.values()];
 }
+
+// PDF pageIndex is zero-based physical location. Printed labels are independent
+// metadata and must never be inferred from parser IDs, hashes or an offset.
+export function sourcePageMetadata(source={}){
+ const pageIndex=Number.isInteger(source.pageIndex)?source.pageIndex:source.anchor?.pageIndex;
+ if(!Number.isInteger(pageIndex)||pageIndex<0)return {};
+ const label=source.pageLabel??source.anchor?.pageLabel;
+ return {pageIndex,pageNumber:pageIndex+1,pageNumbering:'physical',...(typeof label==='string'&&label.trim()?{pageLabel:label.trim()}:{} )};
+}
+export function sourceLocationLabel(source={}){const page=sourcePageMetadata(source);return page.pageNumber?'PDF 第 '+page.pageNumber+' 页'+(page.pageLabel?' · 页标签 '+page.pageLabel:''):'';}
 
 // Only identities that the retained answer actually cited enter a follow-up
 // request. The complete saved sources remain in the transcript for navigation.

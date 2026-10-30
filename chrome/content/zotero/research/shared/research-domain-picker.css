@@ -1,0 +1,14 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.research-domain-picker{position:relative;display:flex;align-items:center;gap:6px;min-width:0;width:100%}
+.research-domain-picker>select{flex:1;min-width:0;max-width:100%}
+.research-domain-picker>.research-domain-trigger{flex:none;min-height:34px;padding:5px 9px;border:1px solid var(--ui-border,#dce1e8);border-radius:var(--ui-radius-control,8px);background:var(--ui-control-bg,var(--ui-card,#fff));color:var(--ui-secondary,#626b78);font:13px/1.4 var(--ui-font,system-ui);box-shadow:var(--ui-control-shadow);cursor:pointer;white-space:nowrap}
+.research-domain-popup{position:absolute;z-index:30;inset-inline-start:0;top:calc(100% + 9px);box-sizing:border-box;width:390px;max-width:min(80vw,480px);padding:12px;border:1px solid var(--ui-border,#dce1e8);border-radius:var(--ui-radius-panel,12px);background:var(--ui-card,#fff);box-shadow:var(--ui-float-shadow,0 7px 24px #20354b24)}
+.research-domain-popup[hidden]{display:none!important}
+.research-domain-popup>input{box-sizing:border-box;width:100%;min-height:36px;padding:7px 10px;border:1px solid var(--ui-border,#dce1e8);border-radius:var(--ui-radius-control,8px);background:var(--ui-control-bg,var(--ui-tray,#f5f7fa));box-shadow:var(--ui-control-shadow);color:var(--ui-text,#242c38);font:13px/1.5 var(--ui-font,system-ui)}
+.research-domain-status{margin:8px 0;color:var(--ui-secondary,#626b78);font:12px/1.5 var(--ui-font,system-ui)}
+.research-domain-options{display:grid;gap:3px;max-height:250px;overflow:auto}
+.research-domain-popup :is(.research-domain-option,.research-domain-custom,.research-domain-clear){display:block;width:100%;min-height:34px;margin:0;padding:7px 8px;text-align:start;white-space:normal;border:0;border-radius:var(--ui-radius-control,8px);background:transparent;color:var(--ui-text,#242c38);font:13px/1.5 var(--ui-font,system-ui);cursor:pointer}
+.research-domain-popup :is(.research-domain-option,.research-domain-custom):hover{background:var(--ui-hover,#edf2f8)}
+.research-domain-option small{display:block;color:var(--ui-secondary,#626b78);font-size:11px}
+.research-domain-popup>.research-domain-custom{margin-top:7px;color:var(--ui-primary-text,#405e82);background:var(--ui-tray,#f5f7fa)}
+.research-domain-popup>.research-domain-custom[hidden]{display:none}

@@ -58,6 +58,7 @@
   getForScope:(scope,state)=>state?C.conversationForScope(state,scope):clone(C.conversationForScope(view(),scope)),
   subscribe(listener,options={}){listeners.set(listener,options);return()=>listeners.delete(listener);},
   create(fields={},options={}){return change(state=>newSession(state,fields,options),{origin:fields.origin||'workbench',action:'create-draft'});},
+  rename(id,title){const name=String(title||'').replace(/\s+/gu,' ').trim();if(!name||name.length>120)return Promise.reject(Error('请输入 1 至 120 个字符的对话名称。'));return change(state=>{const session=sessionIn(state,id);delete session.isDraft;return C.patchConversation(state,id,{title:name,titleManuallySet:true});},{sessionID:id,action:'rename',fields:['title']});},
   open(fields={},options={}){return change(state=>{
    const scope=C.conversationScope(fields),current=!options.fresh&&C.conversationForScope(state,scope);
    if(current){if(options.activate!==false)state.activeSessionID=current.id;state.scopeSessions[scope]=current.id;return current;}

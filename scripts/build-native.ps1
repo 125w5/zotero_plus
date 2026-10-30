@@ -52,7 +52,12 @@ try {
     Assert-SourceClientClosed
     $env:ZOTERO_TEST = if ($Test) { '1' } else { '0' }
     # Full staging includes submodule resources and the optional native test suite.
-    if ($Incremental) { & $bash app/scripts/dir_build -p w -a x64 }
+    # dir_build's file cache does not detect a switch between a test and a
+    # release package. Force staging when that manifest flag changes.
+    $stageManifestPath = Join-Path $stage '.build-manifest'
+    $sameTestMode = (Test-Path -LiteralPath $stageManifestPath) -and
+        ((Get-Content -LiteralPath $stageManifestPath -Raw) -match ('(?m)^#include_tests=' + $env:ZOTERO_TEST + '\r?$'))
+    if ($Incremental -and $sameTestMode) { & $bash app/scripts/dir_build -p w -a x64 }
     else { & $bash app/scripts/dir_build -p w -a x64 -f }
     if ($LASTEXITCODE -ne 0) { throw 'Native staging failed' }
 }

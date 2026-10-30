@@ -22,18 +22,21 @@ export function journalUpdateURL(journal,{from,page=0}={}){
 // successful retrieval/import; failed items remain retryable on the next run.
 export function installJournalSubscriptions(E){
  let running;
- E.saveJournalSubscription=async value=>{const config=journalSubscription({...E.store.get().settings.journalSubscription,...value});if(config.enabled&&!config.journalIDs.length)throw Error('请选择要追踪的期刊');if(config.enabled&&!config.collectionID)throw Error('请选择论文保存文件夹');if(config.collectionID)await E.resolveAcademicTarget(config);await E.store.update(s=>s.settings.journalSubscription=config);return config;};
+ E.saveJournalSubscription=async value=>{const config=journalSubscription({...(E.store.peek?E.store.peek('settings'):E.store.get().settings).journalSubscription,...value});if(config.enabled&&!config.journalIDs.length)throw Error('请选择要追踪的期刊');if(config.enabled&&!config.collectionID)throw Error('请选择论文保存文件夹');if(config.collectionID)await E.resolveAcademicTarget(config);await E.store.update(s=>s.settings.journalSubscription=config);return config;};
  E.refreshJournalSubscriptions=async({dueOnly=false,signal}={})=>{
-  if(running)return running;const config=journalSubscription(E.store.get().settings.journalSubscription),now=Date.now();
+  if(running)return running;const config=journalSubscription((E.store.peek?E.store.peek('settings'):E.store.get().settings).journalSubscription),now=Date.now();
   if(!config.enabled||dueOnly&&now-config.lastChecked<config.intervalHours*3600000)return{skipped:true,records:[]};
-  running=(async()=>{const target=await E.resolveAcademicTarget(config),previous=E.store.get().journalSubscriptionState||{},done=new Set(previous.importedDOIs||[]),records=[],errors=[];let imported=0,pdf=0,metadata=0;
+  running=(async()=>{const target=await E.resolveAcademicTarget(config),previous=(E.store.peek?E.store.peek('journalSubscriptionState'):E.store.get().journalSubscriptionState)||{},done=new Set(previous.importedDOIs||[]),records=[],errors=[];let imported=0,pdf=0,metadata=0;
    const from=new Date(Math.max(now-31*86400000,config.lastChecked?config.lastChecked-2*86400000:now-7*86400000)).toISOString().slice(0,10);
    for(const journal of TRACKED_JOURNALS.filter(row=>config.journalIDs.includes(row.id))){try{for(let page=0;page<6;page++){
     if(signal?.aborted)throw Object.assign(Error('已取消期刊更新'),{name:'AbortError'});
     const payload=JSON.parse(await E.requestProvider(journalUpdateURL(journal,{from,page}),{signal},12000));if(signal?.aborted)throw Object.assign(Error('已取消期刊更新'),{name:'AbortError'});if(!Array.isArray(payload.message?.items))throw Error('期刊来源返回格式不正确');
     for(const item of payload.message.items){if(signal?.aborted)throw Object.assign(Error('已取消期刊更新'),{name:'AbortError'});const record=journalMetadataRecord(item);if(!record)continue;records.push(record);const key=record.doi.toLowerCase();if(done.has(key))continue;
      try{if(record.pdf){await E.obtainPaper(record,{...target,open:false,signal});pdf++;}else if(config.includeMetadata){await E.importAcademic(record,{...target,select:false});metadata++;}else continue;done.add(key);imported++;}
-     catch(error){if(signal?.aborted)throw error;errors.push({journal:journal.name,title:record.title,message:error.message});}
+     catch(error){if(signal?.aborted)throw error;errors.push({journal:journal.name,title:record.title,message:error.message});
+      // The DOI stays out of `done` so its PDF is retried; a later retry that only
+      // reuses the record filed earlier is not counted as a new save.
+      if(record.pdf&&config.includeMetadata&&await E.importAcademic(record,{...target,select:false}).then(saved=>saved?.existing!==true,()=>false)){metadata++;imported++;}}
     }
     if(payload.message.items.length<50)break;if(page===5)errors.push({journal:journal.name,message:'本次更新达到 300 篇，未推进检查时间；再次刷新继续核对。'});
    }}catch(error){if(signal?.aborted)throw error;errors.push({journal:journal.name,message:error.message});}}

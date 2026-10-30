@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 (function (E) {
-	const A = E.assets = { active: new Map() };
+	const A = E.assets = { active: new Map(), extractorVersion: 'mupdf-assets-18' };
 	const Formula = ChromeUtils.importESModule('chrome://zotero/content/research/shared/formula-research.mjs');
 	const Reading = ChromeUtils.importESModule('chrome://zotero/content/research/shared/evidence-reading-context.mjs');
 	A.recognizeFormula = (asset, options) => Formula.recognizeFormulaSource(E, asset, options);
@@ -28,23 +28,45 @@
 		? 'source:'+asset.pdfHash+':'+asset.pageIndex+':'+asset.bbox.join(','):asset?.id?'id:'+asset.id:null;
 	A.uniqueAssets=assets=>{const output=[],positions=new Map();for(const asset of assets||[]){const key=A.sourceKey(asset),at=key===null?undefined:positions.get(key);if(at===undefined){if(key!==null)positions.set(key,output.length);output.push(asset);}else if(asset.userModified&&!output[at].userModified)output[at]=asset;}return output;};
 	A.isEvidenceAsset=asset=>asset.userModified||asset.evidenceEligible!==false;
+	let backgroundController;const indexJobs=new Map(),indexedSignatures=new Map(),indexEpochs=new Map(),cancelled=()=>Object.assign(Error('已停止整理；已完成内容已保留'),{name:'AbortError'});
+	const newController=()=>{const WindowController=Zotero.getMainWindow()?.AbortController;if(WindowController)return new WindowController();backgroundController||=new Cu.Sandbox(Services.scriptSecurityManager.getSystemPrincipal(),{sandboxName:'EasySch shared PDF assets',wantGlobalProperties:['AbortController']}).AbortController;return new backgroundController();};
+	const reportJob=(job,text)=>{for(const consumer of job.consumers)try{consumer.status(text);}catch(error){Zotero.logError(error);}};
+	const joinJob=(job,status=()=>{},signal)=>{
+		if(signal?.aborted)return Promise.reject(cancelled());
+		if(!signal){job.permanent=true;job.consumers.add({status});return job.promise;}
+		return new Promise((resolve,reject)=>{let settled=false;const consumer={status},finish=(fn,value)=>{if(settled)return;settled=true;signal.removeEventListener('abort',abort);job.consumers.delete(consumer);fn(value);},abort=()=>{finish(reject,cancelled());if(!job.permanent&&!job.consumers.size)job.controller.abort();};job.consumers.add(consumer);signal.addEventListener('abort',abort,{once:true});job.promise.then(value=>finish(resolve,value),error=>finish(reject,error));if(signal.aborted)abort();});
+	};
 	A.index = async (attachmentID, status, signal, force = false) => {
+		if(signal?.aborted)throw cancelled();
 		let item = await Zotero.Items.getAsync(attachmentID);
 		if (!item || item.deleted || !item.getFilePathAsync) throw Error('本地 PDF 附件不存在');
 		// Import/background indexing cannot rely on a visible item pane having
 		// loaded the parent metadata (or even its primary record) already.
 		let paper = item.parentItemID ? await Zotero.Items.getAsync(item.parentItemID) : item;
 		await Promise.all([item.loadDataType('itemData'), paper !== item ? paper.loadDataType('itemData') : null]);
-		let result = await E.runArtifactEngine({ operation: 'assets-index', pdf: await item.getFilePathAsync(), force }, status, signal);
-		const unique=A.uniqueAssets(result.assets);
-		result.excludedAssets=unique.filter(a=>!A.isEvidenceAsset(a));
-		result.assets = unique.filter(A.isEvidenceAsset).map(a => ({ ...a, attachmentID, paperItemID: paper !== item ? paper.id : null, paperTitle: paper.getField('title'),
-			doi: paper.getField('DOI'), authors: paper.getField('firstCreator'), uri: E.library.uri(item, a.pageIndex) }));
-		A.active.set(attachmentID, result); return result;
+		const pdf=await item.getFilePathAsync(),signature=await A.fileSignature(attachmentID),indexKey=attachmentID+':'+signature+':'+!!force;if(signal?.aborted)throw cancelled();
+		// Toolbar, evidence and rapid reading all ask for the same extraction.
+		// A completed, unchanged index needs no new Python process or JSON parse.
+		if(!force&&signature&&indexedSignatures.get(attachmentID)===signature&&A.active.has(attachmentID))return A.active.get(attachmentID);
+		let job=indexJobs.get(indexKey);if(job?.controller.signal.aborted){indexJobs.delete(indexKey);job=null;}
+		if(!job){
+			const epoch=(indexEpochs.get(attachmentID)||0)+1;indexEpochs.set(attachmentID,epoch);
+			job={controller:newController(),consumers:new Set()};indexJobs.set(indexKey,job);
+			job.promise=Promise.resolve().then(()=>{if(job.controller.signal.aborted)throw cancelled();return E.runArtifactEngine({operation:'assets-index',pdf,force},text=>reportJob(job,text),job.controller.signal);}).then(result=>{
+				if(job.controller.signal.aborted)throw cancelled();
+				const unique=A.uniqueAssets(result.assets),indexed={...result,excludedAssets:unique.filter(a=>!A.isEvidenceAsset(a)),assets:unique.filter(A.isEvidenceAsset).map(a=>({...a,attachmentID,paperItemID:paper!==item?paper.id:null,paperTitle:paper.getField('title'),doi:paper.getField('DOI'),authors:paper.getField('firstCreator'),uri:E.library.uri(item,a.pageIndex)}))};
+				// An old request cannot replace a newer explicit refresh/source file.
+				if(indexEpochs.get(attachmentID)===epoch){A.active.set(attachmentID,indexed);indexedSignatures.set(attachmentID,signature);}
+				return indexed;
+			}).finally(()=>{if(indexJobs.get(indexKey)===job)indexJobs.delete(indexKey);});
+		}
+		const result=await joinJob(job,status,signal);if(signal?.aborted)throw cancelled();return result;
 	};
 	A.crop = async (asset, bbox, status, signal) => {
 		let item = await Zotero.Items.getAsync(asset.attachmentID);
 		let result = await E.runArtifactEngine({ operation: 'assets-crop', pdf: await item.getFilePathAsync(), asset, bbox }, status, signal);
+		// User crops change the extracted evidence without changing PDF bytes.
+		indexedSignatures.delete(asset.attachmentID);indexEpochs.set(asset.attachmentID,(indexEpochs.get(asset.attachmentID)||0)+1);
 		return result;
 	};
 	A.page = async asset => {
@@ -62,10 +84,21 @@
 	const stopped = signal => { if (signal?.aborted) throw Error('已停止整理；图片和已完成说明已保留'); };
 	const sourceID = a => 'pdf-image:'+a.pdfHash+':'+a.pageIndex+':'+a.bbox.join(',');
 	const protectedMaterial = m => m.userEdited || ['verified','confirmed'].includes(m.verification);
-	A.materialFor = asset => Object.values(E.manuscripts.assetLibrary()).find(m => m.sourceRecordID === sourceID(asset));
+	let materialRevision,materialIndex;
+	A.materialFor = asset => {
+		const revision=E.store.branchRevision?.('researchMaterials')??E.store.revision;
+		// Store snapshots are detached. Rebuild only when this branch changes,
+		// instead of cloning every paper's material history for each visible card.
+		if(revision===undefined||revision===null){const material=Object.values(E.manuscripts.assetLibraryView?E.manuscripts.assetLibraryView():E.manuscripts.assetLibrary()).find(m=>m.sourceRecordID===sourceID(asset));return material?JSON.parse(JSON.stringify(material)):undefined;}
+		if(!materialIndex||revision!==materialRevision){
+			materialIndex=new Map();for(const material of Object.values(E.manuscripts.assetLibraryView?E.manuscripts.assetLibraryView():E.manuscripts.assetLibrary()))if(material.sourceRecordID&&!materialIndex.has(material.sourceRecordID))materialIndex.set(material.sourceRecordID,material);
+			materialRevision=revision;
+		}
+		const material=materialIndex.get(sourceID(asset));return material?JSON.parse(JSON.stringify(material)):undefined;
+	};
 	A.contextFor = async (asset,{signal}={}) => {
 		stopped(signal);if(!asset?.attachmentID)return [];
-		const state=E.store.get(),index=state.manuscriptIndex?.[asset.attachmentID],document=state.manuscriptDocuments?.[index?.documentKey];
+		const index=E.store.get('manuscriptIndex',String(asset.attachmentID)),document=index?.documentKey?E.store.get('manuscriptDocuments',index.documentKey):undefined;
 		let paragraphs=document?.paragraphs;
 		if(!paragraphs?.length){
 			const item=await Zotero.Items.getAsync(Number(asset.attachmentID));stopped(signal);
@@ -124,7 +157,7 @@
 	// The same PDF can be attached to several papers. Add their anchors in one
 	// workspace update instead of rewriting the complete material store per image.
 	A.retainExistingMaterials = async assets => {
-		const library=Object.values(E.manuscripts.assetLibrary()),bySource=new Map(library.map(m=>[m.sourceRecordID,m]));
+		const library=Object.values(E.manuscripts.assetLibraryView?E.manuscripts.assetLibraryView():E.manuscripts.assetLibrary()),bySource=new Map(library.map(m=>[m.sourceRecordID,m]));
 		const missing=[];
 		for(const asset of assets){
 			const material=bySource.get(sourceID(asset));
@@ -149,7 +182,7 @@
 	};
 	A.saveMaterial = async (asset, status = () => {}, signal, regenerate=false) => {
 		stopped(signal);const old=await A.retainMaterial(asset);
-		if(protectedMaterial(old)||(!regenerate&&old.generationStatus==='complete'&&old.analysisVersion===ANALYSIS))return {cards:[old],reused:1,added:0};
+		if(protectedMaterial(old)||(!regenerate&&old.generationStatus==='complete'))return {cards:[old],reused:1,added:0};
 		try{
 			const record=await A.analyze(asset,status,regenerate,signal);stopped(signal);
 			await E.store.update(s=>{
@@ -160,7 +193,7 @@
 				m.coverage=record.readMode==='vision'?'依据原图、图注与附近正文 · AI 解读，待核验':'仅依据图注与附近正文 · 未读取图片像素';
 				m.generationStatus='complete';m.generationError=null;m.revision++;
 			});
-			return {cards:[E.manuscripts.assetLibrary()[old.id]],added:1,reused:0};
+			return {cards:[E.manuscripts.asset?E.manuscripts.asset(old.id):E.manuscripts.assetLibrary()[old.id]],added:1,reused:0};
 		}catch(error){
 			await E.store.update(s=>{const m=s.researchMaterials[old.id];if(m?.revision===old.revision&&!protectedMaterial(m)){m.generationStatus=signal?.aborted?'pending':'failed';m.generationError=error.message;}});
 			throw error;
@@ -177,37 +210,37 @@
 	};
 	const imageState=async(id,patch)=>{await E.store.update(s=>{s.imageIngestion||={};s.imageIngestion[id]={...s.imageIngestion[id],...patch,updatedAt:new Date().toISOString()};});for(const fn of imageListeners)try{fn(id);}catch(e){Zotero.logError(e);}};
 	A.cancelImages=id=>imageJobs.get(Number(id))?.controller?.abort();
-	A.queueImages=(id,status=()=>{},{changed=false}={})=>{
+	A.queueImages=(id,status=()=>{},{changed=false,signal,force=false}={})=>{
 		id=Number(id);if(shuttingDown)return Promise.resolve();
-		if(imageJobs.has(id)){imageJobs.get(id).dirty||=changed;return imageJobs.get(id).promise;}
+		if(signal?.aborted)return Promise.reject(cancelled());
+		if(imageJobs.has(id)){const existing=imageJobs.get(id);if(!existing.controller.signal.aborted){existing.dirty||=changed;return joinJob(existing,status,signal);}imageJobs.delete(id);}
 		const previous=A.imageState(id);
-		const parseChanged=!!A.active.get(id)?.version&&A.active.get(id).version!==previous?.parseVersion;
-		if(!changed&&!parseChanged&&previous?.status==='complete'&&previous.analysisVersion===ANALYSIS&&previous.selectionVersion===SELECTION)return Promise.resolve(previous);
-		const job={};imageJobs.set(id,job);
+		// Finished evidence belongs to the PDF, not the current extractor,
+		// model or prompt release. Only a changed file or explicit force rebuilds it.
+		const job={controller:newController(),consumers:new Set()};imageJobs.set(id,job);
 		job.promise=imageQueue=imageQueue.catch(()=>{}).then(async()=>{
 			let win=Zotero.getMainWindow();
-			while(!win&&!shuttingDown){await new Promise(resolve=>E.setTimeout(resolve,1000));win=Zotero.getMainWindow();}
-			if(shuttingDown)return;
-			if(changed&&!parseChanged&&previous?.status==='complete'&&previous.analysisVersion===ANALYSIS&&previous.selectionVersion===SELECTION&&previous.fileSignature){
-				const signature=await A.fileSignature(id);
-				if(signature&&signature===previous.fileSignature){await imageState(id,{status:'complete',error:null});return A.imageState(id);}
-			}
-			job.controller=new win.AbortController();await imageState(id,{status:'running',error:null});
-			try{return await A.indexImages(id,status,job.controller.signal);}
+			while(!win&&!shuttingDown&&!job.controller.signal.aborted){await new Promise(resolve=>E.setTimeout(resolve,1000));win=Zotero.getMainWindow();}
+			if(shuttingDown||job.controller.signal.aborted)return;
+			job.signature=await A.fileSignature(id);if(job.controller.signal.aborted)return;
+			if(!force&&previous?.status==='complete'&&job.signature&&job.signature===previous.fileSignature)return previous;
+			await imageState(id,{status:'running',error:null});
+			try{return await A.indexImages(id,text=>reportJob(job,text),job.controller.signal,{force});}
 			catch(error){await imageState(id,{status:shuttingDown?'queued':job.controller.signal.aborted?'partial':'failed',error:error.message});return A.imageState(id);}
-		}).finally(()=>{imageJobs.delete(id);if(job.dirty&&!shuttingDown&&!job.controller?.signal.aborted)A.queueImages(id,()=>{},{changed:true}).catch(e=>Zotero.logError(e));});
+		}).finally(async()=>{if(imageJobs.get(id)===job)imageJobs.delete(id);if(job.dirty&&!shuttingDown&&!job.controller.signal.aborted&&job.signature){const latest=await A.fileSignature(id);if(latest&&latest!==job.signature)A.queueImages(id,()=>{},{changed:true}).catch(e=>Zotero.logError(e));}});
 		// Persist before execution so jobs interrupted by application exit can resume.
-		imageState(id,{status:'queued',error:null}).catch(e=>Zotero.logError(e));return job.promise;
+		if(previous?.status!=='complete')imageState(id,{status:'queued',error:null}).catch(e=>Zotero.logError(e));return joinJob(job,status,signal);
 	};
-	A.indexImages=async(id,status=()=>{},signal)=>{
+	// An explicit refresh must re-extract; otherwise an unchanged file reuses its index.
+	A.indexImages=async(id,status=()=>{},signal,{force=false}={})=>{
 		stopped(signal);const item=await Zotero.Items.getAsync(id);if(!item?.isPDFAttachment()||item.deleted){await imageState(id,{status:'skipped',error:null});return;}
-		const previous=A.imageState(id),result=await A.index(id,status,signal);
+		const previous=A.imageState(id),result=await A.index(id,status,signal,force);
 		// Uncaptioned regions without a verified figure reference stay available
 		// for review, but do not spend model tokens on speculative explanations.
 		const figures=A.uniqueAssets(result.assets.filter(a=>['figure','table','image'].includes(a.kind)&&(a.userModified||a.kind==='table'||a.caption?.trim()||a.references?.length)));
 		// Metadata/annotation notifications do not mean the PDF or analysis changed.
-		const existingBySource=new Map(Object.values(E.manuscripts.assetLibrary()).map(m=>[m.sourceRecordID,m]));
-		if((!previous?.pdfHash||previous.pdfHash===result.pdfHash)&&(!previous?.parseVersion||previous.parseVersion===result.version)&&figures.every(a=>{const m=existingBySource.get(sourceID(a));return m&&(protectedMaterial(m)||m.generationStatus==='complete'&&m.analysisVersion===ANALYSIS);})){
+		const existingBySource=new Map(Object.values(E.manuscripts.assetLibraryView?E.manuscripts.assetLibraryView():E.manuscripts.assetLibrary()).map(m=>[m.sourceRecordID,m]));
+		if((!previous?.pdfHash||previous.pdfHash===result.pdfHash)&&figures.every(a=>{const m=existingBySource.get(sourceID(a));return m&&(protectedMaterial(m)||m.generationStatus==='complete');})){
 			// A reused file may now belong to another paper or attachment. Keep all
 			// source anchors without regenerating or overwriting confirmed content.
 			stopped(signal);let assetIDs=await A.retainExistingMaterials(figures);
@@ -234,7 +267,7 @@
 		for(const [id,state] of Object.entries(E.store.get('imageIngestion')||{}))if(['queued','running'].includes(state.status))A.queueImages(Number(id));
 		Zotero.addShutdownListener(()=>{shuttingDown=true;for(const job of imageJobs.values())job.controller?.abort();});
 	};
-	A.tray = () => E.store.get().assetTray || [];
+	A.tray = () => E.store.get('assetTray') || [];
 	A.select = async asset => {
 		await E.runArtifactEngine({ operation: 'assets-cache-put', key: asset.id, layer: 'manual', pdfHash: asset.pdfHash, protected: true, value: { ...asset, needsReview: false } });
 		await E.store.update(s => { s.assetTray ||= []; if (!s.assetTray.some(a => a.id === asset.id)) s.assetTray.push({ ...asset, needsReview: false }); });

@@ -7,6 +7,11 @@ export const MATERIAL_EXPLANATION_PROMPT = '你只编辑素材的中文说明，
 const explanationDrafts = new WeakMap();
 
 export async function refineMaterialExplanation(E, material, summary, status = () => {}, signal) {
+	const original = material, A = E.manuscripts;
+	await A?.prepareMaterialExclusions?.(A.materialAttachmentIDs?.([material]) || []);
+	const exclusions = A?.materialExclusionSignature?.([original]);
+	material = (A?.filterAutomaticMaterials?.([material], {forAI: true}) || [material])[0];
+	if (!material) throw Error('当前素材已排除，未调用 AI 整理说明');
 	const source = material.fullSourceText || material.sourceText || material.anchor?.sourceText || '';
 	if (!source.trim() && !material.latex?.trim() && !material.imagePath) throw Error('当前素材没有原文文字，请先补充来源再润色');
 	const options = {fresh: true};
@@ -15,6 +20,7 @@ export async function refineMaterialExplanation(E, material, summary, status = (
 		request: '润色并按需补充素材阅读说明', title: material.title,
 		sourceText: source.slice(0, 16000), latex: material.latex || '', summary: summary.slice(0, 12000),
 	}, status, signal, options);
+	if (exclusions !== A?.materialExclusionSignature?.([original])) throw Error('素材排除标记已改变，旧说明未应用，请重新整理');
 	const text = result?.value?.summary;
 	if (typeof text !== 'string' || !text.trim() || text.length > 20000) throw Error('说明返回格式无效');
 	assertExplanationNumbers(text, source, summary, material.latex || '');
@@ -68,7 +74,7 @@ export function renderMaterialExplanationEditor(host, material, {E, onSave = () 
 		}
 		contentValues.push({entry, read});
 	};
-	const stopEdit = () => {aiController?.abort(); for (const dispose of editDisposers.splice(0)) dispose(); editor?.remove(); editor = null; editing = false; dirty = false; drafts.delete(draftKey); editButton.hidden = false; view.hidden = false; contentValues = []; feedback.textContent = '';};
+	const stopEdit = () => {aiController?.abort(); aiController = null; for (const dispose of editDisposers.splice(0)) dispose(); editor?.remove(); editor = null; editing = false; dirty = false; drafts.delete(draftKey); editButton.hidden = false; view.hidden = false; contentValues = []; feedback.textContent = '';};
 	const beginEdit = () => {
 		if (editing) return; const draft = drafts.get(draftKey); editing = true; editButton.hidden = true; view.hidden = true; dirty = Boolean(draft); contentValues = [];
 		editor = el('div', undefined, 'material-explanation-form'); root.insertBefore(editor, feedback);
@@ -84,9 +90,20 @@ export function renderMaterialExplanationEditor(host, material, {E, onSave = () 
 		button('▧', '插入图片文件', async () => {const path = await E.manuscripts.image(); if (path && !disposed && editing) {addBlock({id: 'content-' + Date.now(), type: 'image', imagePath: path, caption: ''}); dirty = true;}}, toolbar);
 		const refine = button('润色说明', '依据原文润色说明，审阅后保存', async () => {
 			if (aiController) {aiController.abort(); return;}
-			aiController = new win.AbortController(); refine.textContent = '停止';
-			try {const result = await refineMaterialExplanation(E, material, summaryInput.value, text => {if (!disposed) feedback.textContent = text;}, aiController.signal); if (!disposed && editing) {summaryInput.value = result; dirty = true; feedback.textContent = '说明已更新，审阅后保存';}}
-			finally {aiController = null; if (refine.isConnected) refine.textContent = '润色说明';}
+			// The reply answers the text that was sent. Lock the field for the
+			// request and never apply the reply over text that changed anyway.
+			let controller = aiController = new win.AbortController(), input = summaryInput, sent = input.value;
+			refine.textContent = '停止'; input.readOnly = true; input.setAttribute('aria-busy', 'true');
+			try {
+				let result = await refineMaterialExplanation(E, material, sent, text => {if (!disposed) feedback.textContent = text;}, controller.signal);
+				if (disposed || !editing || input !== summaryInput) return;
+				if (input.value !== sent) {feedback.textContent = '说明已被修改，润色结果未应用；可重新润色'; return;}
+				input.value = result; dirty = true; feedback.textContent = '说明已更新，审阅后保存';
+			}
+			finally {
+				input.readOnly = false; input.removeAttribute('aria-busy');
+				if (aiController === controller) {aiController = null; if (refine.isConnected) refine.textContent = '润色说明';}
+			}
 		}, toolbar, 'material-refine-button');
 		body = el('div', undefined, 'material-content-edit-list'); editor.append(body);
 		for (const entry of normalizeMaterialContents(draft?.contents || material.contents || [])) addBlock(entry);

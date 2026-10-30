@@ -1,0 +1,379 @@
+{
+  "module": "PDF 阅读器与证据阅读",
+  "auditDate": "2026-10-27",
+  "auditMethod": "依据当前工作区源码整理。本文不是本机安装验收报告；设计意图、源码事实与后续迁移建议分别标明。",
+  "scope": "原文、译文、速读、图表证据、参考文献、原文批注、笔记，以及阅读器共享 AI 对话。只描述当前源码中可追踪的入口，不包含任何账号、API 密钥或文库正文。",
+  "sections": [
+    {
+      "id": "reader-map",
+      "title": "阅读器的区域、来源与基本操作",
+      "lead": "阅读器以当前打开的 PDF 附件为来源。原文画布、速读、译文、图片证据和参考文献都必须绑定这个附件；同一论文的两个 PDF 版本不能只凭父条目相同而混用结果。这里负责阅读已有论文，派生笔记和解释不改写 PDF 文件本身。",
+      "areas": [
+        {"name": "原文画布与原生工具条", "role": "保留 Zotero 的翻页、缩放、查找、选择与标注；工具条另有“译文”和“速读”入口。原始 PDF 的版式和作者字体属于文档内容，不随产品界面字体一起替换。"},
+        {"name": "左侧原生阅读侧栏", "role": "显示页缩略图、目录或批注。它与应用级研究对话的资料栏是不同层级，切论文时应依据当前阅读标签重新绑定。"},
+        {"name": "右侧图片证据与参考文献", "role": "在当前 PDF 附件范围内展示图表或引用条目。列表可以进入详情，再返回列表；点击图片详情本身不会暗中跳转到原文。"},
+        {"name": "页外批注与共享 AI 对话", "role": "批注是叠加在阅读画布外缘的来源标记；对话可在底部、浮动或侧栏中显示。速读或图片详情借用同一个对话组件，关闭后归还原来的位置。"}
+      ],
+      "operations": [
+        {"action": "在文库打开已有本地 PDF，或从来源定位进入阅读器。", "result": "优先复用这个附件已经打开的阅读标签；阅读器未初始化时等待就绪，再进行导航，避免重复开同一附件。", "saved": "打开动作不创建笔记；首次或缓存无效时的后台阅读准备可能调用模型，已有有效文字优先复用。阅读位置由原生阅读器负责。", "state": "附件存在 → 阅读器初始化 → 绑定当前附件 → 准备派生阅读内容。"},
+        {"action": "在原文中拖动选择连续文字，右键选择高亮、下划线、划掉文字、保存笔记或关联其他文献语句。", "result": "选区包含附件 ID、页码、文字、矩形坐标和排序位置。高亮为黄色，下划线为蓝色；删除线通过红色 ink 标记实现，并带删除线标签。", "saved": "选择本身不保存；确认标注后保存为该 PDF 下的原生 annotation。PDF 文件内容不被改写。", "state": "无选区 → 有精确选区 → 可执行来源操作 → 原生批注持久化。"},
+        {"action": "在图片、速读段落、参考文献或笔记中使用明确的“定位原文”操作。", "result": "导航到当前论文的页或来源坐标。参考文献的“定位本文引用”找的是引用发生在当前论文的位置，不会改为打开被引论文。", "saved": "导航不新增文库条目。若要保存内容，须使用保存为笔记或获取公开全文等独立动作。", "state": "派生阅读内容 → 原文来源位置；派生面板按各自关闭规则恢复。"},
+        {"action": "切换到另一篇论文或同一论文的另一个 PDF 版本。", "result": "图片栏和参考文献栏检查附件 ID、阅读 tab ID 以及父条目；不一致时销毁旧面板、取消该面板的未完成工作，再加载新附件。", "saved": "已完成的解释、笔记和会话保留；切换不把旧论文结果复制到新论文。", "state": "旧附件绑定 → 释放面板 → 新附件绑定；过期异步结果不得回填。"}
+      ],
+      "design": [
+        {"point": "来源身份使用 PDF 附件，而不是只使用论文父条目。这对预印本、正式版或重复附件尤其重要。", "basis": "源码事实：paneSource、clearChangedPane 与 renderImagePane/renderReferencePane 同时检查 item、attachment 和 tab。"},
+        {"point": "阅读、派生解释和持久化是三个动作。只打开一个面板不等于创建一份笔记。", "basis": "设计解释：减少文库中的无意副本，并让用户能够先核对再保存。"},
+        {"point": "只读文库、已删除附件、切换后的旧来源或不可编辑附件会阻止写入，不在失效的选区上生成批注。", "basis": "源码事实：readerWriteIssue、assertReaderWritable 与 saveReaderNote 的坐标检查。"}
+      ],
+      "states": [
+        {"state": "本地附件不可用", "behavior": "图片栏显示暂无本地 PDF；速读拒绝没有可读正文的附件。不会把在线题录当成已经读取的全文。"},
+        {"state": "阅读器尚未就绪", "behavior": "复用标签并等待初始化；仍未就绪时给出具体错误，不凭空创建来源坐标。"},
+        {"state": "只读或旧来源", "behavior": "可以阅读；保存批注、笔记的动作被禁用或返回原因。"}
+      ],
+      "flow": ["打开本地 PDF", "等待当前附件就绪", "原文阅读或进入译文／速读／证据", "核对来源", "按需保存为批注、笔记或素材"],
+      "handoff": ["保持 Zotero 原生阅读框架；新增功能应作为阅读入口或叠加层接入。", "所有面板和异步回调都携带 attachmentID，涉及标签时同时核对 tabID。", "原文字体与产品界面字体分开管理，不能通过全局 CSS 覆盖论文页内文字。"],
+      "limitations": ["此处列出的原生翻页和标签行为以现有 Zotero 阅读器为基础，本文未重新验收所有原生快捷键。", "选区精确性取决于 PDF 的文字层和几何信息；扫描件没有可靠坐标时不能假设可以逐字写回。"],
+      "sources": [
+        {"path": "chrome/content/zotero/xpcom/research/reader-tools.js", "symbol": "readerWriteIssue / openReaderReady / readerSelection / annotateSelection", "line": 8},
+        {"path": "chrome/content/zotero/xpcom/research/reader-panes.js", "symbol": "paneSource / clearPane / clearChangedPane", "line": 9},
+        {"path": "chrome/content/zotero/xpcom/research/reader-results.js", "symbol": "installReaderContext", "line": 432}
+      ]
+    },
+    {
+      "id": "reader-translation",
+      "title": "选区机翻、整篇译文与人工修订",
+      "lead": "选区机翻和整篇译文是两条不同的使用路径。选区机翻快速回答当前选中的原文；整篇译文在打开论文时启动预处理，以连续页面显示中文，并保留公式、图像和原文位置。两者的模型路由和保存范围不同，不能把“机翻”按钮悄悄变成一次大模型请求。",
+      "areas": [
+        {"name": "选择文字后的机翻浮层", "role": "包含译文、取消、重试、机翻、保存为笔记和划掉文字。默认在选择完成后约 180 ms 启动；关闭浮层会取消其未完成请求。"},
+        {"name": "工具条“译文”", "role": "显示整篇的连续中文页面，可切换译文和原文对照布局，与 PDF 同步滚动。它读取同一个附件的预处理结果，滚动不是逐页发起网络翻译。"},
+        {"name": "译文编辑和保留译文", "role": "双击已完成的可翻译段落进入人工编辑。公式节点锁定；因原文版本或位置变化不能安全写回的旧稿进入保留译文，不被静默丢弃。"}
+      ],
+      "operations": [
+        {"action": "在 PDF 中选中文字，等待机翻，或点击“机翻／重试”。", "result": "当前浮层调用 quickTranslate 且明确禁止模型后备；已配置 Azure 区域时使用 Azure，否则可用已配置的有道。超时、取消和失败有不同状态，失败后保留原文并可重试。", "saved": "成功译文可以进入按文本和供应商标识的 translationCache，内存和持久缓存各限制为 200 条。只有再点保存为笔记，才创建文库笔记及来源标记。", "state": "pending → complete；或 cancelled／timeout／error → retry。请求上限为 30 秒，单次原文最多 5000 字符。"},
+        {"action": "点击工具条“译文”，切换“译文／对照”、前后页或适应宽度。", "result": "在连续页面中阅读中文。公式以原式图像或受保护节点保留，引用题录等不可翻译区域保留原文。对照布局使用共同页面几何同步两侧。", "saved": "版式、原文索引和每页译文分别缓存；每页译文保存在产品数据目录的 translation-cache 下。布局偏好保存在 settings.readerTranslationLayout。", "state": "本地数据就绪后立即呈现可用内容；网络翻译继续通过 observeTranslation 更新页面。每批最多 8 段或约 4000 原文字符，完成一批即保存。"},
+        {"action": "双击中文段落，编辑后点保存或按 Ctrl+Enter；Esc 取消。", "result": "只修改当前段落的本地译文。编辑器阻止删除或挪动公式节点；保存时再核对文档标识、原文内容和段落修订号。", "saved": "人工译文写入该页缓存并增加 revision；输入约 700 ms 后保存草稿到 translationDrafts。取消编辑删除本段草稿，关闭面板前保留未提交草稿。", "state": "完成译文 → editing → saving → userEdited；冲突或公式损坏时保留草稿并说明原因。"},
+        {"action": "右键译文，选择定位原文、保存为笔记或保存为批注。", "result": "来源位置使用原文段落几何；保存为批注把中文放进原文标记的 comment，而不是把中文逐词坐标伪造为英文逐词坐标。", "saved": "保存为笔记创建原生笔记和关联高亮；保存为批注创建原生 annotation。仅编辑译文不会自动写入原文批注。", "state": "译文可读 → 明确保存 → 来源坐标校验 → 原生文库对象。"},
+        {"action": "页面翻译失败后点击当前页重试，或打开“保留译文”。", "result": "重试只提高失败页的优先级并复用已有完整段落。保留译文列出旧内容、页码和无法回绑的原因，可复制后核对。", "saved": "人工稿和已完成批次保留；不会用重试结果覆盖更新的人工稿。", "state": "failed → queued → 部分或完成；原文变化 → recoveryEdits／translationDrafts → 人工核对。"}
+      ],
+      "design": [
+        {"point": "整篇、素材和引用摘要翻译使用 purpose=document／material，默认 translationModel 为 deepseek-flash、默认端点为 DeepSeek；实际模型可由设置改变。", "basis": "源码事实：translationConfig、quickTranslate 与 translateBatch。默认值不代表供应商一定提供这个模型，也不代表已经配置凭据。"},
+        {"point": "当前选区浮层明确 allowModelFallback=false；通用 quickTranslate 的其他调用者仍可允许模型后备。不能把这两种调用混为一个统一承诺。", "basis": "源码事实：renderQuickTranslation 的严格机翻路径。"},
+        {"point": "译文验证检查数字、数学关系、公式占位符、引用编号、未翻译长句和过短输出；用户编辑稿采用较窄的公式完整性校验并保留原文版本。", "basis": "源码事实：translationQualityIssue、goodRecord、saveTranslationEdit。"}
+      ],
+      "states": [
+        {"state": "供应商未配置", "behavior": "选区机翻说明需要配置 Azure Translator，不自动升级到收费大模型。整篇译文的模型路径按已保存设置返回实际错误。"},
+        {"state": "原文或版式升级", "behavior": "旧人工译文优先回绑相同原文；不能确认的人工稿移到 recoveryEdits，自动译文重新核验。"},
+        {"state": "后台回答晚于人工保存", "behavior": "页面保存队列合并较新的 userEdited 和 revision，旧网络结果不能覆盖它。"}
+      ],
+      "flow": ["快速了解一句话：选择原文 → 机翻 → 核对 → 可选保存", "连续阅读：打开论文即预处理 → 译文／对照 → 本地页更新 → 双击修订 → 保存或留草稿"],
+      "handoff": ["不要在界面里承诺 Azure 免费额度；额度、区域和账户计费属于服务商配置。", "保留机翻与学术翻译的路由差异，重命名按钮也不能改变其实际调用方式。", "译文和原文共同使用 PDF 几何；缩放、旋转、侧栏宽度变化后必须重新计算布局，关闭时恢复原生缩放与滚动模式。"],
+      "limitations": ["译文有质量检查，但不能因此视为人工核对后的准确翻译。", "整篇翻译显示时允许页面逐步完成；本轮“图表与速读准备后统一展示”的规则不能误套为整篇译文必须等所有网络请求结束。", "只有可读取的本地 PDF 能准备版式；PDF 的字符粘连、扫描质量仍会影响译文。"],
+      "sources": [
+        {"path": "chrome/content/zotero/xpcom/research/reader-results.js", "symbol": "translationConfig / quickTranslate", "line": 7},
+        {"path": "chrome/content/zotero/xpcom/research/reader-results.js", "symbol": "openReaderTranslation / startEdit / renderQuickTranslation", "line": 69},
+        {"path": "chrome/content/zotero/xpcom/research/reader-results.js", "symbol": "renderQuickTranslation run", "line": 410},
+        {"path": "chrome/content/zotero/xpcom/research/manuscript-translation.js", "symbol": "savePage / prepareTranslation / saveTranslationEdit", "line": 209},
+        {"path": "chrome/content/zotero/xpcom/research/providers.js", "symbol": "translateAzure", "line": 193}
+      ]
+    },
+    {
+      "id": "reader-rapid-reading",
+      "title": "快速概览与详细速读的分工",
+      "lead": "速读是一篇有原文依据、按论文推进顺序组织的详细中文研究笔记。顶部“研究问题、方法与原理、结果与证据、边界与要点”负责几十秒内了解重点，使用独立 brief；正文负责解释机制、实验设置、比较和结论。短概览不能再被复制为详细稿，图片也不应因进入速读而消失。",
+      "areas": [
+        {"name": "速读标题与工具条", "role": "显示论文题名、作者、准备状态，以及同一风格的“返回原文”和“显示公式／隐藏公式”。默认隐藏公式细节，保留文字解释、图和表。"},
+        {"name": "概览按钮与就地概览区", "role": "点击某类只在按钮下方的概览区显示对应 brief；再点当前类别可收起。不会把本次选择的说明转移到右栏。"},
+        {"name": "连续详细正文与图表", "role": "按原文各节和来源页顺序组织，正文段落保留证据对应关系。复用图片证据已有的完整原图、简要中文说明和长解读，不重新制作一套截图。"}
+      ],
+      "operations": [
+        {"action": "点击原文工具条“速读”。", "result": "关闭译文冲突视图，创建速读阅读层并准备当前附件。来源和图表加载完成、图片解码后再呈现详细稿，避免半成品原文、损坏图片或跳动布局。", "saved": "自动速读保存在 rapidReads；全文来源快照保存在 rapidReadSources；文档到现有速读的指针保存在 rapidReadDocuments。", "state": "读取本地论文 → 准备图表和详细稿 → 校验证据 → 解码图片 → 显示速读；失败时显示可重试的原因。"},
+        {"action": "点击顶部某个概览类别。", "result": "显示这一角色下的独立简要说明。详细正文继续在原处，概览不是另一份全文，也不会复制正文整段。", "saved": "brief 是自动速读记录的一部分；按钮展开状态属于当前面板阅读状态。", "state": "未选择类别 → 类别高亮与对应 brief 可见 → 再点当前类别收起。"},
+        {"action": "沿详细正文阅读机制、实验和图表，点击图打开原图。", "result": "图表使用图片证据的资产 ID、原图路径、中文简要说明。大图与来源详情共用阅读器证据组件；图表附近的正文解释应说明变量、条件、对照、观察和结论。", "saved": "图表来源和图表解读仍使用现有资产与 researchMaterials；速读本身不再保存一份截图副本。", "state": "正文段落 → 相关图表 → 原图详情 → 关闭详情返回速读。"},
+        {"action": "点击“显示公式”，或返回原文。", "result": "公式在其原有位置出现；再次点击隐藏公式。返回原文释放速读层和临时停靠对话租约，恢复原阅读场景。", "saved": "按钮只切换当前速读的公式显示，不重写原文和公式存储。", "state": "文字与图表 → 加入公式细节；或速读 → 原文。"}
+      ],
+      "design": [
+        {"point": "当前来源策略上限为 160000 字符、512 条来源，分块目标 2000 字符；超限时按页面分布抽样，并保留 coverage 以说明可读范围。", "basis": "源码事实：RAPID_SOURCE_LIMITS 与 selectRapidSources。上限不是承诺任何长度论文都被逐字送入模型。"},
+        {"point": "已读来源达到 16000 字符时，提示目标为 3000–5000 汉字和 16–26 段；达到 6000 字符时目标 1400–2400 汉字和 10–18 段。更少来源按证据展开。程序另以较低的最低篇幅和解析密度拒绝明显过短稿。", "basis": "源码事实：rapidReadingDepth、validateRapidReadingDepth；目标与硬校验阈值必须区分。"},
+        {"point": "每段和每条 brief 都绑定客户端分配的 quoteID。模型不能自行编一段“原文引文”；模型结果只能选择已提供的摘录编号。", "basis": "源码事实：rapidEvidenceExcerpts、bindRapidReadingEvidence、validateRapidReading。"},
+        {"point": "来源 v3 与解析 v5 分开升级。旧自动短稿不能冒充新版详细稿；包含人工改动的合法旧稿优先恢复，不能为了新样式或换模型擅自重写人工工作。", "basis": "源码事实：RAPID_SOURCE_VERSION、RAPID_VERSION 和 prepareReaderRapidReading 的恢复顺序。"}
+      ],
+      "states": [
+        {"state": "来源充分但输出过短或 brief 与正文重复", "behavior": "校验失败后最多再请求一次，要求补全机制、实验和图表说明；不能把检查失败稿当作成功结果显示。"},
+        {"state": "旧稿或改模型后重开", "behavior": "通过文档指针恢复现有有效稿和人工改动；模型偏好影响下次明确生成，不自动重新收费。"},
+        {"state": "没有可读文字", "behavior": "要求先完成 PDF 识别，不用标题、摘要或模型知识伪装全文速读。"}
+      ],
+      "flow": ["当前附件正文与图表", "有界来源和真实摘录", "详细稿及独立概览", "校验篇幅与证据", "按来源顺序显示图文", "选段继续核对或修订"],
+      "handoff": ["维护重点是 problem／method／results 的具体解释质量；不能只加段落数量而没有机制与证据。", "保留理论论文、综述和定性论文的原结构，不强制塞进实验论文模板。", "rapidReadingAssets 会恢复已保留原图作为索引暂空的备用来源，并去除被完整图覆盖的碎片；不要重新裁一次图来绕过资产问题。"],
+      "limitations": ["程序检查能约束篇幅、证据编号和明显重复，不能保证每条解释都达到专家精读水平。", "图表说明来自已有证据材料；只有图注或文字说明时不应声称模型已经视觉审图。", "文稿目标不是固定字数承诺，全文来源不足时不得填充未读取事实。"],
+      "sources": [
+        {"path": "chrome/content/zotero/research/shared/rapid-reading-prompt.mjs", "symbol": "RAPID_READING_PROMPT / rapidReadingDepth", "line": 4},
+        {"path": "chrome/content/zotero/research/shared/rapid-reading-data.mjs", "symbol": "RAPID_SOURCE_LIMITS / selectRapidSources / bindRapidReadingEvidence", "line": 4},
+        {"path": "chrome/content/zotero/research/shared/rapid-reading-assets.mjs", "symbol": "rapidReadingAssets / rapidAssetPresentation", "line": 6},
+        {"path": "chrome/content/zotero/research/shared/reader-rapid-reading.mjs", "symbol": "prepareReaderRapidReading / renderReading", "line": 87}
+      ]
+    },
+    {
+      "id": "reader-rapid-edit",
+      "title": "速读选段解释、忠实改写与手工编辑",
+      "lead": "速读是可修订的本地阅读稿。用户可以在一条解析内拖动选中文字，结合原文要求 AI 解释或改写；也可以直接双击手工编辑整条解析。改动只属于派生速读，不把作者论文正文改掉。",
+      "areas": [
+        {"name": "速读段落正文", "role": "可选择文字；单击没有选区的段落查看原文依据，双击编辑，键盘 Enter 核对依据、F2 编辑。"},
+        {"name": "选段菜单", "role": "提供解释选段、忠实改写选段、核对原文、编辑这条速读以及可选修改要求。菜单跟随所选段落，宽度受视口限制，可内部滚动。"},
+        {"name": "改写结果与采用动作", "role": "先展示候选文字，只有点击采用才替换所选片段；解释结果只用于阅读，不自动改稿。人工改动段落有“用户已修改”和恢复 AI 解析入口。"}
+      ],
+      "operations": [
+        {"action": "在同一条速读中从左到右或从右到左选择连续文字。", "result": "菜单读取选区实际 anchor 和 focus 是否都在该段内，不依赖拖动方向；选择跨段内容不作为单段改写输入。", "saved": "选择和菜单本身不保存。", "state": "可读段落 → 连续选区 → 菜单；右键同样可进入选段菜单。"},
+        {"action": "填写修改要求后点“解释选段”或“忠实改写选段”；也可不填要求。", "result": "请求携带所选文字、当前完整段落、该段原文证据、必要原文上下文，以及整篇速读的章节概要。无要求时改写以清晰、衔接和忠实为目标。", "saved": "候选结果不立即写库，关闭菜单取消该菜单的未完成请求。", "state": "选择有效 → 请求处理中 → 展示候选；结果返回后仍需采用。"},
+        {"action": "检查候选后点击“采用此重述”。", "result": "只替换这条解析中对应的唯一选区。采用前再次比较整条速读是否已变；若用户在等待期间改过文字，拒绝旧结果覆盖。", "saved": "写入 rapidReadEdits[cacheKey].points[pointKey]，保留 originalText、text、origin 和 editedAt；原始自动稿和原文证据保持可恢复。", "state": "候选 → 版本仍一致 → 本地修订；不一致 → 要求重新选择。"},
+        {"action": "双击一条速读或按 F2，直接修改 textarea 后保存；按 Esc 或取消放弃本次编辑。", "result": "当前段落就地编辑，保存后重新渲染正文。文字与原 AI 稿相同则删除该条覆盖，恢复原稿；不同则标记用户已修改。", "saved": "与 AI 采用共用 rapidReadEdits，不创建原文批注。单条解析最多 5000 字符；实际保存有当前稿一致性检查。", "state": "read → editing → saved；取消回 read；恢复 AI 解析清除本条人工覆盖。"},
+        {"action": "点击“核对原文”或直接单击没有文字选区的段落。", "result": "显示支持该段的真实原文摘录，提供每条的来源标签和原文定位。修订之后证据仍留在原段，用户可以检查改写有没有超出它。", "saved": "查看依据不新增数据。", "state": "速读解释 → 原文证据菜单 → 在原文中定位。"}
+      ],
+      "design": [
+        {"point": "同一选区在段落中出现多次时，忠实改写被禁用；可改为双击整段编辑。不能猜用户要替换哪一次。", "basis": "源码事实：selectionMenu 的 unique 检查。"},
+        {"point": "AI 改写要求保持数值、公式、否定、比较条件和论断强度；程序进一步核对受保护数值和公式，失败时保留原文而不采用。", "basis": "源码事实：requestReaderRapidReadingSelection 的系统提示与 protectedParts 校验。否定等语义规则主要依靠提示，不能声称全部由程序证明。"},
+        {"point": "语言规则要求简明、自然的中文学术表达，避免空泛评价、自我声明和防御性尾句；但解释本身仍要交代实际适用条件。", "basis": "源码事实与设计解释：当前选段提示保留证据条件，不鼓励用省略条件来制造肯定语气。"}
+      ],
+      "states": [
+        {"state": "选区含公式、格式转换或重复文字", "behavior": "不能可靠定位替换时提供双击手工编辑，不强行替换。"},
+        {"state": "模型结果过期", "behavior": "采用动作核对 summaryText；当前文字变化后提示重新选择。"},
+        {"state": "关闭、返回原文或切论文", "behavior": "撤销未完成菜单请求、移除事件；已保存人工覆盖继续保留。"}
+      ],
+      "flow": ["选择一条解析中的文字", "给可选修改要求", "解释或忠实改写", "核对原文与候选", "主动采用", "保留原 AI 稿和人工覆盖"],
+      "handoff": ["当前选段菜单是速读专用编辑入口；不能声称它已经是统一聊天消息历史中的一次可追踪修改。", "若未来将这套交互接入右侧共享对话，必须保留 pointKey、cacheKey 和 expected text，继续先建议后采用。", "需要多步撤销栈属于迁移建议；当前可靠的恢复入口是恢复 AI 解析，不能宣传成任意历史版本撤销。"],
+      "limitations": ["当前 AI 选段修订限定在单条速读内，不支持一次跨多个段落全局重写。", "本地手工改写可以改变含义，程序不会替用户证明它仍被原文支持；原始证据保持可核对。"],
+      "sources": [
+        {"path": "chrome/content/zotero/research/shared/reader-rapid-reading.mjs", "symbol": "requestReaderRapidReadingSelection", "line": 153},
+        {"path": "chrome/content/zotero/research/shared/reader-rapid-reading.mjs", "symbol": "storeEdit / paintPoint / editPoint", "line": 215},
+        {"path": "chrome/content/zotero/research/shared/reader-rapid-reading.mjs", "symbol": "selectedText / selectionMenu", "line": 230},
+        {"path": "chrome/content/zotero/research/shared/reader-rapid-reading.mjs", "symbol": "point pointer and keyboard handlers", "line": 253}
+      ]
+    },
+    {
+      "id": "reader-image-evidence",
+      "title": "图片与表格证据：列表、原图和完整解读",
+      "lead": "图片证据以真实图表资产为单位。默认卡片只显示简要中文说明，整卡点击展开原图；只有再点简要摘要才读完整解读。原图、来源、摘要、长说明和相关对话共享同一资产，不应出现上下两份相同文字，也不应将没有图注的零散位图当成一张新图。",
+      "areas": [
+        {"name": "证据筛选与排序", "role": "提供图片、表格、全部和人工裁切等视图，以及原文正序、倒序、类型分组。视图筛选不是删除底层公式或其他资产。"},
+        {"name": "紧凑图表卡片", "role": "图号、标题、页码和动作位于同一紧凑标题区；摘要使用中文短预览。卡片自身是展开入口，按钮、链接、输入和选中文字保留独立含义。"},
+        {"name": "展开原图与长说明", "role": "展开只把现有节点移动到图下，不再创建另一份长说明。简要摘要点击后转为全文；点击完整说明非交互区域可返回简要摘要，无须再摆一行“收起详细说明”。"},
+        {"name": "完整原图详情", "role": "大图在左，来源、原始图注、中文解释和当前论文同一个 AI 对话在右。来源按钮明确定位 PDF；关闭后恢复原焦点和原对话位置。"}
+      ],
+      "operations": [
+        {"action": "打开右侧图片证据。", "result": "面板等待该附件图表准备，使用活动索引取得完整图表记录，并等待缩略图解码后显示卡片。图片说明失败时仍保留已有原图和成功说明。", "saved": "资产索引、保留原图、researchMaterials 与图片生成状态继续使用既有存储；面板本身不复制图片。排序偏好按附件保存。", "state": "中文加载占位 → 图表准备 → 解码 → 卡片；部分说明失败为 partial，不把英语模型半成品散落在列表中。"},
+        {"action": "点击卡片空白或标题区域。", "result": "展开或收起该图；点击图片、独立按钮或正在选择文字时不会被整卡点击再次触发。", "saved": "展开状态只属于当前阅读面板，原始素材和解读不改变。", "state": "compact → expanded image → compact。"},
+        {"action": "点击中文简要摘要，再点击长解读非交互区域返回。", "result": "完整中文说明在图片下面显示，并隐藏那份重复的短摘要。展示层规范空白和 Markdown 后检测重复摘要；正文段落、引用和不同内容继续保留。", "saved": "不裁剪或改写存储文本；仅派生短预览和控制显示。", "state": "summary → detailed explanation → summary。"},
+        {"action": "单击图像或通过键盘打开完整原图详情。", "result": "放大真实原图，不默认跳到 PDF。图片 decode 前保留加载占位，详情右栏未完成内容隐藏，避免 broken alt 和布局闪动。", "saved": "只打开查看器不新增会话、不自动提交模型请求。优先使用 imageRetained 的真实保留图片。", "state": "loading modal → image ready → source and explanation ready → close restores origin。"},
+        {"action": "右键卡片或使用详情动作：保存笔记、定位原图、复制中文说明、整页调整裁切、重新解读、加入 PPT 素材。", "result": "保存完整原图和已完成解释；明确定位才跳原文；人工裁切保留原素材；重新解读属于明确重试，PPT 选择沿用同一来源。", "saved": "保存笔记创建原生 image annotation、原图笔记和 readerNoteLinks；资产 ID 相同的已保存笔记优先复用。PPT 选择保存资产使用关系。", "state": "查看 → 明确动作 → 持久化或导航；文字保存失败而图与笔记成功时显示 warning，不假装整个保存都失败。"}
+      ],
+      "design": [
+        {"point": "当前自动图表列表主要展示 figure 与 table；公式仍保留在索引，可在公式或速读路径使用。零散嵌入位图不等于完整科学图。", "basis": "源码事实：visibleReaderEvidence、rapidReadingAssets。"},
+        {"point": "提取器版本 mupdf-assets-17 新增竖线分隔的 Figure 图注、附录 A1／S2 等图号识别，并避免首图附近的长摘要块被并入图片。", "basis": "源码事实：services/research-engine/pdf/assets.py 的 caption_label 与 figure_region。"},
+        {"point": "默认简要、按需详情让用户先扫描图表，再深入理解。卡片展开与长说明展开是两个层次，但入口都在内容本身，不用一排额外解释按钮。", "basis": "设计解释：对应当前交互，避免重复文字挤占图像面积。"}
+      ],
+      "states": [
+        {"state": "无本地 PDF", "behavior": "提示先下载附件，不以题录图片替代论文图表。"},
+        {"state": "有图而中文说明未成功", "behavior": "保留原图和完成部分，显示可重试的说明状态；普通重开不重复收费重试同一失败。"},
+        {"state": "从一篇论文切到另一篇", "behavior": "检查 panel.dataset.attachmentId，释放旧面板和查看器；旧图片不能留在新论文右栏。"}
+      ],
+      "flow": ["识别真实图表", "来源资产与中文说明", "简要卡片", "整卡展开原图", "点击摘要读详情", "可选保存笔记／PPT 素材／明确原文定位"],
+      "handoff": ["YUBI 示例 PDF 的隔离提取报告识别到 4 图和 2 表；这是该文件的修复证据，不是所有 PDF 的覆盖率保证。", "后续修复图片漏检应先查图注、完整区域和资产可见条件，不要靠前端重新截图绕开索引。", "保持 readerEvidenceSummary 与 renderReaderEvidenceExplanation 为摘要和长说明共用的规则，速读与证据详情不各写一套去重。"],
+      "limitations": ["复杂矢量图、无规范图注、扫描件和嵌套表格仍可能需要人工裁切。", "简要摘要从已保存说明派生，不应在说明未完成时显示未核验英文或伪造中文。", "模糊背景效果依赖平台渲染支持，不能把透明背景本身当成已经完成的高斯模糊。"],
+      "sources": [
+        {"path": "chrome/content/zotero/xpcom/research/asset-reader.js", "symbol": "openAssetPanel / load / card interaction", "line": 18},
+        {"path": "chrome/content/zotero/research/shared/reader-evidence-detail.mjs", "symbol": "visibleReaderEvidence / readerEvidenceSummary / renderReaderEvidenceExplanation", "line": 11},
+        {"path": "chrome/content/zotero/research/shared/reader-evidence-detail.mjs", "symbol": "openReaderEvidenceDetail", "line": 51},
+        {"path": "chrome/content/zotero/xpcom/research/reader-tools.js", "symbol": "saveAssetNote", "line": 101},
+        {"path": "services/research-engine/pdf/assets.py", "symbol": "caption_label / figure_region / EXTRACTOR_VERSION", "line": 1}
+      ]
+    },
+    {
+      "id": "reader-references",
+      "title": "参考文献：题录、摘要、本文引用与公开全文",
+      "lead": "参考文献先呈现论文中识别出的原始题录，再逐条核对公开元数据。题录存在、找到原始摘要、能下载公开 PDF 是三个不同状态。文章在网上发表不意味着公开接口一定提供摘要或可下载全文；失败时应保留题录和检索入口，不用相似文章或模型摘要顶替。",
+      "areas": [
+        {"name": "参考文献列表", "role": "保留 PDF 印刷编号，紧凑显示标题、少量来源标签和公开全文动作。总条数在动作栏内，不再独占内容行。点击整卡或标题进入详情。"},
+        {"name": "原文摘要详情", "role": "就地显示原始摘要和可用的中文译文；上方有返回、定位本文引用和获取公开全文。返回会恢复列表滚动位置及原条目焦点。"},
+        {"name": "原始来源链接与重试", "role": "优先提供记录 URL、DOI 或 arXiv 链接；没有标识时提供题录检索。未完成来源核对可单独重试，不清空成功条目。"}
+      ],
+      "operations": [
+        {"action": "打开右侧参考文献栏。", "result": "先从当前附件读取全文并解析题录，立刻显示原始列表，然后并行接收逐条匹配进度。PDF 无可靠题录且当前论文有 DOI 时，再用 Crossref 的 reference 列表备用。", "saved": "解析任务按附件和文件签名复用；来源匹配结果保存在 discovery，包含解析版本、文件版本、原始 references 和已核对 records。", "state": "读取题录 → 原始列表可见 → 逐条元数据匹配 → 完成或保留部分结果。"},
+        {"action": "点击整卡、标题或展开控件。", "result": "进入这一条的摘要详情；已缓存摘要直接显示，缺失摘要再按确定的身份读取公开元数据。右键也可查看摘要、定位本文引用、复制题录或获取公开全文。", "saved": "确定 DOI／arXiv 的原始摘要缓存到 referenceAbstractMetadata；当前详情的滚动和焦点属于面板状态。", "state": "list → detail → back restores list。"},
+        {"action": "悬停或键盘聚焦已有摘要的标题。", "result": "约 350 ms 后显示短摘要预览；英文摘要在合适长度内使用材料翻译路径获取中文。移开、滚动到其他内容或进入详情时清除旧预览和它的请求。", "saved": "翻译采用现有翻译缓存；摘要预览内存缓存最多 32 项，不再复制整篇文章。", "state": "hover delay → preview → leave or detail closes preview。"},
+        {"action": "点击“定位本文引用”。", "result": "在当前 PDF 中查找对应编号或题名；优先定位正文引用，找不到正文引用时可回到参考文献条目。无法定位则明确说明可用阅读器查找原始题录。", "saved": "只导航，不下载被引论文。", "state": "题录 → 当前论文引用位置；失败仍留原题录。"},
+        {"action": "点击“获取公开全文”。", "result": "先使用已核对的文献记录查找和保存公开 PDF。成功显示保存状态；没有公开 PDF 显示暂不可用并提供重试，不把没有 PDF 误报成没有这篇文章。", "saved": "成功通过 obtainPaper 进入原生文库／附件流程；仅打开摘要不下载论文。", "state": "available record → loading → saved；或 unavailable → retry。"}
+      ],
+      "design": [
+        {"point": "匹配顺序尊重 DOI、arXiv 和题录身份，摘要读取可依次使用 arXiv、Semantic Scholar、OpenAlex、Crossref 或题名候选核对。摘要必须来自被核对的原记录。", "basis": "源码事实：lookupReferenceMetadata、fetchReferenceAbstract 和 accepted 检查。"},
+        {"point": "当前单篇来源核对上限 300 条，预算不再只截前 20 条；全局查询间隔至少约 180 ms，任务和缓存跨面板复用。", "basis": "源码事实：collectReferences 中 resolveReferences 的 limit=300、budget=Infinity 和 lookupTail。"},
+        {"point": "正向元数据缓存约 7 天，负向／失败缓存约 1 小时；明确重试绕过失败缓存而保留成功记录。已解析的单篇结果约 1 天内按文件版本复用。", "basis": "源码事实：discovery、referenceMetadata 与 referenceAbstractMetadata 的 TTL 判断。"}
+      ],
+      "states": [
+        {"state": "题录已识别，元数据未匹配", "behavior": "继续显示原题录，可以复制或检索；公开全文下载按钮不伪造可用记录。"},
+        {"state": "原始摘要未公开", "behavior": "显示公开来源暂未提供摘要；来源链接依然可用，不能生成一段看似原摘要的 AI 文字。"},
+        {"state": "切论文／切 PDF 版本", "behavior": "销毁当前详情与悬停预览、释放本面板消费者；其他面板仍在使用的共享任务继续。"}
+      ],
+      "flow": ["当前 PDF 原始题录", "标识与题名核对", "原始摘要及中文阅读辅助", "定位本文引用或获取被引全文", "把新全文送回阅读／素材流程"],
+      "handoff": ["后续问题反馈应区分：题录没有解析、匹配不到身份、无摘要、无公开 PDF、下载失败或原文坐标无法定位；不要统一写找不到。", "参考文献编号只用于阅读显示；缓存和匹配仍保留原提供者 ID，不能用编号覆盖文献身份。", "来源按钮允许外部检索作为有意义的下一步，不能承诺所有已发表论文均能从公开接口下载。"],
+      "limitations": ["参考文献识别仍取决于 PDF 文字层和参考文献排版。", "订阅限制、服务商缺字段、网络或限速都可能导致只有题录没有摘要或全文。", "印刷编号和作者年份引用的定位规则不同，当前正文引用定位仍是文字层检索，不能保证任意样式都逐字高亮。"],
+      "sources": [
+        {"path": "chrome/content/zotero/xpcom/research/reader-panes.js", "symbol": "renderReferencePane / openDetail / backToList", "line": 80},
+        {"path": "chrome/content/zotero/xpcom/research/discovery.js", "symbol": "referencesFromPDF / collectReferences", "line": 10},
+        {"path": "chrome/content/zotero/research/shared/reader-reference-detail.mjs", "symbol": "fetchReferenceAbstract / createReferenceDetail", "line": 22},
+        {"path": "chrome/content/zotero/xpcom/research/reader-panes.js", "symbol": "locateReference", "line": 65}
+      ]
+    },
+    {
+      "id": "reader-annotations-notes",
+      "title": "原文批注、关联笔记与装配批注的边界",
+      "lead": "阅读器批注属于原文附件，装配批注默认属于当前论文项目。两者显示风格可以统一，保存范围必须明确。读原文时的批注和笔记可以被整理成素材；在装配素材上加的评论，只有明确点击“应用批注到原文”才写回 PDF 来源。",
+      "areas": [
+        {"name": "原文高亮与页外批注", "role": "颜色和样式直接标在真实原文选区；评论卡片叠加在页面外侧，顶部批注按钮只切显示，不占 PDF 的版式宽度。"},
+        {"name": "原生笔记编辑器", "role": "保存选区、图像、译文或 AI 内容，并保留返回 PDF 的来源链接。“＋”插入按钮融入原工具条，可插入图片、Excel／CSV、表格和公式。"},
+        {"name": "装配素材的项目批注", "role": "项目内的高亮和评论保存在 projectHighlights；共享素材更新时保留项目自己的批注，不让一个项目的评论污染所有项目。"},
+        {"name": "显式原文同步", "role": "已存在可靠来源和可编辑附件时，把指定素材批注应用到原文；无法唯一核对坐标时显示 pending，不在相似文字上乱打标记。"}
+      ],
+      "operations": [
+        {"action": "在 PDF 中高亮、下划线、划掉或写评论。", "result": "保存原生 annotation，页外卡片和位置标记读取同一条原生数据。点批注按钮展开或收起页外卡片；PDF 缩放与正文宽度不因展开被重排。", "saved": "原生文库 annotation，包含 text、comment、color、position 和页码。页外显示只是投影。", "state": "选区 → 原生标记 → 页外卡片；收起卡片不删除原文高亮。"},
+        {"action": "在页外卡片点编辑，输入后保存或 Ctrl+Enter；Esc 取消。", "result": "在固定尺寸 textarea 中修改该批注 comment，输入时不反复测量所有卡片。点击非编辑区定位原标记，位置地图可直接定位并展开该条。", "saved": "保存写回原生 annotation comment；取消不改原文。", "state": "display → editing → saving → display；错误保留编辑内容并可重试。"},
+        {"action": "将选区保存为笔记，或右键已有批注“打开或保存为笔记”。", "result": "有同一来源关联笔记则复用；没有则创建原生笔记。公式有可靠 LaTeX 时保存数学节点，否则保留公式原图，避免丢上下标。", "saved": "笔记、来源标记和 readerNoteLinks 关联同时保留。保存后在右侧打开笔记。", "state": "来源校验 → 保存标记与笔记 → 关联 → 打开笔记。"},
+        {"action": "在笔记工具条点击“＋”，选择图片、数据表、表格或公式。", "result": "图片导入真实存储；Excel／CSV 读取数据后插入表格。异步读取完成前核对当前笔记实例和 ID，避免用户切笔记后把文件插错位置。", "saved": "内容进入当前原生笔记；图片拥有持久存储路径。插入成功后可用编辑器 Ctrl+Z 撤销。", "state": "选择插入类型 → 读取文件或结构 → 核对笔记身份 → 插入。"},
+        {"action": "在论文装配素材里加高亮和评论；需要时点“应用批注到原文”。", "result": "默认只更新本项目；显式应用时先持久化项目，再匹配精确原文锚点和 glyph 坐标。完整原文段落可以使用已验证段落区域，译文不能伪造逐词坐标。", "saved": "默认写 manuscripts 内材料的 projectHighlights；应用成功后另写原生 annotation 与 materialAnnotationLinks。", "state": "project-local → explicitly apply → synced；缺坐标／只读／版本变化 → pending。"},
+        {"action": "在阅读器中修改已应用的素材批注，再回到装配。", "result": "同步记录反向保存 override；项目加载时回放，但若装配已产生更新人工修改，不用旧阅读器覆盖它。", "saved": "materialAnnotationLinks 保存原生 annotation ID、来源版本、上次写入与 override，项目修订号随有效变化增加。", "state": "synced → reader edit → reverse override → safe project merge。"}
+      ],
+      "design": [
+        {"point": "页外批注是文档覆盖层，不为其预留整列宽度，也不触发 PDF.js 重新适配宽度。当前卡片宽约 140–228 px，窄屏可收窄。", "basis": "源码事实：installMarginComments 的 overlay 布局与宽度限制。"},
+        {"point": "笔记和标记的关联是持久关系。删除笔记时，仅独占于该笔记的来源批注随之回收；有多个活笔记引用的标记保留，恢复笔记时可恢复随笔记回收的批注。", "basis": "源码事实：rememberNoteLink、discoverNoteLinks 与 syncNoteLinks。"},
+        {"point": "原文标注可成为项目素材，装配批注默认留在项目。统一外观不能被解释为无条件双向写入。", "basis": "源码事实与设计解释：material-project-annotations、notebook 素材整理和显式 apply-source-annotations。"}
+      ],
+      "states": [
+        {"state": "已有来源笔记", "behavior": "复用原笔记，避免重复副本。"},
+        {"state": "没有可核对坐标", "behavior": "保存项目评论；原文同步 pending，打开原文后按精确 glyph 重试。"},
+        {"state": "原文版本或人工稿冲突", "behavior": "保留当前工作，记录需核对原因；不把来源相似视为唯一匹配。"}
+      ],
+      "flow": ["原文阅读标注 → 笔记／素材", "装配素材评论 → 项目内保存", "明确应用原文 → 坐标核对 → 原生标记", "原生标记再编辑 → 带冲突保护的回流"],
+      "handoff": ["保留三种身份：共享来源素材、项目内素材副本、原生 PDF annotation；不得只用一个 ID 混合保存。", "写回失败时应同时告诉用户项目批注已经保存，以及原文同步为什么尚未完成。", "撤销选区保存只在笔记和批注未被后续修改时回收两者，不能删除已经有人继续编辑的内容。"],
+      "limitations": ["原文批注变成素材需经过现有素材整理流程；不是每次键入 comment 都立即自动跑模型生成素材。", "图像和译文的局部词组未必有精确英文字符坐标，显式应用仍可能保持 pending。", "阅读器的原生笔记编辑器与项目内编辑器并非同一实例，样式统一不意味着它们共享所有编辑命令。"],
+      "sources": [
+        {"path": "chrome/content/zotero/research/shared/reader-margin-comments.mjs", "symbol": "installMarginComments", "line": 7},
+        {"path": "chrome/content/zotero/xpcom/research/reader-tools.js", "symbol": "noteLinkForAnnotation / syncNoteLinks / installNoteTools", "line": 54},
+        {"path": "chrome/content/zotero/xpcom/research/workflow.js", "symbol": "saveReaderNote", "line": 116},
+        {"path": "chrome/content/zotero/research/shared/material-project-annotations.mjs", "symbol": "saveProjectMaterialHighlights / mergeMaterialAsset", "line": 5},
+        {"path": "chrome/content/zotero/research/shared/material-annotation-sync.mjs", "symbol": "syncMaterialHighlights / applyMaterialAnnotationUpdates", "line": 72},
+        {"path": "chrome/content/zotero/research/manuscript/main.mjs", "symbol": "apply-source-annotations", "line": 205}
+      ]
+    },
+    {
+      "id": "reader-ai-conversation",
+      "title": "阅读器 AI：共享会话、停靠、附件与答案落点",
+      "lead": "阅读器和研究工作台共用一套会话存储。普通打开对话只恢复消息，不自动发问；当前论文是会话作用域。速读和图片详情借用同一个对话面板，而不是再生成互相看不到的聊天记录。",
+      "areas": [
+        {"name": "底部收起条与 Logo", "role": "阅读场景默认使用 reader-bottom 呈现；可展开为对话、移动 Logo 或停靠左右。未对话时保留底部入口，大小和位置状态在设置中保存。"},
+        {"name": "共享消息区与输入区", "role": "显示当前论文作用域中的会话、模型、思考强度、执行方式和附件。支持新建、继承、切换会话，提交问题后才运行任务。"},
+        {"name": "速读右侧和证据详情中的聊天", "role": "使用 mount／lockDock 租约把现有组件暂时嵌入或锁到右侧，关闭阅读模式后恢复原来的浮动／停靠位置。"},
+        {"name": "答案拖入 PDF", "role": "已保存的 AI 答案可拖到原文，先选来源落点，再保存为批注或笔记。拖拽载荷使用稳定会话和消息 ID，不能把任意外部文字冒充已存 AI 答案。"}
+      ],
+      "operations": [
+        {"action": "展开底部对话，切换现有会话，或新建／继承会话。", "result": "按当前 paperID 恢复作用域。新建会话使用当前题名、来源和空草稿；继承会话通过 conversations.inherit 创建与原会话相关的新记录。", "saved": "会话、消息、模型和草稿保存在 workbenchConversations 的统一数据中。打开对话本身不发送请求、不自动打开另一 PDF。", "state": "bottom compact → open scoped surface；切论文 → 清旧焦点与拖拽 → 绑定新 scope。"},
+        {"action": "添加文件或论文附件，在输入区提交问题。", "result": "保存用户消息与当次附件，然后调用统一 runWorkbenchTask，带当前来源、历史消息、模式、模型、思考与执行设置。图片详情内发问会额外绑定当前图的来源、位置和已保存公式文本。", "saved": "用户消息先保存；成功回答保存 text、sources、steps 和附件 ID。停止的未完成回答不作为成功消息保存。", "state": "draft → user message saved → running → assistant saved；或 stop aborts active task。"},
+        {"action": "移动 Logo 或将对话停靠左／右，打开速读或原图详情后再关闭。", "result": "位置更新合并到动画帧并限制在实际阅读工作区内；借用对话组件的面板关闭后归还原位置和外观。", "saved": "Logo 位置保存在 settings.readerAIOrbPosition，面板显示状态保存在 settings.readerAISurface。草稿和模型属于会话，不能随显示状态互相覆盖。", "state": "floating／bottom／docked → leased embedded or locked → lease dispose restores previous。"},
+        {"action": "拖一条已生成的 AI 回答到 PDF 中，框选落点。", "result": "出现左键批注／右键笔记的落点提示；Enter 保存批注，Shift+Enter 保存笔记，R 重选，Esc 取消。来源坐标来自实际 PDF 选择。", "saved": "原生批注／笔记保存后，将落点写入该消息的 savedAnchors。重复保存笔记可复用已有笔记。", "state": "stored answer drag → pendingMessage → source selection → save or cancel。"},
+        {"action": "点击消息的保存动作，或在聊天附件上拖出使用。", "result": "保存动作以当前附件校验后创建或复用关联笔记；附件拖拽使用统一 chatAttachments 载荷。", "saved": "保存消息关联文库笔记和锚点；文件仍归统一附件系统管理。", "state": "message → writable source check → persistent note；附件拖拽不等于删除或移动原文件。"}
+      ],
+      "design": [
+        {"point": "当前文件身份、paper scope 和 active reader 在异步初始化前后都校验，防止刚切论文就打开上篇会话。", "basis": "源码事实：openSurface 与 refresh。"},
+        {"point": "面板移动用 requestAnimationFrame 合并，侧栏停靠范围读取真实 sidebar 和 context pane，不能把整个窗口当成可覆盖空间。", "basis": "源码事实：reader-ai-orb 的 refresh、dockTargets 和位置存储。"},
+        {"point": "统一对话表面保留模型、权限、思考、附件和拖拽功能；视觉微调不应通过缩成一行来删掉这些入口。", "basis": "设计解释：与当前共享 conversation-surface 和用户使用目标一致。"}
+      ],
+      "states": [
+        {"state": "当前阅读标签失活", "behavior": "清 focusedAsset、待落点和拖拽监听，隐藏旧对话，不能将旧来源附加到新问题。"},
+        {"state": "任务运行中点击停止", "behavior": "中止当前控制器；用户提问保留，未完成回答不以成功结果落库。"},
+        {"state": "速读／证据详情关闭", "behavior": "释放租约，恢复同一个对话的原位置、外观和来源焦点。"}
+      ],
+      "flow": ["当前论文作用域", "恢复或新建会话", "按需添加附件与提问", "统一任务执行", "来源可追溯的回答", "保存笔记或拖到精确原文落点"],
+      "handoff": ["不要为图片详情复制会话组件或把详情回答另存一个不可见的聊天库。", "所有拖拽必须核对稳定 ID 和当前来源；外部文件拖入走附件接口，答案拖入原文走来源落点接口，不能混用。", "默认底部与左右停靠的观感应通过同一套 conversation-surface token 统一，不能每个模式再注入一套不相关的圆角与字体。"],
+      "limitations": ["对话的运行权限、可执行工具和模型可用性由统一任务系统控制；仅显示入口不等于该模型／工具一定已配置。", "当前速读专用选段菜单与聊天本身是两个入口；不能把选段局部改写说成已具备任意跨文档全局修改。", "拖动流畅度的代码改进不等于所有设备性能保证，仍需真实大文库场景验收。"],
+      "sources": [
+        {"path": "chrome/content/zotero/xpcom/research/reader-ai-orb.js", "symbol": "openReaderAcademicChat / mountReaderAcademicChat / dockReaderAcademicChat", "line": 82},
+        {"path": "chrome/content/zotero/xpcom/research/reader-ai-orb.js", "symbol": "openSurface / installConversationSurface", "line": 183},
+        {"path": "chrome/content/zotero/xpcom/research/reader-ai-orb.js", "symbol": "storedMessageDrag / pendingMessage / refresh", "line": 238},
+        {"path": "chrome/content/zotero/research/shared/conversation-surface.css", "symbol": "reader and shared conversation presentation", "line": 1}
+      ]
+    },
+    {
+      "id": "reader-preparation-performance",
+      "title": "打开即准备：队列、缓存、取消与退出",
+      "lead": "阅读器的性能修复重点是避免同一附件反复解析、不同面板重复调用模型和过期结果回填。打开论文启动准备，面板订阅同一工作；关闭一个面板只释放自己的消费者，其他正在阅读的入口继续使用。成功内容落在既有持久存储，内存队列不充当用户成果库。",
+      "areas": [
+        {"name": "阅读准备总队列", "role": "按附件和文件签名识别任务，优先准备当前打开论文；一个有界 worker 编排图表和速读，导入队列默认最多 8 个普通排队项。"},
+        {"name": "资产与速读内部共享任务", "role": "图表索引、图片中文说明、本地来源和模型解析分别复用 pending；一个消费者取消不误停其他消费者。"},
+        {"name": "持久成果与状态", "role": "rapidReads、rapidReadSources、researchMaterials、readerPreparations、translation-cache 分工保存实际内容与状态，文件签名或版本变化后重新核对。"},
+        {"name": "生命周期清理", "role": "关闭面板移除观察器、事件、图片和菜单请求；关闭标签释放 warm lease；退出时中止并等待未完成工作，避免数据库已关后继续写入。"}
+      ],
+      "operations": [
+        {"action": "打开 PDF，随后在速读、图片证据和原文之间切换。", "result": "工具条启动 queueReaderPreparation；速读和证据等待已有准备链，图片栏只等待图表部分，不被整篇速读的网络请求阻塞。", "saved": "readerPreparations[attachmentID] 记录文件签名、imagesStatus／error、readingStatus／error 和更新时间，实际内容仍保存在各原存储中。", "state": "queued → running → ready／partial／error；用户正在看的任务可以提高队列优先级。"},
+        {"action": "同一文件的多个入口同时请求图表或速读。", "result": "来源／解析用同键共享任务；图表同文件 changed 事件不会重复跑一轮。最后一个有信号消费者释放后才可取消底层工作。", "saved": "共享 pending 和订阅在内存；成功图表解释和自动稿持久保存。", "state": "first consumer starts → others join → individual release → last release cancels if no other owner。"},
+        {"action": "说明失败后重开论文，或点击明确重试。", "result": "相同文件普通重开复用 failed／partial 状态，避免无限自动收费；明确 fresh 重试补未完成说明。新文件签名按新版本准备。", "saved": "失败原因与已完成内容并存；人工确认的素材不会被自动更新覆盖。", "state": "failed retained → ordinary reopen keeps state；explicit fresh → retry；file changed → new identity。"},
+        {"action": "在准备过程中替换来源文件或切换论文。", "result": "准备完成后再次比较文件签名；旧文件结果不得作为新版本完成状态保存。面板 token、附件和当前标签核对共同阻止串页。", "saved": "旧版本的已保存人工工作保留；新版本需要重新绑定而不是覆盖旧稿。", "state": "running old signature → mismatch → reject stale result → prepare latest source。"},
+        {"action": "关闭阅读标签或退出应用。", "result": "标签释放自己的消费者；退出按 shutdown listener 停队列、释放观察器、取消网络与本地任务，并 await 已提交写入。", "saved": "已完成成果仍在持久库；未完成内容不伪装 ready。", "state": "active → releasing → cancelled or completed → all writes drained。"}
+      ],
+      "design": [
+        {"point": "shared/reader-preparation.mjs 默认可留少量结果，但当前 reader-preparation.js 实际传入 maxResults=0；内容由持久层复用，编排层不再存一份沉重全文结果。", "basis": "源码事实：createReaderPreparationQueue 调用参数。"},
+        {"point": "当前速读本地内存缓存最多 6 篇、参考文献 PDF 解析缓存约 8 份、翻译短文本缓存 200 条。持久自动稿不是 FIFO 缓存，不能因为多打开论文而删掉用户成果。", "basis": "源码事实：reader-rapid-reading、discovery 与 reader-results 的缓存界限。"},
+        {"point": "素材 ID 索引按 researchMaterials 的 branchRevision 缓存，避免每张图反复扫描全部素材；返回值仍克隆，防止前端改缓存对象。", "basis": "源码事实：assets.js materialFor。"},
+        {"point": "实际 CPU、内存和首屏耗时需要另做性能采样；任务去重和有界队列是已实现机制，不能据此宣称全局卡顿已经根治。", "basis": "迁移建议：在真实大文库和低配机器上记录首屏、切页、打字和停止任务的耗时。"}
+      ],
+      "states": [
+        {"state": "准备队列已满", "behavior": "普通导入任务返回队列满，后续打开时可优先准备；不能无限堆积后台工作。"},
+        {"state": "部分图片说明失败但速读成功", "behavior": "整体为 partial，速读可以使用已有原图和成功解释，失败信息保留。"},
+        {"state": "测试环境", "behavior": "未明确开启 liveRapidImportProbe 时只做本地来源准备，不因构造工具条就使用用户模型服务。"}
+      ],
+      "flow": ["打开／导入产生身份", "有界优先队列", "共享图表与速读任务", "文件版本复核", "各成果持久化", "面板按准备状态显示", "关闭／退出释放消费者与写入"],
+      "handoff": ["修卡顿先查重复工作、事件监听和全表扫描，不要先靠隐藏功能或减少文章数掩盖。", "队列、持久状态和界面显示状态要分开；ready 只代表该任务完成，不代表用户已经人工核对其内容。", "新增后台任务必须实现 AbortSignal、消费者隔离、来源版本检查和退出 drain。", "性能回归优先验证：两面板同篇共享、取消一个不误停另一个、同父条目换 PDF、退出中晚回包不写库。"],
+      "limitations": ["本文未记录机器级性能基准；并发模型供应商、超长 PDF 和文库规模仍影响实际速度。", "全文翻译有独立串行网络队列，并非所有后台任务都由阅读准备总队列统一执行。", "关闭一个面板未必立即停底层任务，因为当前阅读标签或另一面板可能仍持有消费者。"],
+      "sources": [
+        {"path": "chrome/content/zotero/research/shared/reader-preparation.mjs", "symbol": "createReaderPreparationQueue", "line": 9},
+        {"path": "chrome/content/zotero/xpcom/research/reader-preparation.js", "symbol": "prepareEvidence / prepareReaderPaper / queueReaderPreparation", "line": 10},
+        {"path": "chrome/content/zotero/research/shared/reader-rapid-reading.mjs", "symbol": "shared / retain / stopRapidReadingPreparation", "line": 40},
+        {"path": "chrome/content/zotero/xpcom/research/assets.js", "symbol": "materialFor / index / queueImages", "line": 1}
+      ]
+    },
+    {
+      "id": "reader-visual-contract",
+      "title": "视觉约定、字体尺度与后续维护",
+      "lead": "阅读器是首页、装配和对话视觉统一的主要参考，但统一应落实为同一材质层级、字体和控件规则，而不是把所有区域改成一排相同卡片。原文、内容纸面、托盘、浮层和来源元数据各有不同职责；保留现有功能密度，在细节上形成一致性。",
+      "areas": [
+        {"name": "托盘与内容纸面", "role": "托盘使用浅灰背景，正文、图表卡片、编辑区域使用白色面；通过轻阴影和边缘高光表达层级，不靠多条横线分割所有内容。"},
+        {"name": "透明浮层", "role": "速读头、页外批注、原图模态和聊天浮层使用各自合理的透明、模糊和阴影；浮层需要与正文拉开深度，同时保持文字对比度。"},
+        {"name": "字体与字号", "role": "阅读增强区域优先共享 --ui-font，后备为 Bahnschrift、Noto Sans SC、Microsoft YaHei UI、PingFang SC、sans-serif。PDF、原始图注和数学节点保留其文档语义字体。"},
+        {"name": "交互控件", "role": "同一工具条的返回原文、公式开关保持一致的字号、圆角和高度；卡片标题、页码、计数与选择框对齐。不要用整行提示占用可以承载内容的空间。"}
+      ],
+      "operations": [
+        {"action": "调整阅读增强组件的文字、按钮或卡片。", "result": "优先修改 shared token 或对应共享组件规则，让速读、图证据、页外批注和聊天继承；不修改 PDF 页面内作者排版。", "saved": "源码样式变更；用户文字与文库内容不受影响。", "state": "确定语义层 → 使用共享规则 → 实际场景复核。"},
+        {"action": "核对窄窗口、侧栏展开、图片加载中和键盘焦点。", "result": "控件仍可触达，内容不被 popover 截断；图片 decode 前只显示占位。长正文保留选择能力，焦点边框清楚，减少动画设置生效。", "saved": "不涉及文库写入；布局状态按各组件规则保存。", "state": "宽屏 → 窄屏 → loading／ready → focus／selection，保持功能同一。"},
+        {"action": "切换阅读外观为白色、深色或跟随系统。", "result": "同一表面和浮层继承共享调色板；对话默认 white／light，只有 auto 明确跟随系统。不要只改外壳而把弹出菜单和输入文字留在旧主题。", "saved": "阅读外观使用既有 writingAppearance 偏好，token 根据 appearance 属性解析。", "state": "light default → explicit dark／auto → components update together。"}
+      ],
+      "design": [
+        {"point": "基础色：正文 #20242a，次文字 #59636f，托盘 #f3f5f7，纸面 #ffffff，边线 #dbe1e8，选择背景 #e9f2ff；基础圆角 token 10 px。", "basis": "源码事实：reader-surface-tokens.css。"},
+        {"point": "速读正文为 15 px／1.85，文章最大宽约 850 px，纸面内边距 32×42 px、圆角 14 px；头部操作为 13 px／1.5、至少 34 px 高、8 px 圆角。", "basis": "源码事实：reader-reading-surface.css 的当前参数；这些是组件尺度，不是要求所有外框都同一半径。"},
+        {"point": "速读概览 14 px／1.8、12 px 圆角；选段菜单 320 px 宽、10 px 圆角；图表卡片 10 px 圆角，图片按比例 contain。原图模态最大约 1360×900、18 px 圆角，模糊背景 12 px。", "basis": "源码事实：reader-reading-surface.css、reader-image-evidence.css、reader-evidence-detail.css。"},
+        {"point": "不同层级的圆角可以有尺度差，但一组控件必须同一家族、同一材质。10 px 卡片、8 px 按钮、较大模态圆角有层级理由；同一工具条随机混原生直角和大胶囊没有理由。", "basis": "设计解释：统一语法而非机械同值，避免把功能密度做没。"},
+        {"point": "目前 reader-rail 和部分翻译浮层仍存在 system-ui 等旧字体声明；不能对外宣称全部细节已经彻底统一。建议逐步汇入共同 token，并做原生样式优先级核对。", "basis": "源码事实与迁移建议：reader-rail.css、reader-results.js 的局部规则仍可见。"}
+      ],
+      "states": [
+        {"state": "默认白色阅读", "behavior": "白纸与浅灰托盘构成层次；hover 和选择用淡蓝灰，不给每个按钮不同色块。"},
+        {"state": "浮层或模态打开", "behavior": "以模糊、透明和阴影表达它位于正文之上，不能靠侵占整列空白或挤动原布局。"},
+        {"state": "内容尚未准备完成", "behavior": "组件保持稳定几何与中文占位，不显露原文乱码、破图 alt 或未整理输出。"}
+      ],
+      "flow": ["确认内容和动作职责", "选择托盘／纸面／浮层层级", "继承共享色彩与字体", "使用同类控件尺度", "核对加载、切换、窄屏和键盘", "保留功能并逐步清理旧覆盖"],
+      "handoff": ["后续维护先查共享 CSS，再查局部内联与叠加覆盖；避免文件末尾不断追加互相覆盖的补丁。", "原始来源文字可以保留英文，产品说明和状态应使用简明中文；不要为了中文化篡改题录或原始图注。", "视觉验收必须覆盖小功能：右键菜单、选段菜单、笔记插入、模型 popover、引用详情、失败重试与素材应用。", "本手册记录的是当前源码约定；最终截图、字体实际命中和高斯模糊效果仍须在原生程序中确认。"],
+      "limitations": ["当前代码中仍有旧样式声明，需要渐进清理，不能以这份文档替代全局完成证明。", "Windows 字体安装情况会影响后备字体实际命中；字体名称写入 CSS 不等于该字体随安装包分发。", "原图、数学和用户文档内容不应无差别继承产品 UI 字体。"],
+      "sources": [
+        {"path": "chrome/content/zotero/research/shared/reader-surface-tokens.css", "symbol": "reading palette", "line": 3},
+        {"path": "chrome/content/zotero/research/shared/reader-reading-surface.css", "symbol": "rapid reading / comments / shared font", "line": 35},
+        {"path": "chrome/content/zotero/research/reader-image-evidence.css", "symbol": "evidence cards", "line": 1},
+        {"path": "chrome/content/zotero/research/shared/reader-evidence-detail.css", "symbol": "evidence modal", "line": 1},
+        {"path": "chrome/content/zotero/research/shared/reader-rail.css", "symbol": "native rail and note presentation", "line": 1}
+      ]
+    }
+  ]
+}

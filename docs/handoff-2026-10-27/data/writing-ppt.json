@@ -1,0 +1,671 @@
+{
+  "id": "writing-ppt",
+  "title": "论文装配与组会 PPT：操作、状态与工程交接",
+  "updatedAt": "2026-10-27",
+  "scope": "以当前源码的默认可见入口为准。本文是只读梳理，不是本轮新增功能清单，也不代表所有步骤均重新进行了原生界面验收。历史需求、遗留代码与当前实现分开说明；不包含用户私有论文内容、服务地址、认证配置或密钥。",
+  "sections": [
+    {
+      "id": "writing-project-scope",
+      "title": "01 · 从项目与研究范围开始",
+      "lead": "论文项目先承载研究问题、资源条件、研究领域、关键词、文献文件夹和章节结构，再进入可行性评估。已有正文的项目可以继续编辑；旧方案需要复核时，不应把作者挡在已有稿件之外。",
+      "areas": [
+        {"name": "新建论文入口", "role": "建立 manuscript 项目，选择或新建文献文件夹，保存题目、研究问题与初始章节模板。"},
+        {"name": "可行性准备区", "role": "编辑研究问题、资源条件和章节结构；研究范围包含领域、第一关键词、第二关键词与模糊匹配选项。"},
+        {"name": "项目卡片", "role": "根据是否已有正文、是否已有当前有效的方案，恢复真实工作阶段。未形成正文且缺少有效方案时回到可行性准备。"},
+        {"name": "项目文献文件夹", "role": "把文献归属与项目绑定；后续本地筛选、在线下载和素材整理沿用该归属。"}
+      ],
+      "operations": [
+        {"action": "新建论文，填写题目与研究问题，选已有文件夹或创建新文件夹。", "result": "创建论文项目和对应文库条目，进入可行性方案页面。", "saved": "manuscripts[projectID]、paperCollectionID、researchGoal、researchPreparation；researchNotebooks[projectID] 的准备状态。", "state": "workflowStage=feasibility，assessment.status=draft。"},
+        {"action": "选择研究领域，填写第一关键词；需要时添加第二关键词、同义词和模糊匹配。", "result": "范围成为后续候选排序、检索和方案输入的一部分。手动设定后，不应被文件夹推断反复覆盖。", "saved": "researchScope、scopeOrigin=manual；savePreparation 同步到项目。", "state": "范围或关键词变动会影响方案输入签名，已有方案可能需要复核。"},
+        {"action": "编辑研究问题、资源条件或章节结构。", "result": "保存准备草稿；结构先经过解析，进入装配时以章节规则应用。", "saved": "ideaDraft、constraints、structureDraft，以及 researchPreparation 的对应快照。", "state": "输入约 500 毫秒后保存；页面隐藏时尝试提交尚未保存的输入。"},
+        {"action": "点击已有项目卡片。", "result": "有实际写作内容时恢复装配；新项目没有有效方案时打开评估；已有有效方案尚未应用时进入装配。", "saved": "notebook.workflowStage、project.ui 和必要的 planStatus。", "state": "resumeAssembly 可以把旧方案标为 needs-review，但保留章节、正文和当前阶段。"}
+      ],
+      "design": [
+        {"point": "研究范围与输入条件进入方案签名，不能只看标题判断方案是否仍适用。", "basis": "源码事实"},
+        {"point": "恢复旧工作与首次确认新方案采用不同路径，目的是让作者能继续编辑，又能看见评估依据已过期。", "basis": "设计解释"},
+        {"point": "由题目、Idea 和文件夹名称推断领域是初始建议，不是已经确认的专业判断。", "basis": "源码事实"}
+      ],
+      "states": [
+        {"state": "draft", "behavior": "准备研究问题、范围与来源，尚无评估结果。"},
+        {"state": "needs-review", "behavior": "已有应用方案的条件或来源变动；继续保留原稿，提示重新评估。"},
+        {"state": "assembly", "behavior": "进入当前四阶段装配流程，不恢复旧的独立写作计划流程。"}
+      ],
+      "handoff": [
+        "验收：创建新项目后确认 Zotero 文库条目和文献文件夹归属正确；返回首页再打开，不应产生另一个重复项目。",
+        "验收：改变领域、关键词、结构或资源条件后，原方案仍可阅读，应用时能识别过期；已有正文仍可恢复。",
+        "验收：中文输入法组合期间不要因每次按键重建整个页面；检查输入焦点与光标是否保持。",
+        "迁移建议：任何新入口应复用 beginProject/openProject/resumeAssembly，避免另外实现一套阶段判断。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/xpcom/research/notebook.js", "symbol": "N.beginProject / N.savePreparation / N.openProject / N.resumeAssembly / N.enterAssembly"},
+        {"path": "chrome/content/zotero/research/notebook.mjs", "symbol": "scopeDraft / saveScope / startAssessment / scheduleRender"},
+        {"path": "chrome/content/zotero/research/shared/research-domain.mjs", "symbol": "inferResearchScope / normalizeResearchScope"},
+        {"path": "chrome/content/zotero/xpcom/research/manuscript.js", "symbol": "A.create / A.ensureLibraryItem"}
+      ],
+      "limitations": [
+        "领域推断与模糊排序是辅助，不能保证歧义缩写一定被正确理解。",
+        "创建页另有“直接装配”可选入口；默认仍从准备与评估开始。跳过不代表已得到有效可行性结论。",
+        "源码存在并不等于当前原生界面已通过完整用户验收；该章未新增运行测试。"
+      ],
+      "flow": ["创建项目 → 确定文件夹与范围 → 挑选文献和完整素材 → 生成可行性方案 → 确认并应用到装配"]
+    },
+    {
+      "id": "writing-literature-materials",
+      "title": "02 · 选文献、精读与结构参考，再整理完整素材",
+      "lead": "准备区把文献选择、在线可下载论文、素材整理和阅读角色放在方案之前。精选、精读和结构参考是不同标签；结构参考只学习论证组织，不把范文的结果当成自己的成果。",
+      "areas": [
+        {"name": "本地论文列表", "role": "按研究问题排序，显示论文标题、期刊、年份和所在文件夹；支持勾选、搜索、文件夹筛选和摘要预览。"},
+        {"name": "阅读角色", "role": "每篇可设置精选或精读；结构参考是一个可切换的单选角色，可跨主题挑选。"},
+        {"name": "在线推荐区", "role": "按研究范围查询可获取 PDF 的候选；单篇下载或下载全部未下载论文到项目文献文件夹。"},
+        {"name": "完整素材选择窗", "role": "展示整理后的材料建议，默认采用全部有效建议，可取消部分；分批追加显示，并保留对应章节用途和依据。"}
+      ],
+      "operations": [
+        {"action": "打开准备区，筛选一个或多个文件夹，输入本地搜索词。", "result": "候选列表按当前范围重新排序；文件夹筛选只改变候选池，不直接删除项目资料。", "saved": "明确保存选择时写 preparationSourceSelection、featuredPaperIDs 等。", "state": "存在尚未保存的选择时 selectionSaved=false，后续准备动作先保存。"},
+        {"action": "点击论文标题展开摘要，勾选论文，再设置精选、精读或结构参考。", "result": "确定本次评估读哪些文献，以及哪些文献在细读和结构学习中具有优先级。", "saved": "paperIDs、featuredPaperIDs；readingSelection.closeReadingPaperIDs 与 structurePaperID。", "state": "角色变化会进入后续上下文；结构参考不等于内容证据。"},
+        {"action": "打开在线推荐，检索同方向论文。", "result": "调用统一论文检索页接口，单次目标 60 条；只接收具有 HTTPS PDF 候选且未撤稿的记录，合并去重。", "saved": "recommendedPapers 与 preparationRetrieval 的查询、来源、数量和时间。", "state": "尚未下载的推荐仍只是候选，不能在成果栏冒充本地 PDF。"},
+        {"action": "下载单篇或全部未下载论文。", "result": "取得实际 PDF，保存到项目文献文件夹；成功与失败分别回报，刷新本地列表。", "saved": "downloadedPapers 和 Zotero 附件；下载成果另由 workspaceDownloads 记录。", "state": "下载过的推荐按钮禁用；失败条目保留错误，可再次处理。"},
+        {"action": "整理已选论文的完整素材，再检查用途建议。", "result": "收集材料，并尝试推荐章节用途、精读和结构参考；推荐失败时保留已整理材料。", "saved": "materialSuggestions、preparationMaterialIDs 与 readingRecommendation。", "state": "素材选择窗以有效建议为默认全选集合，每批 24 项追加展示。"},
+        {"action": "从可行性方案进入装配，确认是否应用准备素材。", "result": "把所选材料和阅读角色传入装配；关闭确认窗可取消此次进入。", "saved": "savePreparationMaterialSelection / saveReadingSelection，再由 enterAssembly 应用。", "state": "材料未应用不代表丢失，仍留在共享素材与准备记录中。"}
+      ],
+      "design": [
+        {"point": "在线检索和下载分开建模，只有真实附件存在时才作为下载成果。", "basis": "源码事实"},
+        {"point": "完整章节素材可以很长，列表分页只是显示方式，不代表把材料截断成几句摘要。", "basis": "源码事实"},
+        {"point": "先挑选再评估能降低把无关主题、未下载文献或结构范文当研究证据的风险。", "basis": "设计解释"}
+      ],
+      "states": [
+        {"state": "recommended", "behavior": "可下载候选尚未取得本地文件。"},
+        {"state": "downloaded", "behavior": "已生成项目附件，可继续完整素材整理。"},
+        {"state": "selectionSaved=false", "behavior": "用户刚改勾选或角色；开始下一动作前保存选择。"}
+      ],
+      "handoff": [
+        "验收：更换文件夹后候选发生变化，勾选、精选、精读与结构参考能在重新进入后恢复。",
+        "验收：线上无可用 PDF 时明确失败，不能用题录记录伪装下载完成；在 Zotero 和成果栏实际打开 PDF。",
+        "验收：整理失败的论文逐项可见；已有成功素材仍能进入选择窗。",
+        "验收：取消一份完整素材后，进入装配不会再次无条件把它补回。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/notebook-preparation.mjs", "symbol": "installPreparationTools / renderLocal / renderOnline / showMaterials / chooseAssemblyMaterials"},
+        {"path": "chrome/content/zotero/xpcom/research/notebook.js", "symbol": "N.preparationLibrary / N.searchPreparationPapers / N.acquireRecommendedPapers / N.collectProjectMaterials / N.saveReadingSelection"},
+        {"path": "chrome/content/zotero/research/shared/workspace-outputs.mjs", "symbol": "rememberDownload / listDownloads"}
+      ],
+      "limitations": [
+        "60 是请求目标，不是保证结果数量；检索源、匹配范围和 PDF 可获取性会减少返回量。",
+        "勾选本地论文和整理素材可能涉及全文解析与模型请求，需要真实任务进度和取消操作。",
+        "当前准备素材对话框不是任意论文编辑器，也不是把 PDF 正文改成用户的稿件。"
+      ],
+      "flow": ["本地候选 → 勾选与角色 → 可选在线下载 → 整理完整素材 → 选择用途 → 评估或应用装配"]
+    },
+    {
+      "id": "feasibility-plan-version",
+      "title": "03 · 可行性方案：四类结果、局部修改与版本",
+      "lead": "方案页的可行性、创新点、建议、讨论与修改记录共用同一版本对象。方案是未执行的研究计划，必须与实测结果分开；编辑方案后保存新版本，再同步装配指导。",
+      "areas": [
+        {"name": "研究输入区", "role": "研究问题、约束、领域关键词和结构草稿；生成前先保存当前论文选择。"},
+        {"name": "四类结果切换", "role": "可行性包括可行判断与最小验证；创新点包括差异与价值；建议包括验证安排、实验与章节任务；历史记录展示版本和讨论。"},
+        {"name": "方案搜索", "role": "在各版本的 Idea 与 plan 字段内查找关键词，结果可切换对应版本。"},
+        {"name": "字段编辑与选段重写", "role": "双击字段编辑；选中单个方案字段的一部分请求 AI 重写，先看删除与新增预览，再接受。"}
+      ],
+      "operations": [
+        {"action": "填写研究领域与第一关键词，点击生成或更新方案。", "result": "准备实际文献与素材，调用评估；新结果作为一个新版本保存。", "saved": "versions、selectedVersion、assessment；输入签名及来源素材/文库条目版本。", "state": "assessment.status 在 running、ready、failed 间变化；失败保留旧版本与正文。"},
+        {"action": "切换可行性、创新点、建议、讨论与修改。", "result": "在当前结果区域渲染对应字段，而不是跳到另一个无关工作区。", "saved": "内容来自同一 selectedVersion；面板选择主要为当前视图状态。", "state": "尚无方案时显示对应空状态，不渲染伪结论。"},
+        {"action": "在方案搜索框输入词，点击某个版本。", "result": "列出命中的版本与上下文，清除搜索并选择该版本。", "saved": "selectedVersion。", "state": "搜索输入约 120 毫秒后更新显示。"},
+        {"action": "双击有编辑标记的方案文字，手动修改后保存。", "result": "生成方案新版本；已应用装配依据时尝试同步新版本。", "saved": "editPlanField 新版本与修改记录；researchPreparation 的方案快照。", "state": "若研究条件已过期，保存仍成功，但同步提示待复核，不能把新旧依据混在一起。"},
+        {"action": "选中一个字段中的文字，填写可选修改要求，点击 AI 重写。", "result": "返回选段前后差异；接受后另存新版本，原方案在预览阶段保持。", "saved": "planEditProposal 和接受后的版本；重复 proposalID 共享同一保存任务。", "state": "生成期间来源或字段变化时拒绝过期建议。"},
+        {"action": "确认方案并进入装配。", "result": "确认计划产物，选择应用素材，把计划、章节任务、已确认决定与开放问题写入装配指导。", "saved": "artifact、decisions、researchPreparation.planVersionID / plan / structure / openQuestions。", "state": "当前条件匹配时确认；来源失效则要求复核，已有工作可继续恢复。"}
+      ],
+      "design": [
+        {"point": "最接近工作、假设及其反证条件、对照实验、成本和待定问题是结构化字段，不只是长篇聊天记录。", "basis": "源码事实"},
+        {"point": "AI 讨论、AI 构想图片和历史计划不能被用作真实论文证据或已完成实验。", "basis": "源码事实"},
+        {"point": "方案和装配共享计划快照，可防止方向讨论与前面的可行性判断完全断开。", "basis": "设计解释"}
+      ],
+      "states": [
+        {"state": "pending / confirmed", "behavior": "方案结果待审阅；确认后生成 experiment-plan 产物，仍是计划。"},
+        {"state": "stale", "behavior": "材料 revision、文库条目 dateModified 或输入签名不匹配，原内容保留但不能作为新确认依据。"},
+        {"state": "edit proposal", "behavior": "选段修改候选需接受才写入方案，新版本可追溯。"}
+      ],
+      "handoff": [
+        "验收：四个结果按钮均有实际内容切换，不能只是视觉选中；搜索必须能命中历史版本。",
+        "验收：编辑方案前后检查版本号、来源版本和装配指导；失败提示应区分保存失败与同步待复核。",
+        "验收：替换来源或修改资源条件后，旧版的确认按钮不能绕过有效性检查。",
+        "验收：确认产物只标为研究计划，不能在素材里显示为真实实验结果。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/notebook.mjs", "symbol": "renderPlan / planHistory / startAssessment / enterAssembly"},
+        {"path": "chrome/content/zotero/research/notebook-preparation.mjs", "symbol": "editField / showMaterials"},
+        {"path": "chrome/content/zotero/xpcom/research/notebook.js", "symbol": "N.evaluate / N.stale / N.assessmentCurrent / N.proposePlanEdit / N.editPlanField / N.adoptPlanForAssembly / N.confirm"}
+      ],
+      "limitations": [
+        "创新点与可行性评估是基于输入证据的辅助判断，不能证明创新性，也不代替实验。",
+        "评估默认本地来源；联网检索是可选路径，不能把所有评估描述成自动完成全网系统综述。",
+        "自动素材推荐或结构参考选择仍需用户确认用途。"
+      ],
+      "flow": ["保存准备 → 整理与评估 → 审阅四类结果 → 可选局部修改 → 确认版本 → 把同一方案用于装配"]
+    },
+    {
+      "id": "assembly-material-structure",
+      "title": "04 · 素材装配：章节、完整材料与自动匹配",
+      "lead": "当前装配只有素材装配、方向讨论、初稿细调、内容导出四阶段。独立写作计划已移除；素材在装配时按方案与章节任务匹配。材料、正文块和证据关联分别保存，来源更新不会直接覆盖作者正文。",
+      "areas": [
+        {"name": "顶部流程与编辑工具", "role": "切换四阶段，执行文字、插入、查找等现有编辑操作；阶段切换保留项目数据。"},
+        {"name": "左侧论文结构／来源核查／素材库", "role": "按章节定位与排序正文块，查看证据使用，搜索和筛选材料，拖放或插入素材。"},
+        {"name": "中部画布", "role": "按章节显示正文块和关联素材；块具有类型、用途、写作要求、材料 revision 和核查状态。"},
+        {"name": "右侧详情与来源", "role": "预览素材、修改标题与中文说明、查看图表原件和完整内容、批注及来源定位；可切到编辑对话。"},
+        {"name": "可行性指导", "role": "显示当前章节任务、研究问题、可行性、创新点、实施方案和已确认方向，可按需固定。"}
+      ],
+      "operations": [
+        {"action": "从素材装配导入语料库或论文材料。", "result": "打开研究语料资源入口，把材料关联到当前项目；完整摘录与锚点留存。", "saved": "project.materials、materialCatalog 和共享 researchMaterials 的引用关系。", "state": "新增材料成为可匹配候选，不自动声称已写入正文。"},
+        {"action": "在已确认方案下进入素材装配或新增素材。", "result": "按方案的具体推荐优先匹配；再按章节任务和来源章节作有限匹配，生成材料关联块。", "saved": "materialPlacementState、block.materials、materialPlacement.reason。", "state": "requirePlan=true 的自动关联只在具备计划时工作；无法可靠匹配者保留在素材库。"},
+        {"action": "点击匹配章节，审阅建议再应用。", "result": "列出素材到目标章节的建议；已关联人工正文的默认不勾选，只移动关联，不改正文。", "saved": "块的材料关系和 confirmed-match 原因；先保存撤销快照。", "state": "预览记录 placementRevision；生成后结构或材料变化则拒绝旧建议。"},
+        {"action": "拖入或点击插入某个素材。", "result": "给选中块建立 primary/support 等材料关系，或新建块；空块可据材料转为图或表。", "saved": "material id、role、revision；图表绑定和章节归属。", "state": "新关联设为 review=missing，后续必须核查。"},
+        {"action": "调整章节或正文块顺序、目标章节，手动移除材料关联。", "result": "更新写作组织并保留材料原始来源；已手动移除的自动关联不会在每次输入时被补回。", "saved": "sections / blocks 顺序与 sectionID，materialPlacementState 记录曾放置的材料。", "state": "章节与来源变化可能使方向讨论和候选过期。"},
+        {"action": "点击素材打开右栏，双击标题或修改中文说明。", "result": "在当前工作区预览和维护材料，能返回正文；共享素材编辑有 revision 检查。", "saved": "共享素材编辑历史或项目内材料更新；依赖块标记失效。", "state": "说明变化不直接改写正文，已有人工内容保留。"}
+      ],
+      "design": [
+        {"point": "原论文中的章节类型与自己的写作用途是两个概念；具体方案推荐优先于简单按标题匹配。", "basis": "源码事实"},
+        {"point": "结构参考论文若未同时标成精读，不自动作为内容材料塞进章节。", "basis": "源码事实"},
+        {"point": "让正文和材料独立保存，便于重新组织论证、核查旧证据和撤销关联。", "basis": "设计解释"}
+      ],
+      "states": [
+        {"state": "review=missing", "behavior": "材料已关联，尚未完成来源核查。"},
+        {"state": "review=stale", "behavior": "来源、表格绑定或上游依赖更新；原文与正文仍留存。"},
+        {"state": "locked", "behavior": "锁定块不会被自动方向迁移或整篇候选随意改写。"}
+      ],
+      "handoff": [
+        "验收：同一素材可从左栏拖入目标章节；插入后重启能恢复来源与版本，Ctrl+Z 能撤销。",
+        "验收：手动删除自动关联后，输入正文或重新打开项目不应把该关联恢复。",
+        "验收：自动匹配不挪走人工正文，结构范文不因题材不同污染研究范围。",
+        "验收：从任一阶段回素材装配后，画布、选择位置与可行性指导仍可用。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/manuscript/main.mjs", "symbol": "reconcileMaterialSections / changed / attachMaterial / insertMaterial / materialDetails"},
+        {"path": "chrome/content/zotero/research/shared/material-section-matching.mjs", "symbol": "matchMaterialSection / associateProjectMaterials / materialPlacementSuggestions / applyMaterialPlacements"},
+        {"path": "chrome/content/zotero/research/manuscript/assembly-navigation.mjs", "symbol": "evidenceUsage / moveSection / moveBlockToSection / renderAssemblyNavigation"},
+        {"path": "chrome/content/zotero/research/manuscript/direction-workspace.mjs", "symbol": "matchMaterials / render"},
+        {"path": "chrome/content/zotero/research/shared/assembly-direction.mjs", "symbol": "ASSEMBLY_FLOW_STAGES / migrateAssemblyFlow"}
+      ],
+      "limitations": [
+        "匹配包含关键词和章节启发式，不是自动判断所有因果关系；不确定材料需人工放置。",
+        "旧 paper-writing-workflow 等文件与 writingWorkflow 数据仍为兼容保留，不能据此向用户宣称独立写作计划仍是当前流程。",
+        "原始来源与作者稿件的所有权必须分清；材料摘录不应被当作用户正文无提示覆盖。"
+      ],
+      "flow": ["材料入库 → 按方案匹配 → 手动编排与补充 → 来源关系明确 → 讨论方向"]
+    },
+    {
+      "id": "assembly-direction-draft",
+      "title": "05 · 方向讨论与初稿：逐题确认、候选采用、部分缺口保留",
+      "lead": "方向讨论读取真实方案、章节、素材和精读／结构参考角色，生成 2 至 4 个关键问题。用户逐题选择或补充，之后生成有证据约束的分段初稿候选；缺依据的段落单独列出，不阻止其他有依据内容形成候选。",
+      "areas": [
+        {"name": "问题卡", "role": "一次呈现一个关键问题、提出理由、2 至 4 个选项和自由补充输入；可返回上一题。"},
+        {"name": "章节位置建议", "role": "AI 发现某块更适合其他章节时，列出真实块与目标章节，用户选择移动或保留。"},
+        {"name": "可行性指导侧栏", "role": "核对当前章节与可行性计划、资源条件和已确认方向；可编辑完整方案。"},
+        {"name": "初稿候选预览", "role": "按段浏览多个候选版本，显示新增／删除差异；能保留原文或采用可核对的修改。"},
+        {"name": "待补依据卡", "role": "列出缺少来源或有效证据的章节目标，并返回素材位置补充。"}
+      ],
+      "operations": [
+        {"action": "进入方向讨论，点击开始或更新方向问题。", "result": "根据当前项目生成问题与可能的章节位置建议，拒绝已过期的返回结果。", "saved": "directionDiscussion：signature、questions、answers、index、relocations、model、createdAt。", "state": "一次任务期间可停止；素材或方案变化则需更新问题。"},
+        {"action": "选择方向或直接填写补充，确认继续。", "result": "按题保存选项、文字和进度；最后一题完成且有写作目标时准备初稿。", "saved": "answers[questionID] 与 responseDrafts；没有选择且无文字时不能确认。", "state": "修改旧答案后仍逐题前进，不因旧答案全在就跳过复核。"},
+        {"action": "接受或保留章节位置建议。", "result": "只有接受才改变 block.sectionID；保留原位置则只记录决定。", "saved": "relocation.status 与变更后的讨论 signature；采用前建撤销快照。", "state": "锁定块和不存在的块／章节被过滤，不执行无效移动。"},
+        {"action": "生成初稿候选。", "result": "逐目标调用写作预览，记录方案、方向、正文和材料快照；有来源缺口的段落列 gap，继续其他目标。", "saved": "draftBatch 的 targetManifest、previews、gaps、signature、decisionSignature。", "state": "draftBatch.status=pending；未采用前正文不变。"},
+        {"action": "比较段落候选，保留原文或采用更改。", "result": "每个候选选定版本后统一核对时效，再应用；有缺口的目标保持原样。", "saved": "采用前 beforeBlocks、采用后 appliedBlocks、候选 selectedVariantID 和状态。", "state": "采用后进入初稿细调；来源、方向或正文已改则禁止旧候选覆盖。"},
+        {"action": "撤回本次整篇更改。", "result": "当采用后未再人工修改、章节仍存在时恢复 beforeBlocks。", "saved": "draftBatch.status=reverted；编辑器也保有撤销历史。", "state": "采用后已有人工作品变动时拒绝整批覆盖，提示使用编辑器撤销或手动保留。"}
+      ],
+      "design": [
+        {"point": "问题围绕贡献定位、论证主线、范围与证据取舍，不使用每个项目固定同一组问题。", "basis": "源码事实"},
+        {"point": "初稿与候选均绑定实际证据快照，避免在后台生成过程中把用户刚改的文字覆盖。", "basis": "源码事实"},
+        {"point": "逐个呈现问题降低一次处理全部方向选择的负担，仍给作者自由补充空间。", "basis": "设计解释"}
+      ],
+      "states": [
+        {"state": "discussion current / stale", "behavior": "当前签名一致才能直接继续生成；过期保留旧决定供参考。"},
+        {"state": "pending / accepted / rejected / reverted", "behavior": "对应候选待采用、已采用、保留旧稿、已撤回。"},
+        {"state": "source gap / evidence gap", "behavior": "缺少可读取来源或核对依据，保留原段，定位补料。"}
+      ],
+      "handoff": [
+        "验收：两个主题不同的项目产生的问题应引用各自方案和材料差异，不是固定问卷。",
+        "验收：选段或整篇生成过程中修改一个来源后，旧候选不能覆盖新版本。",
+        "验收：一个章节缺依据时，其他有依据章节仍可形成候选；缺口卡能回到对应素材位置。",
+        "验收：采用后立即撤回成功；人工再改后不能用整批撤回擦除新稿。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/shared/assembly-direction.mjs", "symbol": "directionContext / directionSignature / validateDirectionQuestions / captureDraftBatch / acceptDraftBatch / revertDraftBatch / DIRECTION_PROMPT"},
+        {"path": "chrome/content/zotero/xpcom/research/manuscript-direction.js", "symbol": "A.prepareDirection / A.prepareDraft"},
+        {"path": "chrome/content/zotero/research/manuscript/direction-workspace.mjs", "symbol": "prepare / draft / renderPreview / render"}
+      ],
+      "limitations": [
+        "只有真正关联材料或已有可改正文的块才形成写作目标；素材入库但未分配章节不等于可直接生成全文。",
+        "生成的候选并不证明所有学术论断正确，作者仍需逐项审阅与核查。",
+        "整篇撤回不是跨任意后续人工编辑的无限历史系统。"
+      ],
+      "flow": ["整理方向问题 → 逐题确认 → 处理可选迁移 → 分段候选 → 比较与采用 → 初稿细调"]
+    },
+    {
+      "id": "assembly-refinement-annotations",
+      "title": "06 · 初稿细调、选段 AI、项目批注与撤销",
+      "lead": "初稿细调默认把右栏切成编辑对话。鼠标正向或反向划选正文、素材说明、素材批注或素材原文，能带上下文讨论；改写候选先预览再采用。素材原文的选区用于新增项目批注，不直接把原论文改成用户稿。",
+      "areas": [
+        {"name": "正文编辑区", "role": "作者直接编辑段落，保留字符范围、块 ID、章节 ID 和来源快照。"},
+        {"name": "右栏编辑对话／详情与来源", "role": "二者可切换；初稿细调默认编辑对话，普通素材查看默认详情。"},
+        {"name": "本次选区卡", "role": "显示选中文字和作用对象；清除选区后回普通讨论。"},
+        {"name": "候选差异区", "role": "多个版本选项、增删差异、保留原文、保留更改、撤回修改。"},
+        {"name": "素材外侧批注", "role": "选颜色和高亮／下划线样式，保存注释；译文选区保留与原文区块的对应关系。"}
+      ],
+      "operations": [
+        {"action": "划选同一可编辑块的正文，再在右栏描述修改要求。", "result": "捕获准确范围，结合章节规则、当前材料、前后文与可行性指导生成 2–3 个版本。", "saved": "assembly-selection-preview：target、原文与来源版本、variants、diff、model。", "state": "pending；模型返回前后检查选区目标仍有效。"},
+        {"action": "选择一个版本并保留更改。", "result": "只替换对应内容，周围文字和来源关系留存；先保存撤销快照。", "saved": "project.proposals 与正文块 revision；素材说明或批注则走相应材料保存路径。", "state": "accepted；保存失败明确报错，不把预览冒充已保存。"},
+        {"action": "对素材说明、现有批注或原文选区提出修改。", "result": "说明可修订，已有批注可更新；原文选区创建项目批注，原始 sourceText 保持。", "saved": "summary 或 projectHighlights/highlights；annotationRevision；相关正文依赖失效。", "state": "素材源版本变动时需要重新捕获，不采用旧范围。"},
+        {"action": "在完整素材中划选文字，选择颜色、样式和批注后保存。", "result": "渲染持久高亮／下划线与旁注；中文译文保留原文锚点和文本哈希。", "saved": "当前项目的 projectHighlights，最多每块素材 100 条局部标注。", "state": "默认只是本项目素材批注，绝不自动创建或修改原 PDF 批注。"},
+        {"action": "明确点击应用批注到原文。", "result": "尝试把项目标注同步到 PDF 的准确位置；未能定位的部分保存待处理。", "saved": "原文 annotation 与材料的关联；项目批注仍保留。", "state": "pending 表示部分位置仍需打开原文精确定位，不能伪报全成功。"},
+        {"action": "使用 Ctrl+Z／重做，或撤回已采用选区修改。", "result": "普通编辑恢复项目快照；候选撤回只有目标仍是采用后的版本才执行。", "saved": "会话内 undo/redo；素材共享编辑另有最多 30 项历史。", "state": "素材或正文采用后又有新修改时，撤回拒绝覆盖。"}
+      ],
+      "design": [
+        {"point": "DOM Range 正规化正反向选择；范围映射同时核验原文、版本和上下文，避免选中同句时误改另一处。", "basis": "源码事实"},
+        {"point": "学术写作提示要求保留事实、数值、单位、公式、引用和论断强度，避免防御性套话与 AI 身份说明。", "basis": "源码事实"},
+        {"point": "项目批注和原 PDF 批注分开，满足作者在新稿素材上做用途标记的需要。", "basis": "设计解释"}
+      ],
+      "states": [
+        {"state": "source-note", "behavior": "针对选中材料原文新增项目批注，不能直接重写原论文。"},
+        {"state": "translation changed", "behavior": "保留旧标注与原文位置并提示译文已更新，不强行把高亮画到相似的新文字。"},
+        {"state": "userEdited", "behavior": "人工说明或正文有明确标记；后续模型建议必须经过预览和版本检查。"}
+      ],
+      "handoff": [
+        "验收：从右向左选择正文与译文都能捕获；点击输入栏不会把本次选区意外丢弃。",
+        "验收：候选未采用前正文不变；接受、保留原文和撤回各自可用。",
+        "验收：保存素材高亮后关闭再开，折叠预览与完整材料均能显示对应色彩和旁注。",
+        "验收：普通保存项目批注前后，PDF 原文 annotation 数量不应变化；只有明确应用才同步。",
+        "验收：临时生成任务停止、页面关闭时取消所属请求并释放监听器，不持续重绘已离开的选区。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/manuscript/selection-assistant.mjs", "symbol": "rangeTextOffsets / installSelectionAssistant / captureFromRange / accept / revert / saveMaterial"},
+        {"path": "chrome/content/zotero/research/manuscript/selection-target.mjs", "symbol": "captureSelectionTarget / assertSelectionTargetCurrent / applySelectionPreview / revertSelectionPreview"},
+        {"path": "chrome/content/zotero/research/manuscript/main.mjs", "symbol": "snapshot / saveMaterialHighlights / materialDetails"},
+        {"path": "chrome/content/zotero/research/shared/material-project-annotations.mjs", "symbol": "saveProjectMaterialHighlights / mergeMaterialAsset"},
+        {"path": "chrome/content/zotero/research/shared/material-highlights.mjs", "symbol": "captureMaterialSelections / createMaterialHighlightGroup / resolveMaterialHighlight"},
+        {"path": "chrome/content/zotero/xpcom/research/manuscript-writing.js", "symbol": "A.previewSelection / A.editAsset"}
+      ],
+      "limitations": [
+        "会话内撤销数组上限 30 项，并不等于跨所有程序重启的无限撤销。",
+        "重复句或译文与源块失配时可能无法唯一定位，需要重新选择更完整且连续的文字。",
+        "旧兼容路径仍支持写作速读选段类型，但当前四阶段默认流程不把它作为独立主入口。"
+      ],
+      "flow": ["选择内容 → 给修改要求 → 多版本差异预览 → 保留更改或原文 → 保存 → 可安全撤回"]
+    },
+    {
+      "id": "assembly-verification-export",
+      "title": "07 · 来源核查、全文评估与正文导出",
+      "lead": "导出阶段先检查结构、文件和来源，再生成绑定当前稿件的全文评估与执行方案。正文或材料有变化，旧评估会失效。引用格式、Word 版式和目标期刊适配是相关但不同的能力。",
+      "areas": [
+        {"name": "来源核查导航", "role": "按块查看材料使用、来源版本、引用与图表绑定，定位缺失或过期项。"},
+        {"name": "结构与文件检查", "role": "检查项目内容、块引用关系、图片文件实际存在、引用文库条目有效。问题按钮可回到对应块。"},
+        {"name": "全文评估", "role": "显示完成度估计、剩余工时范围、判断依据、期刊层级判断和执行步骤。"},
+        {"name": "执行方案", "role": "把任务导向补证据、核查来源、插图、编辑或导出检查；不是自动执行实验。"},
+        {"name": "Word 样式与导出", "role": "可选择 reference.docx，导出正文与执行方案 Word；引文走 Zotero CSL。"}
+      ],
+      "operations": [
+        {"action": "进入内容导出并检查当前稿件。", "result": "A.check 返回真实结构与文件问题；点击问题定位对应块。", "saved": "检查结果为当前视图状态；项目保存独立进行。", "state": "没有正文时不能进入导出；有问题时正文包导出按钮禁用。"},
+        {"action": "选中带材料的块，执行对照来源核验。", "result": "读取对应来源与 revision，记录核验结果或待核查状态。", "saved": "块 review、sourceVersions 或核验记录。", "state": "源材料更新会再次使相关块失效，不自动覆盖正文。"},
+        {"action": "一键评估全文。", "result": "持久保存当前稿件签名下的评估、工时估计和执行计划。", "saved": "manuscript assessment 记录：version、signature、status、result、benchmarks。", "state": "ready 且签名仍一致才属于当前评估；生成途中修改需重评。"},
+        {"action": "点击开始某个执行步骤。", "result": "跳到对应块或阶段，执行来源搜索、核查、插图或重新检查；纯编辑步骤定位并提示操作。", "saved": "必要的当前阶段与选择位置。", "state": "评估过期则拒绝按旧执行方案继续。"},
+        {"action": "选择已安装引文样式、内置已知期刊版式或自定义 reference.docx。", "result": "CSL 生成引文与参考文献；Word 版式由已知预设或参考文档控制。", "saved": "citationStyle、language、journalFormat、template.referenceDoc。", "state": "未安装样式报错；内置 APS 引文样式可安装，自定义 Word 样式优先。"},
+        {"action": "导出正文与执行方案 Word。", "result": "通过 Python 文档引擎生成真实 DOCX，公式转换使用 Pandoc；预览调用同一真实导出链路。", "saved": "用户选定目录中的文档文件；项目正文不因导出被修改。", "state": "评估必须当前、结构检查通过、没有运行中任务；失败保留已有稿件。"}
+      ],
+      "design": [
+        {"point": "早期装配阶段不重复计算整篇导出签名；全文评估只在对应阶段读取，减少大材料集合的序列化。", "basis": "源码事实"},
+        {"point": "引文样式不等于所有期刊的整套排版，交接和产品文案应分别说明。", "basis": "源码事实"},
+        {"point": "工时与期刊适配是规划参考，展示范围与依据是为了让作者判断适用条件。", "basis": "设计解释"}
+      ],
+      "states": [
+        {"state": "checking", "behavior": "正在检查结构与实际文件，不允许依据旧检查直接导出。"},
+        {"state": "assessment ready/current", "behavior": "版本和稿件签名匹配，可以按执行方案推进。"},
+        {"state": "assessment stale", "behavior": "正文或材料变化；保留旧结果供参考，但需重新评估。"}
+      ],
+      "handoff": [
+        "验收：删掉某张图的本地文件或引用条目后，检查能指出对应块。",
+        "验收：评估完成后改一个正文数字或素材版本，导出入口应变为待重评。",
+        "验收：实际打开生成 DOCX，检查标题层级、引文、表格、图片与公式，不以按钮提示成功为准。",
+        "验收：选择自定义 reference.docx 后，默认规范化不能擦除用户参考文档样式。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/manuscript/assembly-workflow.mjs", "symbol": "renderPanel / refresh / assessWhole / executePlanStep / setStep"},
+        {"path": "chrome/content/zotero/xpcom/research/manuscript.js", "symbol": "A.check / A.ensureJournalStyle / A.export / A.preview"},
+        {"path": "chrome/content/zotero/xpcom/research/manuscript-assessment.js", "symbol": "A.assessWhole"},
+        {"path": "chrome/content/zotero/research/shared/manuscript-model.mjs", "symbol": "validate / invalidate"},
+        {"path": "services/research-engine/manuscript/document.py", "symbol": "export / formula / apply_journal_layout"},
+        {"path": "services/research-engine/manuscript/plan_export.py", "symbol": "执行方案 Word 导出"}
+      ],
+      "limitations": [
+        "完成度、期刊层级和工时是模型估计，不能当作录用承诺或项目排期事实。",
+        "任意期刊的全部投稿格式并非一键自动支持；以安装的 CSL、已知版式和用户参考 Word 为边界。",
+        "公式导出依赖可用 Pandoc；缺失时应报错，不能用错误文字替代数学式。"
+      ],
+      "flow": ["结构与来源核查 → 当前全文评估 → 执行剩余任务 → 再核查 → 导出真实 Word 文件"]
+    },
+    {
+      "id": "ppt-materials-weekly",
+      "title": "08 · 组会 PPT：入口、取材范围与本周研究汇报",
+      "lead": "当前 PPT 使用动态六步工作区：选择材料、选择模板、编辑大纲、图片与示意图、我的内容、逐页编辑与导出。默认入口可从首页、文库选中论文或阅读器进入；页面顶部恢复保存项目。",
+      "areas": [
+        {"name": "项目顶部", "role": "恢复草稿、显示材料数／完成页数／时长，提供新建、本周研究汇报、保存草稿和检查汇报。"},
+        {"name": "六步导航", "role": "标示当前步骤与完成状态；后续步骤受材料读取和结构确认约束。"},
+        {"name": "材料设置", "role": "设置汇报名，选择论文，接收表格、图片或文字资料，选择全文、指定页码或仅批注。"},
+        {"name": "任务状态", "role": "显示真实工作进度；运行时可取消，失败后可从未完成处重试。"},
+        {"name": "第二栏成果与资料", "role": "保留当前讨论、文件与已保存 PPT 项目／实际 PPTX；详情预览不等于嵌入另一个 PDF 阅读器。"}
+      ],
+      "operations": [
+        {"action": "从首页新建、文库选中论文生成汇报，或阅读器点击加入汇报。", "result": "创建或恢复 pptDraft；单篇默认为精读结构，多篇默认为综述结构。", "saved": "pptDrafts[id]：papers、scope、templateID、themeID、minutes、step、outline、slides 等。", "state": "新项目 step=0；空项目不能伪装已经读取材料。"},
+        {"action": "选择全文、指定页码、仅高亮与批注，或恢复旧选段范围。", "result": "严格按范围读取文字与图表；缺范围内容时不悄悄扩大到整篇。", "saved": "scope.mode、ranges[paperID] 或旧 selection；变更置 materialsReady=false、outlineApproved=false。", "state": "页码按 PDF 文件页序从 1 开始，旧选段属于兼容恢复范围。"},
+        {"action": "选择论文或从资料栏拖入文件，点击读取材料。", "result": "提取来源段落、图表资产与文件内容，形成 sources/assets；成功后进入模板步骤。", "saved": "sources、assets、pdfHashes、materialWarnings、materialFiles；保留手工实验图片。", "state": "同一任务有 AbortController；部分缺 PDF 记录警告，所有所选范围都无文字时明确失败。"},
+        {"action": "点击本周研究汇报。", "result": "汇总过去七天阅读、新增文献、批注、笔记、阅读整理、写作进展与实验记录，生成可编辑页面。", "saved": "weeklyRange、weeklyEntryIDs、weekly 来源、页面和大纲；templateID=progress，step=5。", "state": "这一步由已保存记录构建，不要求先让大模型把所有记录再总结一次；无记录则明确提示。"},
+        {"action": "运行中取消，失败后重试。", "result": "中止当前任务；已存草稿保留；未完成页面可以继续补齐。", "saved": "已成功完成的材料或页面已逐步保存，错误不清空草稿。", "state": "运行中大部分编辑控制暂禁用，任务栏保留取消入口。"}
+      ],
+      "design": [
+        {"point": "逐阶段读取与保留已完成页面，避免一次失败就重做全部材料与整套汇报。", "basis": "源码事实"},
+        {"point": "本周汇报是手动触发的快照生成；不等于已经启用每周自动定时生成或后台通知。", "basis": "源码事实"},
+        {"point": "范围变更会使材料和大纲确认失效，让作者知道后续结果基于哪批输入。", "basis": "设计解释"}
+      ],
+      "states": [
+        {"state": "materialsReady=false", "behavior": "还没有按当前范围完成材料读取，不能进入要求真实材料的后续步骤。"},
+        {"state": "outlineApproved=false", "behavior": "大纲未确认，不能把后续图片与逐页内容当作当前确定结构。"},
+        {"state": "weekly snapshot", "behavior": "生成时固定过去七天记录；后续编辑照常保存为 PPT 项目。"}
+      ],
+      "handoff": [
+        "验收：从三种入口分别新建，确认传入的是正确论文和范围。",
+        "验收：选择某几页后，正文和图表不混入范围外页面；仅批注模式不自动补全文。",
+        "验收：读取中取消后，恢复项目能看见已保存材料与任务失败原因。",
+        "验收：本周汇报的每页能找到保存记录来源，AI 整理不得被冒充论文事实。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/ui/ppt-main.js", "symbol": "initPPTStudio / openPPTStudio / createWeeklyPPT / pptTask / renderPPT"},
+        {"path": "chrome/content/zotero/research/ui/ppt-flow.js", "symbol": "pptMaterials"},
+        {"path": "chrome/content/zotero/xpcom/research/ppt-studio.js", "symbol": "S.create / S.selectMaterials / S.collect / S.open / S.installReader"},
+        {"path": "chrome/content/zotero/research/shared/ppt-scope.mjs", "symbol": "scopedPages"},
+        {"path": "chrome/content/zotero/research/shared/weekly-research.mjs", "symbol": "weeklyResearchEntries / weeklyPresentation"},
+        {"path": "chrome/content/zotero/xpcom/research/research-resources.js", "symbol": "E.weeklyResearch / E.studio.createWeekly / E.startResearchActivity"}
+      ],
+      "limitations": [
+        "一次材料选择最多 12 篇论文；全文总上下文有预算，较长页面会采样并记录警告。",
+        "周报最多收集近期 120 条记录，单条清理后保留有限文字；不代表完整分析了全部研究历史。",
+        "workspace.html 中旧 meetings 控件不是当前 PPT 六步流程，不能按旧 HTML 单独宣传功能。"
+      ],
+      "flow": ["选择材料 → 严格取材 → 选择模板 → 编辑与确认大纲 → 编排页面 → 导出；本周汇报可直接生成编辑快照"]
+    },
+    {
+      "id": "ppt-template-outline",
+      "title": "09 · PPT 模板、大纲编辑与 AI 结构建议",
+      "lead": "内容模板决定讲述任务，视觉主题决定配色和字体。已有大纲或页面时，切换内容模板先形成结构修改预览。AI 也通过同一提案机制新增、删除、重排或改写板块。",
+      "areas": [
+        {"name": "内容结构模板", "role": "单篇精读、多篇综述、个人进展、论文加实验、开题、中期、答辩。"},
+        {"name": "视觉风格", "role": "学术浅色、深色、期刊配色、实验汇报；可导入 PPTX 提取主题信息。"},
+        {"name": "大纲编辑列表", "role": "逐板块编辑标题和讲述任务，可新增、插入、删除、上下移动，支持撤销与重做。"},
+        {"name": "结构修改预览", "role": "显示新增、删除、修改和顺序调整；保留更改或撤回建议。"}
+      ],
+      "operations": [
+        {"action": "选择内容模板与 5–60 分钟预计时长。", "result": "空新项目直接采用初始大纲；已有内容则形成模板切换提案。", "saved": "templateID、minutes、outline 或 outlineProposal。", "state": "模板更换尚待接受时不覆盖当前大纲。"},
+        {"action": "选择视觉主题或导入 PPTX 模板。", "result": "更新颜色／字体主题；期刊配色可从论文图片提取色板；导入主题显示限制说明。", "saved": "themeID、theme、importedTheme。", "state": "主题导入属于样式信息提取，不是完整导入任意原 PPT 的可编辑页面。"},
+        {"action": "手动修改板块标题、用途，新增、移动或删除板块。", "result": "通过 applyOutlineEdit 修改真实结构，最后一个板块不能被删除。", "saved": "outlineCustomized=true、outlineApproved=false；history 快照，清 redo。", "state": "现有 AI 提案被移除，避免后续接受旧提案覆盖手工结构。"},
+        {"action": "请求 AI 优化结构，或在组会讨论中说明要怎样改。", "result": "输入当前结构、实际来源与要求，生成 1–50 个有效板块和摘要。", "saved": "outlineProposal.base、sections、summary、model、createdAt。", "state": "生成期间大纲被修改时拒绝旧提案；资料中的文字只当数据。"},
+        {"action": "审阅结构差异并保留。", "result": "校验 base 指纹，采用新结构；可撤回建议而不改原纲。", "saved": "outline、outlineModel、可选 templateID；history 先捕获。", "state": "确认结构前仍 outlineApproved=false。"},
+        {"action": "确认结构并编排页面。", "result": "按 outlineID 复用已有页面，为新章节创建待生成页；被删除的章节页归档，手工页保留。", "saved": "slides、archivedSlides、outlineApproved=true、plannerVersion，step=3。", "state": "尚有未处理提案或标题／任务为空时不能确认。"}
+      ],
+      "design": [
+        {"point": "标题是页面身份，purpose 是讲述任务；二者各自可修改，避免把一排标题当作完整结构。", "basis": "源码事实"},
+        {"point": "已有人工内容时模板切换进入差异提案，而不直接覆盖。", "basis": "源码事实"},
+        {"point": "内容与视觉分离，作者能调整叙事而不必重新选择资料或丢掉讲稿。", "basis": "设计解释"}
+      ],
+      "states": [
+        {"state": "outlineProposal pending", "behavior": "可预览增删与顺序变化，等待保留或撤回。"},
+        {"state": "outlineCustomized", "behavior": "表明结构已被手工或接受提案修改，后续不应无条件重建。"},
+        {"state": "outlineApproved", "behavior": "当前结构已确认并与页面建立对应关系。"}
+      ],
+      "handoff": [
+        "验收：增加板块后立即出现可编辑字段，保存后重新打开仍在；上下移动与删除确实改变页面结构。",
+        "验收：AI 新增、删除、重排分别显示正确差异；生成期间手工改纲后旧提案不能接受。",
+        "验收：更换模板不丢已有讲稿和手工页；被删章节对应页可以在数据中追溯。",
+        "验收：导入主题后检查实际导出颜色和字体，并把不支持的母版／对象效果明确列为限制。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/ui/ppt-flow.js", "symbol": "pptTemplates / pptOutline / pptOutlineProposal"},
+        {"path": "chrome/content/zotero/xpcom/research/ppt-studio.js", "symbol": "S.editOutline / S.acceptOutline / S.discardOutline / S.history"},
+        {"path": "chrome/content/zotero/xpcom/research/ppt-studio-ai.js", "symbol": "S.outline / S.proposeOutline / S.prepareSlides"},
+        {"path": "chrome/content/zotero/research/shared/ppt-outline.mjs", "symbol": "applyOutlineEdit / outlineFingerprint / outlineDiff / normalizeOutline"},
+        {"path": "chrome/content/zotero/research/shared/ppt-model.mjs", "symbol": "CONTENT_TEMPLATES / THEMES"},
+        {"path": "services/research-engine/src/studio-template.mjs", "symbol": "PPTX 主题提取"}
+      ],
+      "limitations": [
+        "PPTX 模板导入提取主题，不保证完整还原任意母版、布局与第三方效果。",
+        "默认自动大纲不会自动生成方法示意图；方法示意图是独立可选编辑能力。",
+        "PPT 历史快照最多保留 12 项，内容结构与主题回退不是任意文件版本管理。"
+      ],
+      "flow": ["选择内容结构和视觉主题 → 编辑大纲 → 预览建议 → 接受或撤回 → 确认 → 页面编排"]
+    },
+    {
+      "id": "ppt-pages-contributions",
+      "title": "10 · 图文页面、个人实验、逐页编辑与真实预览",
+      "lead": "页面内容以论点、证据和讲稿保存，不仅是一张截图。论文事实需要可核对原文，作者解释、系统归纳、个人理解、个人实验和待验证观点分别建模。图片与表格可来自论文原件，也可由作者导入。",
+      "areas": [
+        {"name": "图片与示意图阶段", "role": "显示逐页完成情况、真实预览或当前内容占位，支持编辑和失败重试；下方提供论文图表资产。"},
+        {"name": "我的内容阶段", "role": "填写标题、文字、类型和讲者备注，导入实验表格／图片，选择插入位置；可跳过。"},
+        {"name": "逐页缩略图", "role": "选择页面、拖动排序、上下移动、新增空白页、复制与可撤销删除。"},
+        {"name": "中央画布", "role": "展示文字、原图、比较图、表格或方法示意图；可打开实际渲染效果。"},
+        {"name": "页面属性", "role": "修改标题、核心解释、各条正文类型、来源、讲稿、布局与图片；提供重新生成、预览与导出。"}
+      ],
+      "operations": [
+        {"action": "补齐未完成页面或重新生成当前页。", "result": "只处理 pending/failed 页；按当前板块任务与前文避免重复，验证来源后保存。", "saved": "slide.blocks、assetIDs、notes、slidePurpose、assetReason、model、generatedAt、status。", "state": "generated、failed、user、user_edited；失败页保留错误并可单独重试。"},
+        {"action": "导入 CSV/XLSX，或从 Excel 粘贴带表头的数据。", "result": "生成 datasets，选择柱状、折线、散点或热力图；粘贴数据校验空值和数值。", "saved": "datasets 的 labels/series/provenance，页面 datasetID/chartType。", "state": "粘贴限制 1–30 行数据、2–6 列；任意复杂工作簿并非完整分析器。"},
+        {"action": "导入 PNG/JPG，填写个人理解、实验或待验证计划并加入。", "result": "创建个人内容页面，可插在某页之后，论文证据与个人内容保留不同类型。", "saved": "assets.user_image、contributions、contributionForm 与新增 slide。", "state": "个人实验标签表示来源类型，不自动证明所填实验真实执行。"},
+        {"action": "编辑页面文字和讲稿，切页或执行其他操作。", "result": "提交待保存编辑，标记 user_edited；输入不要求每个字符重建整套页面。", "saved": "pageID 对应内容，pptCommitEditorEdits/pptFlushEdits 串行提交。", "state": "切页、任务、关闭前先 flush；页面身份变化防止把旧编辑写到新页。"},
+        {"action": "调整 balanced/text/visual/comparison 布局，选择原图，必要时裁切。", "result": "改变页面图文关系；对比布局支持两张图；裁切针对当前论文原图。", "saved": "layout、assetIDs、comparisonAssetID、裁切资产或页面设置。", "state": "图片消失或来源无效时报错；不自动替换为无关论文图片。"},
+        {"action": "预览当前页或整套 PPT。", "result": "通过真实导出／渲染链路生成逐页预览，内容未变时复用缓存，无需重新调用 AI。", "saved": "previews[pageID] 的 hash/path，lastPreview。", "state": "页面内容与预览 hash 不同时标记上次渲染，不能把旧图当当前最终输出。"}
+      ],
+      "design": [
+        {"point": "论文事实与作者解释必须有 evidenceIDs 和可匹配 quote；个人观点或待验证内容不能冒充论文事实。", "basis": "源码事实"},
+        {"point": "图文编辑保留可编辑页面模型，真实渲染预览作为验证结果，二者不能混为同一个状态。", "basis": "源码事实"},
+        {"point": "以页为单位生成和重试，降低长任务失败后的重复成本。", "basis": "设计解释"}
+      ],
+      "states": [
+        {"state": "pending / failed", "behavior": "页面待生成或生成失败，补齐操作只处理这些页面。"},
+        {"state": "user / user_edited", "behavior": "作者新增或编辑内容，保留人工身份；重新生成由用户主动执行。"},
+        {"state": "preview stale", "behavior": "页面哈希变化，仍可看旧预览但应重新渲染后验收。"}
+      ],
+      "handoff": [
+        "验收：改完文字立刻切页、换草稿或导出，修改不能丢失或串到另一页。",
+        "验收：拖动页序、复制、删除、撤销和重做后，页 ID、讲稿与来源绑定保持正确。",
+        "验收：只有真实来源且摘录可匹配的内容可标论文事实；伪造 evidenceID 或 quote 应拒绝。",
+        "验收：检查文字、中文字体、图表、公式、讲稿、裁切与两图比较的实际导出页面；原生画布正常不代表 PPTX 已通过。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/ui/ppt-flow.js", "symbol": "pptVisuals"},
+        {"path": "chrome/content/zotero/research/ui/ppt-contributions.js", "symbol": "pptContributions"},
+        {"path": "chrome/content/zotero/research/ui/ppt-editor.js", "symbol": "pptCommitEditorEdits / pptFlushEdits / pptInsertBlankPage / pptMoveEditorPage / pptEditor"},
+        {"path": "chrome/content/zotero/research/ui/ppt-crop.js", "symbol": "pptCrop"},
+        {"path": "chrome/content/zotero/xpcom/research/ppt-studio-ai.js", "symbol": "S.generatePage / S.generateRemaining"},
+        {"path": "chrome/content/zotero/research/shared/ppt-model.mjs", "symbol": "BLOCK_TYPES / validateStudioSlide / validateStudioPlan"},
+        {"path": "chrome/content/zotero/xpcom/research/ppt-studio.js", "symbol": "S.addContribution / S.renderPage / S.renderAll / S.pageKey"},
+        {"path": "services/research-engine/src/studio-render.mjs", "symbol": "真实 PPT 页面渲染"}
+      ],
+      "limitations": [
+        "整套最多 50 页，单页最多六条内容；标题、正文、解释与讲稿有长度约束，超长应拆页。",
+        "PPT 内方法图提供语义节点和关系编辑，但不代表任何论文都能自动生成正确的完整技术路线。",
+        "导入数据图只覆盖规定的结构与图形，不能等同于 Excel 全部图表类型或公式重算。"
+      ],
+      "flow": ["按页补齐证据 → 加个人内容 → 编辑与排序 → 真实预览 → 检查与导出"]
+    },
+    {
+      "id": "ppt-chat-outputs",
+      "title": "11 · PPT 讨论、文件预览、成果留存与导出",
+      "lead": "PPT 对话与草稿、文库范围绑定，切步骤复用同一对话表面，不因重绘丢失消息。AI 可以读取材料、建议结构、补页、预览和导出。结构建议经过提案确认；导出有模型校验与实际文件检查，但对话导出和页面导出的就绪检查尚未完全共用，见本节限制。",
+      "areas": [
+        {"name": "底部组会讨论", "role": "默认收起，可展开、固定、停止任务、选择讨论重点，添加论文、表格、图片和研究文件。"},
+        {"name": "左侧对话与文件", "role": "按 PPT 草稿和 libraryScopeKey 筛选会话；新建、切换与管理会话，搜索并挑选本次文件。"},
+        {"name": "右侧文件详情", "role": "显示资料或生成图片的预览与来源，返回当前页面；使用共享详情组件，不在此再放完整 PDF 阅读器。"},
+        {"name": "已保存的 PPT", "role": "列出具备真实内容的编辑项目和有效 PPTX；能恢复编辑、打开文件和定位目录。"},
+        {"name": "汇报检查与导出", "role": "核对内容、来源、配图和时长建议，选择保存目录，生成实际可编辑 PPTX。"}
+      ],
+      "operations": [
+        {"action": "切换步骤或重新打开同一草稿。", "result": "复用当前草稿的讨论节点，保留会话、输入草稿和附件选择。", "saved": "统一 conversations 分支中的 pptDraftID、范围键、messages、draft 和附件状态。", "state": "会话切换增加 selectionRevision，取消旧任务与旧详情请求，阻止旧内容串进新会话。"},
+        {"action": "选文件或拖入论文、表格、图片，选择本次资料。", "result": "为对话提供选定上下文；PPT 材料接收按对应流程加入草稿，不以文件名冒充已读取。", "saved": "conversation attachments 与可选 materialFiles；文件来源和 selected 状态。", "state": "移除本次资料不删除原文件。"},
+        {"action": "让 AI 比较方法、组织顺序、讨论实验，或直接优化结构、补页。", "result": "普通讨论使用实际选定来源；功能意图路由到 collect/outline/generate/preview/export。", "saved": "消息、来源、工具步骤与产生的结构提案或页面。", "state": "结构建议仍待接受；运行中可停止，方向问题可弹出选项并允许补充后发送。"},
+        {"action": "拖动 AI 回答到页面或新增区域。", "result": "向指定页补讲稿，或创建讨论页面；保留对话与消息来源。", "saved": "页面 notes 或新页及消息关联信息。", "state": "回答拖动不等于直接把未经核验的模型说法标为论文事实。"},
+        {"action": "打开已保存的 PPT 项目或文件。", "result": "项目恢复编辑；PPTX 用系统程序打开；定位按钮显示实际保存目录。", "saved": "pptDrafts 和 exports/lastExport；列表本身是派生视图。", "state": "项目必须有页面、已读材料或自定义结构；文件必须实际存在且非空。"},
+        {"action": "检查汇报后导出。", "result": "错误项阻止导出并定位；警告与时长估计提示作者；选目录后导出可编辑 PPTX。", "saved": "lastExport、最多 30 条 exports 与真实文件；检查文件非空及 ZIP 签名后记入成果。", "state": "取消目录选择不产生假成果；文件移动或丢失后列表不再当它有效。"}
+      ],
+      "design": [
+        {"point": "对话可以推动真实功能；目前结构预览与来源校验已复用，导出就绪检查仍需合流，不能把所有入口说成完全一致。", "basis": "源码事实"},
+        {"point": "成果栏显示可恢复项目与可打开文件两类对象，解决只生成了页面却不知道文件保存在哪里的问题。", "basis": "设计解释"},
+        {"point": "成果读取有分支 revision 缓存、最多四路文件检查和取消信号，避免切会话时反复扫描全部资料。", "basis": "源码事实"}
+      ],
+      "states": [
+        {"state": "conversation scoped", "behavior": "会话只属于当前草稿与范围，不应混入另一项目的文件与问题。"},
+        {"state": "PPT project", "behavior": "已保存编辑状态，可继续改，不要求已经导出文件。"},
+        {"state": "PPTX output", "behavior": "真实文件通过存在与非空校验，能打开和定位。"}
+      ],
+      "handoff": [
+        "验收：快速换会话与步骤时，输入草稿、消息、附件和右侧文件不会交叉串线；旧请求及时取消。",
+        "验收：选择不同范围后，AI 讨论只读取本次选定论文与文件。",
+        "验收：文件删除或移走后成果不显示假成功，重新导出可恢复有效记录。",
+        "验收：实际用 PowerPoint 或兼容程序打开 PPTX，检查可编辑文字、图片、图表和讲者备注。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/research/ui/ppt-assistant.mjs", "symbol": "mountPPTAssistant / pptConversationSessions / pptDiscussionContext / pptAssistantIntent / selectSession / execute"},
+        {"path": "chrome/content/zotero/research/shared/conversation-files.mjs", "symbol": "mountConversationFiles / mountConversationFileDetail / receiveConversationDrop"},
+        {"path": "chrome/content/zotero/research/shared/workspace-outputs.mjs", "symbol": "pptOutputCandidates / listPPT / rememberPPTExport / open / restore / reveal"},
+        {"path": "chrome/content/zotero/research/shared/workspace-output-list.mjs", "symbol": "成果列表组件"},
+        {"path": "chrome/content/zotero/research/shared/ppt-readiness.mjs", "symbol": "presentationReadiness"},
+        {"path": "chrome/content/zotero/research/ui/ppt-main.js", "symbol": "pptRenderReadiness / pptOpenReadinessIssue / pptExportCurrent"}
+      ],
+      "limitations": [
+        "PPTX 有 ZIP 签名仅是最低文件检查，不代替逐页可读性与可编辑性验收。",
+        "右栏支持的预览取决于文件种类和读取能力，不能保证每一种二进制文件都可直接阅读。",
+        "自动意图识别可能误判；功能调用应保持可停止、可理解的状态回报。",
+        "已知实现差异：页面导出先调用 presentationReadiness；PPT 对话的 execute('export') 直接调用 S.export，只做模型结构／证据校验与实际文件检查。接手时应把两入口合到同一就绪检查，本文只记录，不修改产品。"
+      ],
+      "flow": ["选择本次资料 → 对话或功能操作 → 审阅生成内容 → 检查汇报 → 导出真实文件 → 第二栏恢复或打开"]
+    },
+    {
+      "id": "writing-ppt-engineering",
+      "title": "12 · 模块、持久化、模型路由与性能边界",
+      "lead": "前端模块维护当前选择与局部渲染，Zotero XPCOM 服务处理资料、保存、模型请求与任务，Node/Python 引擎负责解析、图表、渲染和导出。持久内容与可再生成缓存分层，模型设置改变不应默默重生人工内容。",
+      "areas": [
+        {"name": "UI 层", "role": "notebook.mjs/notebook-preparation；manuscript 主模块、导航、方向与选段助手；PPT 动态阶段、编辑器和讨论组件。"},
+        {"name": "领域模型与校验", "role": "shared 模块保存章节、材料、证据锚点、候选签名、PPT 页面和范围规则；纯函数便于 Node 测试。"},
+        {"name": "Zotero 服务层", "role": "manuscript/notebook/ppt-studio 服务调用 Zotero 条目、附件、CSL、存储、凭据和模型。"},
+        {"name": "产物引擎", "role": "research-engine CLI 分派 assets、manuscript、template、layout、validate、export 等操作；Python 负责 PDF 和 Word，Node 负责 PPT、图表与示意图。"},
+        {"name": "状态与缓存", "role": "workspace.json 是持久业务状态；受保护图表原件、文件缓存和预览各有用途，不能以清缓存删除人工内容。"}
+      ],
+      "tables": [
+        {"headers": ["对象", "关键字段／位置", "用途与失效规则"], "rows": [
+          ["manuscripts", "sections、blocks、materials、researchPreparation、directionDiscussion、draftBatch、proposals、revision、ui", "正文项目；A.save 按 revision 拒绝跨窗口旧版本覆盖。"],
+          ["researchNotebooks", "准备输入、来源选择、versions、artifacts、decisions、assessment、messages", "可行性与素材工作；按输入签名、素材版本、文库修改时间判断过期。"],
+          ["researchMaterials", "id、sourceText、anchor、revision、imagePath、imageExplanation、history", "共享完整材料；项目副本可另存局部批注，来源变更使依赖待核查。"],
+          ["pptDrafts", "papers、materialFiles、scope、outline、slides、assets、sources、datasets、contributions、history、previews、exports", "可编辑汇报项目；材料范围更改清准备状态，结构提案校验指纹。"],
+          ["conversations／文件引用", "session、origin、projectID/pptDraftID、libraryScopeKey、messages、draft、attachments", "统一对话上下文；选中文件只决定本次资料，不直接删除文件。"],
+          ["workspaceDownloads", "实际 attachmentID、collectionID、path、savedAt", "真实下载成果索引；展示与打开前复核本地非空文件。"],
+          ["rapidReadDocuments／readerPreparations", "同源文档指针、来源身份、准备状态", "阅读即准备与跨模型设置复用；成功正文与图表说明保留，不因样式变化重新调用。"]
+        ]}
+      ],
+      "operations": [
+        {"action": "业务保存调用 E.store。", "result": "队列串行写入临时文件与备份，提交后通知监听者。", "saved": "Zotero 数据目录下 easysch/workspace.json 及 .bak。", "state": "get 返回脱离存储的副本；replaceBranch 复制目标分支，update 仍深复制整状态。"},
+        {"action": "调用写作、方向讨论或 PPT 模型任务。", "result": "解析显式选择或全局设置，读取凭据，校验输入与输出，并向 UI 回报真实模型阶段。", "saved": "业务产物记录实际 model；凭据由独立 credentials 服务取得，不写入交接资料。", "state": "selectedModel 表示显式选择；普通任务经 resolveModel；本地纯渲染不应调用模型。"},
+        {"action": "调用翻译或阅读准备。", "result": "使用翻译专用配置或阅读准备通道；相同论文任务共享进行中的工作。", "saved": "译文、详细速读、图表解读与原件留存；完成后从持久缓存恢复。", "state": "翻译路线与写作主模型分开；打开论文优先于排队导入，单 worker 控制并发。"},
+        {"action": "离开页面、切会话或关闭应用。", "result": "先提交输入草稿，取消所属任务、解绑监听与预览，拒绝旧 token 的结果写回。", "saved": "已成功持久化内容保留；临时控制器与 DOM 不持久化。", "state": "共享阅读准备只有所有消费者释放才取消；关闭某个面板不应误杀其他面板仍需的任务。"}
+      ],
+      "design": [
+        {"point": "模型路由有全局、显式会话选择和翻译专用通道，不应把当前账号配置硬编码进展示层或交接文档。", "basis": "源码事实"},
+        {"point": "业务完成稿、人工编辑和图表解读是持久产物；临时解析缓存、AI 请求缓存和渲染缓存不能混同。", "basis": "源码事实"},
+        {"point": "性能优化优先减少无变化写盘、全状态复制、全页重建和重复读取，再考虑更多缓存，避免缓存成为新的一致性问题。", "basis": "迁移建议"}
+      ],
+      "states": [
+        {"state": "revision conflict", "behavior": "项目或资产已在别处修改，拒绝旧版本写回，提示重新打开或生成。"},
+        {"state": "in-flight shared", "behavior": "相同来源任务复用；单个 UI 取消只释放自己的消费者。"},
+        {"state": "no-op", "behavior": "相同内容的保留与准备状态不应引发额外模型请求或重复写盘。"}
+      ],
+      "handoff": [
+        "性能验收：记录输入、切会话、切论文、打开装配、准备材料的耗时与任务数；同时观察 store.update 次数及跨分支通知。",
+        "性能验收：同源已成功稿重启再开，新增模型请求、图表重整理与无变化写盘应为零；读取持久缓存不等于重新生成。",
+        "工程建议：优先使用局部分支 revision 与稳定签名，订阅者只刷新相关区域；避免打字时对全部素材 JSON.stringify。",
+        "工程建议：新 AI 能力先定义动作、允许的输入、输出校验、候选采用和取消语义，再把它接到统一聊天路由。",
+        "安全交接：只写配置字段含义与导入方法，不复制真实端点、Token、用户私有论文路径或当前账号配置。"
+      ],
+      "sources": [
+        {"path": "chrome/content/zotero/xpcom/research/storage.js", "symbol": "E.createStore / E.initStorage"},
+        {"path": "chrome/content/zotero/xpcom/research/model-service.js", "symbol": "E.resolveModel / E.aiProgress"},
+        {"path": "chrome/content/zotero/xpcom/research/ppt-studio-ai.js", "symbol": "S.request"},
+        {"path": "chrome/content/zotero/xpcom/research/manuscript-writing.js", "symbol": "A.previewSelection / A.previewWriting / A.assetLibrary / A.editAsset"},
+        {"path": "chrome/content/zotero/xpcom/research/artifacts.js", "symbol": "E.runArtifactEngine / E.previewPresentation"},
+        {"path": "chrome/content/zotero/xpcom/research/reader-preparation.js", "symbol": "E.prepareReaderPaper / E.queueReaderPreparation"},
+        {"path": "chrome/content/zotero/research/shared/reader-preparation.mjs", "symbol": "共享准备队列与任务生命周期"},
+        {"path": "services/research-engine/src/cli.mjs", "symbol": "产物引擎操作分派"},
+        {"path": "services/research-engine/pdf/assets.py", "symbol": "解析缓存与受保护资产留存"}
+      ],
+      "limitations": [
+        "workspace.json 仍是单文件持久化；update 会深复制整状态，超大文库下有明确扩展压力，不能声称已经完全消除卡顿。",
+        "AI 服务与外部检索有网络、限流和格式错误；缓存不能替代失败状态、取消与输入签名核验。",
+        "自动整理、记忆和来源关系是可审阅结构，不是模型已经理解整个复杂科研项目的保证。"
+      ],
+      "flow": ["UI 事件 → 领域快照与校验 → Zotero 服务 → 模型或本地产物引擎 → 输出校验 → 持久保存 → 局部通知与渲染"]
+    },
+    {
+      "id": "writing-ppt-build-handoff",
+      "title": "13 · 构建、测试、部署与接手顺序",
+      "lead": "构建与验收必须区分源码、测试应用和日常文库。原生构建会替换 staging 程序文件，脚本明确禁止运行中覆盖。本文未为撰写交接而启动、构建或改写日常数据。",
+      "areas": [
+        {"name": "源码与前端打包", "role": "研究 UI、reader、note-editor 与浏览器图编辑 bundle 由构建脚本按输入时间与配置编译。"},
+        {"name": "原生 staging", "role": "Gecko 运行时与 Zotero 应用打包；测试版与正式版 manifest 应区分。"},
+        {"name": "隔离测试资料", "role": "launch-research.ps1 的 Test/TestRunID 使用独立 profile 与 dataDir，不替换日常文库。"},
+        {"name": "Node/Python 测试", "role": "shared 纯函数、模型约束、数据文件和产物引擎可独立测试；测试通过仍需真实页面与文件验收。"},
+        {"name": "发布与配置", "role": "正式构建、依赖打包与分发脚本分开；授权配置不能进入 Git，也不能混入普通公开安装包。"}
+      ],
+      "operations": [
+        {"action": "开始接手前查看 git 状态、项目说明与本轮改动。", "result": "了解已有脏改动与测试边界，只修改职责内文件。", "saved": "必要的变更记录、测试日志和可追溯 diff。", "state": "不得 reset、清理或覆盖用户已有修改；文库数据不作为测试夹具。"},
+        {"action": "执行与改动相符的 Node/Python 检查。", "result": "验证纯数据逻辑、来源约束、候选有效性、缓存恢复及文件导出。", "saved": "测试终端输出与必要产物，记录真实命令和退出码。", "state": "不把静态源码检查说成原生点击通过，也不把旧测试结果说成本轮重跑。"},
+        {"action": "用户正常关闭源码运行的 Zotero 后，构建测试版。", "result": "build-native.ps1 在开始与替换前检查进程，生成带测试资源应用。", "saved": "app/staging 下测试应用与 .build-manifest。", "state": "-Test -Incremental 是测试构建参数；检测运行进程则脚本拒绝继续。"},
+        {"action": "使用 TestRunID 启动指定原生套件。", "result": "在独立 profile/dataDir 运行真实 UI 与服务测试，日志落在测试 profile。", "saved": "独立测试日志、必要截图与产物；日常目录不变。", "state": "日常 Zotero 在运行时，启动脚本拒绝另开隔离测试。"},
+        {"action": "完成相关验证后做正式构建并确认 manifest。", "result": "生成不含测试开关与开发工具的正式应用。", "saved": "正式 staging 与构建清单；需核对 include_tests=0、devtools=0。", "state": "正式构建不能仅以测试包改名代替。"},
+        {"action": "准备异机分发。", "result": "核对运行时、Node/Python、Pandoc、PDF 与渲染依赖，实际在干净环境验证启动、离线文库和 AI 配置导入。", "saved": "独立发布包与版本说明，敏感配置使用受控分发路径。", "state": "仅复制一个 staging 内的 zotero.exe 不能保证完整可移植运行。"}
+      ],
+      "tables": [
+        {"headers": ["检查层", "示例命令／入口", "核对目标"], "rows": [
+          ["Node 基础套件", "在 services/research-engine 运行 npm test", "引擎、PPT 模型、范围、工作流、论文模型与写作工具；此命令不覆盖 test 目录全部文件。"],
+          ["装配与来源专项", "node --test test/assembly-writing-preview.test.mjs test/assembly-navigation.test.mjs test/academic-plan.test.mjs test/writing-storage.test.mjs", "从 services/research-engine 执行；候选、导航、方案与保存。"],
+          ["PPT 与周报专项", "node --test test/studio.test.mjs test/scope.test.mjs test/weekly-research.test.mjs", "证据、范围、页面模型和七天记录构造。"],
+          ["原生测试构建", "& ./scripts/build-native.ps1 -Test -Incremental", "需先关闭源码应用；核对日志与测试 manifest。"],
+          ["原生套件启动", "& ./scripts/launch-research.ps1 -Test -TestRunID 'handoff-check' -Suite 'researchPPTWorkspace'", "使用独立 profile 和 dataDir，检查日志实际完成与失败数。"],
+          ["正式构建", "& ./scripts/build-native.ps1", "检查 include_tests=0、devtools=0，再启动日常 profile。"]
+        ]}
+      ],
+      "design": [
+        {"point": "原生脚本拒绝覆盖运行中的程序，是项目明确要求，不应绕过或强杀用户进程。", "basis": "源码事实"},
+        {"point": "单元测试覆盖模型和纯函数，原生测试覆盖真实交互，实际 DOCX/PPTX 验收覆盖最终产物，三者各有边界。", "basis": "设计解释"},
+        {"point": "分发包和凭据配置应有独立检查与交付方式，避免把当前账号或文库误打进公开仓库。", "basis": "迁移建议"}
+      ],
+      "states": [
+        {"state": "test build", "behavior": "允许测试资源，只在隔离资料环境验收。"},
+        {"state": "formal build", "behavior": "测试与开发标记关闭，才作为日常程序或发布基础。"},
+        {"state": "daily profile", "behavior": "仅正常启动与用户授权维护；不能被测试 profile 代替。"}
+      ],
+      "handoff": [
+        "接手顺序一：先复现用户当前问题，记录论文身份、视图、操作、来源版本与可见错误；不要先大面积改样式。",
+        "接手顺序二：查领域对象与依赖关系，再查 UI 状态和旧请求，优先修跨论文串状态、重复生成与过期覆盖。",
+        "接手顺序三：只运行与变更相关的专项测试；通过后再做对应原生点击与实际文件检查。",
+        "最终验收：可行性 → 素材选择 → 装配 → 方向 → 候选 → 选段细调 → 核查 → DOCX；PPT 取材 → 模板 → 大纲 → 页面 → 个人数据 → 检查 → PPTX。",
+        "最终验收：关闭再开、快速切换、取消重试、文件缺失、来源更新和人工编辑保护都要覆盖；不能只验正常网络的一条直线流程。",
+        "本 JSON 的生成只涉及文档写入与源码阅读；不得把它当作本轮产品功能已发布的证明。"
+      ],
+      "sources": [
+        {"path": "scripts/build-native.ps1", "symbol": "Assert-SourceClientClosed / 前端与原生构建"},
+        {"path": "scripts/launch-research.ps1", "symbol": "Test / TestRunID / Suite / 独立 profile 与 dataDir"},
+        {"path": "services/research-engine/package.json", "symbol": "scripts.test / build:browser / engines"},
+        {"path": "services/research-engine/README.md", "symbol": "产物引擎环境与操作说明"},
+        {"path": "scripts/setup-research-engine.ps1", "symbol": "外部运行依赖准备"},
+        {"path": "test/tests/researchAssemblyWorkflowTest.js", "symbol": "四阶段原生流程测试"},
+        {"path": "test/tests/researchAssemblySelectionTest.js", "symbol": "选段与候选原生测试"},
+        {"path": "test/tests/researchPPTWorkspaceTest.js", "symbol": "PPT 工作区原生测试"},
+        {"path": "test/tests/researchNotebookTest.js", "symbol": "可行性与素材工作区原生测试"}
+      ],
+      "limitations": [
+        "本章命令是接手指引，本文编写时未执行构建或原生测试；具体通过状态应以对应运行日志为准。",
+        "开发环境的绝对依赖路径不能视作其他电脑天然存在，发布前必须核对依赖随包方式和可重定位能力。",
+        "不能仅根据程序启动、按钮变色或文件存在，宣布全流程达到生产可用。"
+      ],
+      "flow": ["读状态与复现 → 领域逻辑检查 → 最小修复 → 专项测试 → 隔离原生验收 → 实际文件验收 → 正式构建 → 分发检查"]
+    }
+  ]
+}

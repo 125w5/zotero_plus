@@ -12,7 +12,7 @@
  };
  E.showSentenceLinks=async(doc,paperID,host)=>{
   host.querySelector('.sentence-link-list')?.remove();const list=doc.createElementNS('http://www.w3.org/1999/xhtml','div');list.className='sentence-link-list';host.append(list);
-  const links=Object.values(E.store.get().sentenceLinks||{}).filter(l=>l.from.paperID===paperID||l.to.paperID===paperID);
+  const links=Object.values(E.store.get('sentenceLinks')||{}).filter(l=>l.from.paperID===paperID||l.to.paperID===paperID);
   const make=(tag,text)=>{const n=doc.createElementNS('http://www.w3.org/1999/xhtml',tag);n.textContent=text;return n;};
   if(!links.length)list.append(make('p','在 PDF 中选一句话，右键“关联其他文献语句”；也可先标记起点，再到另一篇论文选择终点。'));
   for(const l of links){const row=make('article','');for(const s of [l.from,l.to]){const b=make('button',s.text);b.title='定位原文 · 第 '+(s.pageIndex+1)+' 页';b.onclick=()=>E.library.openSource(s);row.append(b);if(s===l.from)row.append(make('p','↓ '+l.relation+' · '+l.description));}list.append(row);}

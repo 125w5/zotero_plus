@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-import { WORKBENCH_MODES, resolveWorkbenchMode, advanceHomeOverscroll, validateMaterialOrder, mergeMaterialOrder, bindWorkbenchEvidence, workbenchSessions, isAcademicWorkbenchSource, workbenchSourceIdentity, researchConversationContext, requestsMaterialPlacement, boundAssemblyContext, bindWorkbenchCitations } from '../../../chrome/content/zotero/research/shared/agent-workbench.mjs';
+import { WORKBENCH_MODES, resolveWorkbenchMode, advanceHomeOverscroll, validateMaterialOrder, mergeMaterialOrder, bindWorkbenchEvidence, workbenchSessions, isAcademicWorkbenchSource, workbenchSourceIdentity, researchConversationContext, requestsMaterialPlacement, boundAssemblyContext, bindWorkbenchCitations, UNVERIFIED_CITATION } from '../../../chrome/content/zotero/research/shared/agent-workbench.mjs';
 import { assemblyTaskContext } from '../../../chrome/content/zotero/research/manuscript/assembly-task-context.mjs';
 import * as Catalog from '../../../chrome/content/zotero/research/shared/material-catalog.mjs';
 import * as Conversations from '../../../chrome/content/zotero/research/shared/conversation-store.mjs';
@@ -59,15 +59,17 @@ test('bound assembly context verifies the exact current block, stage, source set
 test('citation aliases resolve only actual unique sources and preserve mathematical and code brackets',()=>{
  const sources=[{id:'m1',stableID:'material:m1'},{id:'P1-T0',stableID:'evidence:paper:3:9:P1-T0'},{id:'P1-T0',stableID:'evidence:paper:4:10:P1-T0'}];
  assert.equal(bindWorkbenchCitations('依据 [m1]，$x[1]$ 与 `list[1]`。',sources),'依据 [material:m1]，$x[1]$ 与 `list[1]`。');
- assert.throws(()=>bindWorkbenchCitations('依据 [P1-T0]',sources),/不明确/);assert.throws(()=>bindWorkbenchCitations('[material:invented]',sources),/未读取的来源/);
+ // Ambiguous or unread IDs keep the answer but never acquire a source.
+ assert.equal(bindWorkbenchCitations('依据 [P1-T0]',sources),'依据 '+UNVERIFIED_CITATION);assert.equal(bindWorkbenchCitations('[material:invented]',sources),UNVERIFIED_CITATION);
  assert.equal(bindWorkbenchCitations('[m1, material:m1]',sources),'[material:m1] [material:m1]');
+ assert.equal(bindWorkbenchCitations('依据［m1； material:m1］。',sources),'依据[material:m1] [material:m1]。');assert.equal(bindWorkbenchCitations('［evidence:unread；material:m1］',sources),UNVERIFIED_CITATION+' [material:m1]');assert.equal(bindWorkbenchCitations('`［m1］` 与 $［m1］$',sources),'`［m1］` 与 $［m1］$');
  const foreign=vm.runInNewContext('new Map([["a",{id:"m1",stableID:"material:m1"}]])');assert.equal(bindWorkbenchCitations('[m1]',foreign),'[material:m1]');
 });
 test('paper reference numbers remain original citations while application source identities stay strictly bound',()=>{
  const sources=[{id:'P1-T0',stableID:'evidence:paper:3:9:P1-T0',sourceText:'The method follows prior work [1, 2–4] and is compared with [14].'}, {id:1,stableID:'paper:1',title:'A separately read paper'}],before=JSON.stringify(sources);
  const text='原论文引用 [1]、[2, 4] 与 [14]；实际读取内容为 [P1-T0]。';
  assert.equal(bindWorkbenchCitations(text,sources),'原论文引用 [1]、[2, 4] 与 [14]；实际读取内容为 [evidence:paper:3:9:P1-T0]。');
- assert.throws(()=>bindWorkbenchCitations('未经原文确认 [999]',sources),/未读取/);assert.throws(()=>bindWorkbenchCitations('[material:invented]',sources),/未读取/);
+ assert.equal(bindWorkbenchCitations('未经原文确认 [999]',sources),'未经原文确认 '+UNVERIFIED_CITATION);assert.equal(bindWorkbenchCitations('[material:invented]',sources),UNVERIFIED_CITATION);
  assert.equal(JSON.stringify(sources),before,'local references neither invent source rows nor alter stored original text');
 });
 

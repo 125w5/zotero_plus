@@ -2,6 +2,7 @@
 import {citedSources,questionForAnswer} from '../shared/chat-evidence.mjs';
 import {installMediaPreview,disposeMediaPreviews} from '../shared/media-preview.mjs';
 import {explicitFormula} from '../shared/material-content.mjs';
+import {libraryAsset} from '../shared/material-access.mjs';
 const ICON_PATHS={chat:['M4 4h16v12H9l-5 4Z'],plus:['M12 5v14M5 12h14'],file:['M6 3h8l4 4v14H6Z','M14 3v5h4M9 12h6m-6 4h6'],link:['m9 15 6-6','M8 13 5 16a3 3 0 0 0 4 4l4-4M16 11l3-3a3 3 0 0 0-4-4l-4 4'],save:['M6 3h12v18l-6-4-6 4Z'],pin:['m9 3 6 0-1 6 4 4v2H6v-2l4-4Z','M12 15v6'],close:['m7 7 10 10M17 7 7 17'],grip:['M8 5v0m8 0v0M8 12v0m8 0v0M8 19v0m8 0v0'],send:['M12 19V5m-6 6 6-6 6 6'],settings:['M5 7h14M5 17h14M9 4v6m6 4v6'],chevron:['m7 9 5 5 5-5']};
 export function assemblyChatIcon(doc,name){
  const ns='http://www.w3.org/2000/svg',icon=doc.createElementNS(ns,'svg');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');icon.setAttribute('fill','none');icon.setAttribute('stroke','currentColor');icon.setAttribute('stroke-width',name==='grip'?'4':'1.6');icon.setAttribute('stroke-linecap','round');icon.setAttribute('stroke-linejoin','round');
@@ -56,7 +57,7 @@ export function installAssemblyChatContext(U,{el,button,status,persist}){
  const savedEvidencePins=()=>Array.isArray(U.p.ui.aiPinnedEvidence)?U.p.ui.aiPinnedEvidence:[];
  const evidencePinKey=pin=>pin.materialID?'material:'+pin.materialID:pin.sessionID+':'+pin.sourceID;
  const resolveEvidencePin=pin=>{
-  if(pin.materialID){const material=U.p.materials.find(row=>row.id===pin.materialID)||U.A.assetLibrary()[pin.materialID];if(material)return {...material,id:material.id,materialID:material.id,stableID:'material:'+material.id,...material.anchor};return null;}
+  if(pin.materialID){const material=U.p.materials.find(row=>row.id===pin.materialID)||libraryAsset(U.A,pin.materialID);if(material)return {...material,id:material.id,materialID:material.id,stableID:'material:'+material.id,...material.anchor};return null;}
   return U.conversations.get(pin.sessionID)?.messages.flatMap(row=>row.sources||[]).find(source=>(source.stableID||source.id)===pin.sourceID)||null;
  };
  const pinEvidence=async(reference,side='right')=>{
@@ -102,7 +103,7 @@ export function installAssemblyChatContext(U,{el,button,status,persist}){
  };
  const EVIDENCE_MIME='application/x-easysch-chat-evidence';
  const renderEvidenceCard=(host,source,pin=null)=>{
-  const id=source.materialID||(/^(?:material:)/.test(source.stableID||'')?source.stableID.slice(9):source.id),material=U.p.materials.find(m=>m.id===id)||U.A.assetLibrary()[id];
+  const id=source.materialID||(/^(?:material:)/.test(source.stableID||'')?source.stableID.slice(9):source.id),material=U.p.materials.find(m=>m.id===id)||libraryAsset(U.A,id);
   const card=el('article',undefined,'chat-evidence-card');host.append(card);const row=button('',()=>U.previewResearchSource(source),card,'chat-evidence-source'),location=el('small',Number.isInteger(source.pageIndex??source.anchor?.pageIndex)?'第 '+((source.pageIndex??source.anchor?.pageIndex)+1)+' 页':'引用来源');location.prepend(assemblyChatIcon(document,'link'));row.append(location,el('strong',material?.title||source.title||source.label||'来源片段'));row.title='查看依据 · 拖动标题可固定到另一侧';row.dataset.sourceId=source.stableID||String(id||'');row.draggable=true;
   row.ondragstart=event=>{event.dataTransfer.effectAllowed='copy';event.dataTransfer.setData(EVIDENCE_MIME,JSON.stringify(material?{materialID:material.id}:{sessionID:pin?.sessionID||U.conversationSession.id,sourceID:source.stableID||source.id}));event.dataTransfer.setDragImage?.(card,Math.min(card.offsetWidth/2,100),16);};
   if(pin){card.dataset.pinnedSource=evidencePinKey(pin);const remove=button('',()=>{U.p.ui.aiPinnedEvidence=savedEvidencePins().filter(value=>evidencePinKey(value)!==evidencePinKey(pin));update();return persist();},card,'chat-pin-remove');remove.append(assemblyChatIcon(document,'close'));remove.title='取消固定，原依据保留';remove.setAttribute('aria-label',remove.title);}

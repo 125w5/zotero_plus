@@ -1,7 +1,17 @@
 var EasySchUI = {
 	get E() { return window.parent.Zotero.Research; },
-	papers: [], current: null, record: null, selection: null, dirty: false, ready: false, busy: false,
+	papers: [], current: null, record: null, selection: null, dirty: false, ready: false, busy: false, legacyJob: null,
 	$: id => document.getElementById(id),
+	// Legacy E.ai.run jobs started from this page pass this signal, so 取消 here
+	// and closing this page stop only this page's job.
+	legacyJobSignal() {
+		this.legacyJob = new AbortController();
+		return this.legacyJob.signal;
+	},
+	cancelLegacyJob() {
+		this.legacyJob?.abort();
+		this.legacyJob = null;
+	},
 	el(tag, text, className) {
 		let node = document.createElementNS('http://www.w3.org/1999/xhtml', tag);
 		if (text !== undefined) node.textContent = text;
@@ -27,7 +37,9 @@ var EasySchUI = {
 	},
 	show(tab) {
 		if (tab === 'home' || tab === 'discovery') tab = 'search';
+		if (this.activeView === 'search' && tab !== 'search') this.suspendDiscovery?.();
 		if (this.activeView !== tab) this.status('');
+		this.setProjectCreateVisible?.(tab === 'writing');
 		this.activeView = tab;
 		for (let view of document.querySelectorAll('.view')) view.hidden = view.id !== 'view-' + tab;
 		for (let button of document.querySelectorAll('[data-tab]')) button.classList.toggle('active', button.dataset.tab === (tab==='journal'?'settings':tab));
@@ -77,6 +89,14 @@ var EasySchUI = {
 		return this.initPromise;
 	},
 	async openInitialSelection() {
+		if (window.frameElement?.researchPage) {
+			const page=window.frameElement.researchPage;
+			if(page==='ppt')await this.openPPTStudio({newDraft:true});
+			else if(page==='agent')this.openAgentWorkbench();
+			else this.show(page);
+			if(window.frameElement.researchCreateProject)this.$('new-manuscript')?.click();
+			return;
+		}
 		if (window.frameElement?.researchLibraryMode) {
 			document.body.classList.add('library-discovery');this.current=this.E.library.selection()[0]||null;
 			const requested=window.frameElement.researchLibraryView||'discovery';
@@ -100,7 +120,7 @@ var EasySchUI = {
 			this.show(tab);
 		});
 		this.bind('refresh', () => this.refresh());
-		this.bind('cancel', () => this.E.ai.cancel());
+		this.bind('cancel', () => this.cancelLegacyJob());
 		this.initResearch(); this.initWriting(); this.initSettings(); this.initMeetings(); this.initSearch(); this.initPaperSkills();
 		this.initPPTStudio(); this.initFlow();this.initDiscovery();this.initKnowledge();this.initWritingCards(); await this.initTasks();
 		this.initManuscriptProjects();await this.initSurface();
@@ -114,6 +134,7 @@ var EasySchUI = {
 				event.preventDefault(); event.returnValue = '';
 			}
 		});
+		window.addEventListener('pagehide', () => this.cancelLegacyJob());
 		this.ready = true;
 	}
 };

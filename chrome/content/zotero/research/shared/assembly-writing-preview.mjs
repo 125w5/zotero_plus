@@ -6,7 +6,8 @@ import {writingWorkflowContext} from './paper-writing-workflow.mjs';
 const clone=value=>JSON.parse(JSON.stringify(value));
 const stable=value=>value&&typeof value==='object'?Array.isArray(value)?'['+value.map(stable).join(',')+']':'{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+stable(value[key])).join(',')+'}':JSON.stringify(value);
 const blockTypes=new Set(['paragraph','heading','list','placeholder']);
-const originalText=material=>String(material?.sourceText||material?.anchor?.sourceText||'');
+const visualText=material=>['image','figure','table'].includes(material?.kind)?String(material.caption||material.table?.caption||material.summary||''):'';
+const originalText=material=>String(material?.sourceText||material?.anchor?.sourceText||visualText(material));
 const contentOf=block=>clone(block||null);
 const legacySourceOf=material=>({id:material.id,revision:material.revision,assetID:material.assetID||'',kind:material.kind,title:material.title||'',paperTitle:material.paperTitle||'',text:originalText(material),anchor:clone(material.anchor||{}),verification:material.verification||'',aiGenerated:!!material.aiGenerated});
 const sourceCache=new WeakMap();
@@ -14,7 +15,8 @@ const sourceSnapshot=source=>Object.fromEntries(Object.entries(source).filter(([
 const sourceOf=material=>{
  const text=originalText(material),anchor=stable({anchor:material.anchor||{},anchors:material.anchors||[],sourceItemID:material.sourceItemID||null,sourceRecordID:material.sourceRecordID||'',sourceVersion:material.sourceVersion||'',parseVersion:material.parseVersion||'',latex:material.latex||'',sourceRuns:material.sourceRuns||[],sourceBlocks:material.sourceBlocks||[]}),cached=sourceCache.get(material)||{};
  if(cached.text!==text){cached.text=text;cached.textHash=writingSnapshotHash(text);}if(cached.anchor!==anchor){cached.anchor=anchor;cached.anchorHash=writingSnapshotHash(anchor);}sourceCache.set(material,cached);
- return {id:material.id,revision:material.revision,assetID:material.assetID||'',kind:material.kind,title:material.title||'',paperTitle:material.paperTitle||'',sourceType:material.sourceType||'',coverage:material.coverage||'',text,textLength:text.length,textHash:cached.textHash,anchorHash:cached.anchorHash,verification:material.verification||'',aiGenerated:!!material.aiGenerated};
+ const visualOnly=!String(material.sourceText||material.anchor?.sourceText||'').trim()&&!!visualText(material);
+ return {id:material.id,revision:material.revision,assetID:material.assetID||'',kind:material.kind,title:material.title||'',paperTitle:material.paperTitle||'',sourceType:visualOnly?'material-caption':material.sourceType||'',coverage:visualOnly?'仅依据图表的已有说明，未读取图中未标注数据':material.coverage||'',text,textLength:text.length,textHash:cached.textHash,anchorHash:cached.anchorHash,verification:material.verification||'',aiGenerated:!!material.aiGenerated};
 };
 const workflowScope=scope=>scope.writingWorkflow?{writingWorkflow:scope.writingWorkflow}:{};
 const scopeFingerprint=scope=>writingSnapshotHash(stable({projectID:scope.projectID,title:scope.title,sectionID:scope.sectionID,blockID:scope.blockID,before:scope.before,outline:scope.outline,sources:scope.sources.map(sourceSnapshot),...workflowScope(scope)}));
@@ -35,7 +37,7 @@ export function captureWritingPreview(project,{blockID=project.ui?.blockID||'',s
  const sources=ids.map(id=>(project.materials||[]).find(row=>row.id===id)).filter(row=>row&&row.kind!=='idea'&&originalText(row).trim()).map(sourceOf);
  if(sources.some(row=>row.verification==='stale'))throw Error('关联素材来源有更新，请核验后再生成候选');
  const before=contentOf(block),outline=clone((project.sections||[]).map(row=>({id:row.id,title:row.title||'',purpose:row.writingPurpose||row.purpose||'',headings:(project.blocks||[]).filter(item=>item.sectionID===row.id&&item.type==='heading').map(item=>({id:item.id,text:item.text||''}))})));
- if(!sources.length&&!String(block?.text||'').trim())throw Error(project.writingWorkflow?'请先为本章关联真实素材，或写入需要改写的正文；不会读取其他章节素材':'请先关联真实素材，或写入需要改写的正文');
+ if(!sources.length&&!String(block?.text||'').trim())throw Object.assign(Error(project.writingWorkflow?'请先为本章关联真实素材，或写入需要改写的正文；不会读取其他章节素材':'请先关联真实素材，或写入需要改写的正文'),{code:'WRITING_SOURCE_GAP'});
  const scope={version:2,projectID:project.id,title:project.title||'',sectionID,blockID:block?.id||'',before,outline,sources,instruction:String(instruction).trim().slice(0,4000),mode:String(block?.text||'').trim()?'rewrite':'assemble'};
  if(project.writingWorkflow)scope.writingWorkflow=writingWorkflowContext(project,sectionID,{materialIDs:sources.map(row=>row.id)});
  scope.fingerprint=scopeFingerprint(scope);
@@ -65,18 +67,20 @@ export function writingPreviewDiff(before,after){
  let i=0,j=0,offset=0;while(i<a.length||j<b.length){if(i<a.length&&j<b.length&&a[i]===b[j]){add('equal',a[i],offset,offset+a[i].length);offset+=a[i++].length;j++;}else if(j<b.length&&(i===a.length||table[i*cols+j+1]>=table[(i+1)*cols+j]))add('insert',b[j++],offset,offset);else{add('delete',a[i],offset,offset+a[i].length);offset+=a[i++].length;}}
  return operations;
 }
-export function writingEvidenceExcerpts(capture){
+// Chapter reads pass a smaller excerpt count and character budget; drafts keep 80.
+export function writingEvidenceExcerpts(capture,{limit=80,chars=Infinity}={}){
  if(capture.evidenceExcerpts)return clone(capture.evidenceExcerpts);
  const sources=[...capture.sources];if(capture.before?.text?.trim())sources.unshift({id:'author:'+capture.blockID,title:'当前人工正文',text:capture.before.text,kind:'author'});
  if(capture.version===1){const excerpts=[];for(const source of sources){for(let start=0;start<source.text.length;){let end=Math.min(source.text.length,start+1000);if(end<source.text.length){const boundary=source.text.lastIndexOf(' ',end);if(boundary>start+800)end=boundary;}const quote=source.text.slice(start,end);if(quote.trim())excerpts.push({quoteID:'W'+(excerpts.length+1),sourceID:source.id,title:source.title,kind:source.kind,quote,start,end});start=end;if(excerpts.length>=80)return excerpts;}}return excerpts;}
- if(sources.length>80)throw Error('本次关联来源超过 80 份，请在当前章节关联需要比较的素材后重新生成；没有省略来源生成候选。');
+ if(sources.length>Math.max(80,limit))throw Error('本次关联来源超过 80 份，请在当前章节关联需要比较的素材后重新生成；没有省略来源生成候选。');
  const excerpts=[],offsets=sources.map(()=>0),protectedRanges=sources.map(source=>{try{let offset=0;return protectedTokens(source.text).map(token=>{const start=source.text.indexOf(token,offset);offset=start+token.length;return {start,end:offset};});}catch{return [];}});let remaining=true;
  // One excerpt per source per round: a large first chapter cannot consume the
  // entire budget before a second selected material has been read.
- while(remaining&&excerpts.length<80){remaining=false;for(const [index,source]of sources.entries()){
+ let used=0;
+ while(remaining&&excerpts.length<limit&&used<chars){remaining=false;for(const [index,source]of sources.entries()){
   const start=offsets[index];if(start>=source.text.length)continue;remaining=true;let end=Math.min(source.text.length,start+1000);if(end<source.text.length){const boundary=source.text.lastIndexOf(' ',end);if(boundary>start+800)end=boundary;}
   const math=protectedRanges[index].find(range=>range.start<end&&range.end>end);if(math){end=math.start>start?math.start:math.end;if(end-start>4000)throw Error('原式超过本次摘录容量，请单独关联该公式后再准备正文候选；没有截断公式生成候选。');}
-  const quote=source.text.slice(start,end);if(quote.trim())excerpts.push({quoteID:'W'+(excerpts.length+1),sourceID:source.id,title:source.title,kind:source.kind,sourceType:source.sourceType||'',coverage:source.coverage||'',quote,start,end});offsets[index]=end;if(excerpts.length>=80)break;
+  const quote=source.text.slice(start,end);if(quote.trim())excerpts.push({quoteID:'W'+(excerpts.length+1),sourceID:source.id,title:source.title,kind:source.kind,sourceType:source.sourceType||'',coverage:source.coverage||'',quote,start,end});offsets[index]=end;used+=quote.length;if(excerpts.length>=limit||used>=chars)break;
  }}
  return excerpts;
 }
@@ -93,13 +97,25 @@ function storedCapture(capture,excerpts,usedQuoteIDs){
  if(capture.version===1){result.version=1;result.sources=clone(capture.sources);}else result.fingerprint=scopeFingerprint(result);
  return result;
 }
-export function validateWritingPreview(capture,value,{id='writing-'+Date.now(),model='',thinkingLevel='off'}={}){
- if(!Array.isArray(value?.variants)||value.variants.length<2||value.variants.length>4)throw Error('需返回至少两个可比较的候选版本');
+// A request to shorten or condense, in the user's words.
+export const shortenRequest=instruction=>/缩短|缩减|删减|压缩|精简|简化|简短|简洁|减半|短一些|短一点|再短|更短|太长|篇幅|字以内|字左右/u.test(String(instruction||''));
+// The output budget of a block candidate follows the paragraph: every variant
+// may be as long as the text, so a long paragraph asks for fewer variants and a
+// request to shorten asks for one, instead of stopping at a fixed cap.
+export function writingPreviewBudget(text,instruction=''){
+	let length=String(text||'').length,maxVariants=shortenRequest(instruction)?1:length>2500?2:3;
+	return {maxTokens:Math.min(14000,Math.max(7000,800+Math.ceil(length*1.6)*maxVariants)),maxVariants,minVariants:maxVariants<2?1:2};
+}
+// minVariants is 1 for a request that asked for one version, for a reply cut at
+// the output limit after its first complete version, and when a stored
+// candidate is checked again.
+export function validateWritingPreview(capture,value,{id='writing-'+Date.now(),model='',thinkingLevel='off',minVariants=2}={}){
+ if(!Array.isArray(value?.variants)||value.variants.length<minVariants||value.variants.length>4)throw Error(minVariants<2?'未返回可用的候选版本':'需返回至少两个可比较的候选版本');
  const excerpts=writingEvidenceExcerpts(capture),byID=new Map(excerpts.map(row=>[row.quoteID,row])),seen=new Set(),before=capture.before?.text||'';
  const variants=value.variants.map((variant,index)=>{
   const text=typeof variant?.text==='string'?variant.text.trim():'';if(!text||text.length>16000||seen.has(text))throw Error('候选正文为空、过长或版本重复');seen.add(text);
-  if(!Array.isArray(variant.quoteIDs)||!variant.quoteIDs.length)throw Error('候选缺少可以核对的依据');
-  const evidence=[...new Set(variant.quoteIDs)].map(quoteID=>{const row=byID.get(quoteID);if(!row)throw Error('候选引用了不存在的原文依据');return {...row};});
+  if(!Array.isArray(variant.quoteIDs)||!variant.quoteIDs.length)throw Object.assign(Error('候选缺少可以核对的依据'),{code:'WRITING_EVIDENCE_REQUIRED'});
+  const evidence=[...new Set(variant.quoteIDs)].map(quoteID=>{const row=byID.get(quoteID);if(!row)throw Object.assign(Error('候选引用了不存在的原文依据'),{code:'WRITING_EVIDENCE_REQUIRED'});return {...row};});
   if(capture.mode==='rewrite'){protectEdit(before,text);safeNumbers(before,text);}
   const actual=evidence.map(row=>row.quote).join('\n')+'\n'+before,allowed=new Set(numbers(actual));if(numbers(text).some(number=>!allowed.has(number)))throw Error('候选引入了依据中没有的数字，未保存');
   const commands=protectedTokens(text),known=new Set([...protectedTokens(before),...evidence.flatMap(row=>protectedTokens(row.quote))]);if(commands.some(token=>!known.has(token)))throw Error('候选改变或引入了无法核对的公式，请保留原式');
@@ -107,6 +123,16 @@ export function validateWritingPreview(capture,value,{id='writing-'+Date.now(),m
  });
  const usedQuoteIDs=new Set(variants.flatMap(row=>row.evidence.map(excerpt=>excerpt.quoteID)));
  return {id,kind:'assembly-writing-preview',version:1,blockID:capture.blockID,sectionID:capture.sectionID,capture:storedCapture(capture,excerpts,usedQuoteIDs),variants,status:'pending',selectedVariantID:variants[0].id,model,thinkingLevel,createdAt:new Date().toISOString()};
+}
+/** One citation-only regeneration is bounded to exactly the same snapshot and
+ * evidence scope. IDs are never guessed or attached on the caller's behalf. */
+export async function requestVerifiedWritingPreview(capture,{request,assertCurrent,onRetry=()=>{},id,thinkingLevel='off',minVariants=2}={}){
+ let issue='';for(let attempt=0;attempt<2;attempt++){
+  assertCurrent();const response=await request({attempt,issue});assertCurrent();
+  // A reply cut at the output limit keeps the versions that arrived complete.
+  try{const preview=validateWritingPreview(capture,response.value,{id,model:response.model,thinkingLevel,minVariants:response.partial?1:minVariants});if(response.partial)preview.incomplete={reason:'output-limit',kept:preview.variants.length};return preview;}
+  catch(error){if(error.code!=='WRITING_EVIDENCE_REQUIRED')throw error;issue=error.message;if(attempt===0){onRetry();continue;}throw Object.assign(Error('本段候选未能对应已有来源，请补充或核对关联素材后重试；原文保留。'),{code:'WRITING_EVIDENCE_GAP'});}
+ }
 }
 export function latestWritingPreview(project,blockID=project.ui?.blockID||'',sectionID=project.ui?.sectionID||''){
  return [...(project.proposals||[])].reverse().find(row=>row.kind==='assembly-writing-preview'&&(row.blockID===blockID||row.appliedBlockID===blockID)&&row.sectionID===sectionID)||null;

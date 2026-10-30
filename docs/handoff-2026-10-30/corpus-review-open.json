@@ -1,0 +1,51 @@
+[
+ {
+  "id": "CR-1",
+  "severity": "major",
+  "file": "chrome/content/zotero/xpcom/research/research-resources.js",
+  "problem": "Regression from the WSB-06 change. collect drops a Zotero annotation or note candidate whenever any material card of the selected paper has the same kind and sourceItemID. That includes an AI 主题素材 card made from it. The AI card is then refused as non-source material, so neither one is collected. This happens when the annotation has no plain card of its own, for example when 主题素材 was used but notebook preparation never published it. The user's annotations go missing from the corpus without any message. If they were the paper's only material, collect says there is nothing to collect and tells the user to add annotations in the PDF. Before the change, these annotations were collected.",
+  "fix": "In X/research-resources.js:82, build published only from cards that are the note or annotation itself: published=new Set(cards.filter(row=>!row.aiGenerated).map(sourceKey).filter(Boolean)). An AI card's publish key includes its quote, so publishing the plain annotation creates its own stable card, separate from the AI card. The existing WSB-06 empty-card test still passes because that card is not aiGenerated. Add a corpus-gap-collect case with a topicCards() card."
+ },
+ {
+  "id": "CR-2",
+  "severity": "major",
+  "file": "chrome/content/zotero/xpcom/research/research-resources.js",
+  "problem": "Regression from the WSB-08 filter. chosen matches only a row's paper id or its own sourceItemID. Annotations on a PDF with no parent item have paperItemID null, while the selection id is the PDF's own id. Selecting such a PDF and clicking 收集所选论文 now finds nothing, although the PDF has annotations. The page then reports 所选论文还没有可收集的章节素材、笔记或批注；…或在 PDF 中添加批注。 Before the change these annotations were collected. E.library.selection() supports top-level PDFs, so this is a supported selection.",
+  "fix": "Also accept rows of a selected attachment: chosen=row=>selected.has(row.paperItemID||row.anchor?.paperItemID)||selected.has(row.attachmentID||row.anchor?.attachmentID)||selected.has(row.sourceItemID). PPT draft records have no attachmentID, so the WSB-08 fix still holds, and chapter cards of a parentless PDF become collectable too. Add a corpus-gap-collect case. X/notebook.js:497 has the same paper-only filter; that file belongs to the notebook stream."
+ },
+ {
+  "id": "CR-4",
+  "severity": "minor",
+  "file": "chrome/content/zotero/xpcom/research/research-resources.js",
+  "problem": "The report says collect returns present, outside and dropped counts, which the page shows. In fact outside is always 0, and the page never reads it. collect removes out-of-scope rows before it calls appendMaterials, so the outside++ in appendMaterials never runs. When part of a selection lacks the corpus keywords, the notice gives only the added count and no reason for the rows left out.",
+  "fix": "Return outside:sources.length-inScope.length from collect (X/research-resources.js:103). In the R/research-resources.mjs:69 notice, append '，'+n+' 份不含语料库的关键词，未加入' when n is not 0."
+ },
+ {
+  "id": "CR-5",
+  "severity": "minor",
+  "file": "chrome/content/zotero/xpcom/research/research-resources.js",
+  "problem": "Since WSB-16, only keywords and exclusions decide whether an entry is in scope, but three messages still give 研究领域 as a cause. A manual note that contains the corpus domain word but not its keyword still gets 这份手工语料不含语料库的研究领域或关键词. A user who adds a domain word to clear the warning sees the same warning again. The collect refusal at :88 and the import notice already name only 关键词.",
+  "fix": "Replace 研究领域或关键词 with 关键词 in X/research-resources.js:26 and :28 and in R/shared/corpus-library.mjs:59, matching the wording at :88 (都不含语料库的关键词)."
+ },
+ {
+  "id": "WSB-08-top-level-pdf",
+  "severity": "major",
+  "file": "chrome/content/zotero/xpcom/research/research-resources.js",
+  "problem": "The new selected-paper filter drops the annotations of a top-level PDF (a PDF with no parent item). Before this change, collecting from a selected top-level PDF added its annotations. Now it refuses, and the error tells the user to add annotations they already have.",
+  "fix": "In E.corpus.collect, also count a row as chosen when its attachment is selected, e.g. `||selected.has(row.anchor?.attachmentID??row.attachmentID)`. PPT draft records have no attachmentID, so WSB-08 still holds. Add a corpus-gap-collect case where a top-level PDF annotation is collected."
+ },
+ {
+  "id": "WSB-09-shared-plan-card",
+  "severity": "minor",
+  "file": "chrome/content/zotero/xpcom/research/manuscript.js",
+  "problem": "复制项目 now copies the notebook with the original's version ids and artifact materialIDs, so the copy and the original share one confirmed plan card. When the copy's next plan version changes a hypothesis, the original's unchanged plan card is marked stale. This leaks into the original project and can block its generation.",
+  "fix": "In A.copy, give the copied plan versions new ids. Remap selectedVersion, artifacts, decisions[].versionID, messages[].versionID and the copy's researchPreparation.planVersionID. Republish the copied plan cards under the new artifact ids, or drop the copied artifacts and mark those versions as draft, so the copy never holds the original's materialID. Add a test that invalidating the copy leaves the original's card unchanged."
+ },
+ {
+  "id": "WSB-20-chosen-corpus-refused",
+  "severity": "minor",
+  "file": "chrome/content/zotero/xpcom/research/research-resources.js",
+  "problem": "The new import gate refuses a whole corpus whose domain differs from the project, even when the project chose that corpus itself in preparation. Feasibility and assembly still read rows from that corpus, so the read path and 导入当前装配 now disagree. Before the change, its manual rows imported with a warning.",
+  "fix": "Skip the fitsProject refusal when corpusID is in project.preparationCorpusSelection?.corpusIDs, which is the rule eligible() already uses. Keep the per-row scopeWarning, and add a test for an explicitly chosen corpus."
+ }
+]

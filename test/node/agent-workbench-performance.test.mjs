@@ -25,6 +25,21 @@ test('shared rail context reads only settings and caches project metadata across
  const {ui,calls,revisions}=fixture();for(let index=0;index<30;index++)assert.equal(ui.agentWorkspaceContext().folder,'我的文库 / 研究资料');assert.equal(calls.workspace,0);assert.equal(calls.project,1);revisions.manuscripts++;ui.agentWorkspaceContext();assert.equal(calls.project,2);ui.agentData.projectID='p2';ui.agentWorkspaceContext();assert.equal(calls.project,3);
 });
 
+test('reader cache and note-related saves schedule no hidden or visible workbench source renders',()=>{
+ const {ui,calls,timers,flush}=fixture();ui.activeView='agent';let projectChecks=0,rails=0;ui.refreshAgentProjects=()=>projectChecks++;ui.agentFileRails=[{render(){rails++;}}];
+ for(let index=0;index<60;index++)ui.receiveAgentStoreChange({changedBranches:[['papers','readerTranslations','notebooks','researchWorkbench'][index%4]]});
+ assert.equal(projectChecks,0);assert.equal(rails,0);assert.equal(timers.size,0,'60 unrelated saves schedule zero list renders');
+ ui.receiveAgentStoreChange({changedBranches:['materialDescriptions']});assert.equal(timers.size,1);ui.activeView='search';flush();assert.equal(calls.paging,0,'switching away cancels a queued source-list render');
+ ui.receiveAgentStoreChange({changedBranches:['workspaceDownloads']});assert.equal(rails,1,'new downloaded files remain visible in the shared rail');assert.equal(projectChecks,0);assert.equal(timers.size,0);
+});
+
+test('the wider research library scans once on demand and never renders a hidden destination after switching away',async()=>{
+ const {ui}=fixture();let scans=0,renders=0,previews=0,release;ui.agentSourceList.isConnected=true;ui.agentTools={isAcademicWorkbenchSource:()=>true};ui.E.library={readingCandidates:async()=>{scans++;return new Promise(resolve=>release=resolve);}};ui.renderAgentSources=()=>renders++;ui.restoreAgentPreview=async()=>previews++;ui.activeView='agent';
+ assert.equal(scans,0,'feature initialization alone does not inspect every local PDF');const pending=ui.ensureAgentLibrarySources();assert.equal(ui.ensureAgentLibrarySources(),pending);await Promise.resolve();assert.equal(scans,1);
+ ui.activeView='search';release([{id:9,title:'一篇本地论文'}]);await pending;assert.equal(ui.agentSources[0].id,9);assert.equal(renders,0);assert.equal(previews,0,'a completed background scan does not load a hidden paper overview');
+ ui.activeView='agent';await ui.ensureAgentLibrarySources();assert.equal(scans,1,'returning to dialogue reuses its populated candidate catalogue');
+});
+
 test('unchanged source notifications retain rows, scroll and selection while changed inputs invalidate the local result',()=>{
  const {ui,calls,revisions}=fixture();ui.renderAgentSources();const row=ui.agentSourceList.children[0];ui.agentSourceList.scrollTop=180;for(let index=0;index<30;index++)ui.renderAgentSources();assert.equal(ui.agentSourceList.replacements,1);assert.equal(ui.agentSourceList.children[0],row);assert.equal(ui.agentSourceList.scrollTop,180);assert.equal(calls.project,1);assert.equal(calls.paging,1);
  ui.agentData.selectedID='paper:1';ui.renderAgentSources();assert.equal(ui.agentSourceList.children[0]['aria-selected'],'true');ui.agentTab='materials';ui.renderAgentSources();assert.equal(calls.materials,1);ui.renderAgentSources();assert.equal(calls.materials,1);revisions.materialDescriptions++;ui.renderAgentSources();assert.equal(calls.materials,2,'new translated material descriptions are displayed');ui.agentSources=[...ui.agentSources];ui.renderAgentSources();assert.equal(calls.materials,3,'fresh library candidates invalidate even without a store mutation');

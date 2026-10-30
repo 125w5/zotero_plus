@@ -13,6 +13,21 @@
 		if (!Array.isArray(value) || value.length > 20) throw new Error('数据格式应为数据集数组，最多 20 组');
 		return value;
 	};
+	// Page previews need LibreOffice and Poppler. A preference that points at a
+	// missing program counts as not installed.
+	E.presentationRenderer = async () => {
+		let soffice = Zotero.Prefs.get('extensions.easysch.soffice', true);
+		let poppler = Zotero.Prefs.get('extensions.easysch.poppler', true);
+		if (!soffice || !poppler) return null;
+		let render = { soffice, pdftoppm: PathUtils.join(poppler, 'pdftoppm.exe'), pdftotext: PathUtils.join(poppler, 'pdftotext.exe') };
+		return await IOUtils.exists(soffice) && await IOUtils.exists(render.pdftoppm) ? render : null;
+	};
+	// A user export runs here; only the finished PPTX goes to the chosen folder.
+	E.pptExportWorkRoot = async () => {
+		let directory = PathUtils.join(Zotero.DataDirectory.dir, 'easysch', 'asset-cache', 'exports');
+		await IOUtils.makeDirectory(directory, { ignoreExisting: true });
+		return directory;
+	};
 	E.runArtifactEngine = async function (request, onStatus = () => {}, signal) {
 		if (signal?.aborted) throw new Error('任务已取消');
 		if (signal) {
@@ -24,9 +39,8 @@
 			request.cacheRoot = PathUtils.join(Zotero.DataDirectory.dir, 'easysch', 'asset-cache');
 		}
 		if (request.operation === 'export') {
-			let soffice = Zotero.Prefs.get('extensions.easysch.soffice', true);
-			let poppler = Zotero.Prefs.get('extensions.easysch.poppler', true);
-			if (soffice && poppler) request.render = { soffice, pdftoppm: PathUtils.join(poppler, 'pdftoppm.exe'), pdftotext: PathUtils.join(poppler, 'pdftotext.exe') };
+			let render = await E.presentationRenderer();
+			if (render) request.render = render;
 		}
 		let command = Zotero.Prefs.get('extensions.easysch.engineNode', true);
 		let entry = Zotero.Prefs.get('extensions.easysch.engineEntry', true);
@@ -61,12 +75,43 @@
 		}
 		finally { timers.clearTimeout(timer); signal?.removeEventListener('abort', cancel); if(request.cancelFile) await IOUtils.remove(request.cancelFile,{ignoreAbsent:true}); }
 	};
-	E.previewImage = async path => {
+	// Canvases call this on every render. Identical data URLs also let Gecko reuse
+	// the decoded image, so keep recent ones, bounded by their total size.
+	const PREVIEW_CACHE_BYTES = 32 * 1024 * 1024;
+	let previewCache = new Map(), previewCacheSize = 0;
+	let encodePreview = async (path, key) => {
 		let bytes = await IOUtils.read(path);
 		const type = /\.jpe?g$/i.test(path)?'image/jpeg':/\.webp$/i.test(path)?'image/webp':'image/png';
 		// The native byte encoder needs no browser window, Blob or FileReader.
 		const encoded = ChromeUtils.base64URLEncode(bytes, { pad: true }).replace(/-/g, '+').replace(/_/g, '/');
-		return `data:${type};base64,${encoded}`;
+		let url = `data:${type};base64,${encoded}`, entry = previewCache.get(key);
+		if (entry) {
+			entry.size = url.length;
+			previewCacheSize += url.length;
+		}
+		for (let [oldKey, old] of previewCache) {
+			if (previewCacheSize <= PREVIEW_CACHE_BYTES || oldKey === key) break;
+			previewCache.delete(oldKey);
+			previewCacheSize -= old.size;
+		}
+		return url;
+	};
+	E.previewImage = async path => {
+		let info = await IOUtils.stat(path), key = path + '\n' + info.size + '\n' + info.lastModified, entry = previewCache.get(key);
+		if (entry) {
+			previewCache.delete(key);
+			previewCache.set(key, entry);
+			return entry.job;
+		}
+		entry = { size: 0, job: null };
+		previewCache.set(key, entry);
+		entry.job = encodePreview(path, key);
+		entry.job.catch(() => {
+			if (previewCache.get(key) !== entry) return;
+			previewCache.delete(key);
+			previewCacheSize -= entry.size;
+		});
+		return entry.job;
 	};
 	E.previewPresentation = async (request, status, signal) => {
 		let key = E.assets.key(['ppt-layout-2', request.plan, request.record, request.datasets, (request.assets || []).map(a => [a.id, a.assetHash, a.uri])]);
@@ -75,11 +120,55 @@
 		if (!cached.miss && cached.previews && await IOUtils.exists(cached.path) && (await Promise.all(cached.previews.map(p => IOUtils.exists(p)))).every(Boolean)) {
 			status('页面与素材未变化，复用实际 PPTX 逐页预览'); return { ...cached, cacheHit: true };
 		}
+		if (!await E.presentationRenderer()) throw new Error('预览图未生成：没有找到 LibreOffice 和 Poppler 渲染工具。页面内容已保存；可以直接导出 PPTX，用 PowerPoint 查看实际效果。');
 		let directory = PathUtils.join(Zotero.DataDirectory.dir, 'easysch', 'asset-cache', 'previews');
 		await IOUtils.makeDirectory(directory, { ignoreExisting: true });
 		let result = await E.runArtifactEngine({ ...request, operation: 'export', directory }, status, signal);
 		if (cacheEnabled && result.previews) await E.runArtifactEngine({ operation: 'assets-cache-put', key, layer: 'ppt', value: result });
+		E.prunePresentationJobs(directory, 24).catch(error => Zotero.logError(error));
 		return result;
+	};
+	// Every preview and export renders in its own job folder. Keep the newest few
+	// and every folder a saved draft still shows; the rest are regenerable.
+	E.prunePresentationJobs = async (directory, keep) => {
+		if (!await IOUtils.exists(directory)) return;
+		let used = new Set(), parent = file => typeof file === 'string' && file ? PathUtils.parent(file) : null;
+		for (let draft of Object.values(E.store.peek ? E.store.peek('pptDrafts') || {} : {})) {
+			for (let preview of Object.values(draft?.previews || {})) used.add(parent(preview?.path));
+			for (let file of draft?.lastPreview?.previews || []) used.add(parent(file));
+			used.add(parent(draft?.lastPreview?.path));
+		}
+		let jobs = [];
+		for (let child of await IOUtils.getChildren(directory)) {
+			let info = await IOUtils.stat(child).catch(() => null);
+			if (info?.type === 'directory' && PathUtils.filename(child).startsWith('easysch-deck-')) jobs.push({ child, at: info.lastModified || 0 });
+		}
+		jobs.sort((a, b) => b.at - a.at);
+		for (let { child } of jobs.slice(keep)) if (!used.has(child)) await IOUtils.remove(child, { recursive: true, ignoreAbsent: true }).catch(() => {});
+	};
+	// Export embeds PNG and JPEG. Other images (WebP from image generation or a
+	// drop) are decoded by Gecko once and cached as PNG; the draft keeps the original.
+	E.pptImagePath = async (path, signal) => {
+		let head = await IOUtils.read(path, { maxBytes: 12 }), text = String.fromCharCode(...head);
+		if (head[0] === 0x89 && text.slice(1, 4) === 'PNG' || head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return path;
+		if (!(text.startsWith('RIFF') && text.slice(8, 12) === 'WEBP') && !text.startsWith('GIF8') && !text.startsWith('BM')) throw new Error('图片“' + PathUtils.filename(path) + '”不是 PNG、JPG 或 WebP，未导出；请换用这三种格式的图片。');
+		let info = await IOUtils.stat(path), folder = PathUtils.join(Zotero.DataDirectory.dir, 'easysch', 'asset-cache', 'ppt-images');
+		let target = PathUtils.join(folder, E.assets.key(['ppt-image-1', path, info.size, info.lastModified]) + '.png');
+		if (await IOUtils.exists(target)) return target;
+		let win = Zotero.getMainWindow(), image = new win.Image();
+		image.src = await E.previewImage(path);
+		try { await image.decode(); }
+		catch { throw new Error('图片“' + PathUtils.filename(path) + '”无法解码，未导出；请重新导入这张图片。'); }
+		if (image.naturalWidth * image.naturalHeight > 25_000_000) throw new Error('图片“' + PathUtils.filename(path) + '”分辨率过大，未导出；请缩小后重新导入。');
+		let canvas = win.document.createElementNS('http://www.w3.org/1999/xhtml', 'canvas');
+		canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+		canvas.getContext('2d').drawImage(image, 0, 0);
+		let blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+		if (!blob) throw new Error('图片“' + PathUtils.filename(path) + '”转换为 PNG 失败，未导出；请换用 PNG 或 JPG 图片。');
+		if (signal?.aborted) throw new Error('任务已取消');
+		await IOUtils.makeDirectory(folder, { ignoreExisting: true });
+		await IOUtils.write(target, new Uint8Array(await blob.arrayBuffer()));
+		return target;
 	};
 	E.planPresentation = async function (meeting, onStatus) {
 		let assembly = await E.runArtifactEngine({ operation: 'prompt' });

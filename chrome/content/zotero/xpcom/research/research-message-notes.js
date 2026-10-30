@@ -109,6 +109,9 @@
 		}
 		let saved;
 		try { saved = await task; } finally { if (pending.get(stableID) === task) pending.delete(stableID); }
-		await associate(projectID, saved); return saved;
+		await associate(projectID, saved);
+		const conversations=E.workbenchConversations,current=conversations?.get(sessionID);
+		if(current?.messages?.some(row=>row.id===message.id)&&conversations.update)await conversations.update(sessionID,{messages:[{id:message.id,savedNoteID:saved.noteID,savedMaterialID:saved.materialID}]},{origin:'note'});
+		return saved;
 	};
 })(Zotero.Research);

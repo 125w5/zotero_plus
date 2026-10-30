@@ -44,7 +44,7 @@ Object.assign(EasySchUI, {
 		let project = this.project();
 		this.$('draft-title').value = project.title; this.$('draft').value = project.draft;
 		this.dirty = false; this.renderOutline(); this.renderTasks();
-		if(this.$('writing-card-body')){const card=this.E.store.get().writingCards?.[this.projectKey()];this.$('writing-card-body').value=card?.body||'';this.$('writing-card-type').value=card?.kind||'我的理解';}
+		if(this.$('writing-card-body')){const card=(this.E.store.peek?this.E.store.peek('writingCards'):this.E.store.get().writingCards)?.[this.projectKey()];this.$('writing-card-body').value=card?.body||'';this.$('writing-card-type').value=card?.kind||'我的理解';}
 		let citations = this.$('citations'); citations.replaceChildren();
 		for (let paper of this.papers) {
 			let button = this.el('button', `${paper.title.slice(0, 35)}\n[@${paper.citeKey}]`);

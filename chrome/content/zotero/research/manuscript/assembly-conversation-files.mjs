@@ -4,6 +4,7 @@ import {normalizeWritingWorkflow,updateWritingWorkflow} from '../shared/paper-wr
 import {installMediaPreview,disposeMediaPreviews} from '../shared/media-preview.mjs';
 import {assemblyChatIcon} from './assembly-chat-context.mjs';
 import {mountConversationFiles} from '../shared/conversation-files.mjs';
+import {libraryView} from '../shared/material-access.mjs';
 
 const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/\s+/gu,'');
 const kindLabel=kind=>({pdf:'论文',spreadsheet:'表格',image:'图片',docx:'文档',text:'文本',material:'素材'})[kind]||'文件';
@@ -70,7 +71,7 @@ export function installAssemblyConversationFiles(U,{persist,status}){
   fileRail.render();
  };
  Promise.resolve(U.E.discoveryCollections?.()).then(result=>{folderLabel=(result?.collections||[]).find(row=>String(row.id)===String(U.p.paperCollectionID))?.path||'';fileRail?.render();}).catch(()=>{});
- const relatedMaterials=reference=>[...new Map([...U.p.materials,...Object.values(U.A.assetLibrary())].map(row=>[row.id,row])).values()].filter(row=>row.id===reference.materialID||reference.attachmentID&&(row.attachmentID===reference.attachmentID||row.anchor?.attachmentID===reference.attachmentID)||reference.paperItemID&&(row.paperItemID===reference.paperItemID||row.anchor?.paperItemID===reference.paperItemID));
+ const relatedMaterials=reference=>[...new Map([...U.p.materials,...Object.values(libraryView(U.A))].map(row=>[row.id,row])).values()].filter(row=>row.id===reference.materialID||reference.attachmentID&&(row.attachmentID===reference.attachmentID||row.anchor?.attachmentID===reference.attachmentID)||reference.paperItemID&&(row.paperItemID===reference.paperItemID||row.anchor?.paperItemID===reference.paperItemID));
  const metadata=async reference=>{const Zotero=U.E.window?.Zotero||win.parent?.Zotero,id=reference.paperItemID||reference.attachmentID;if(!id||!Zotero?.Items?.getAsync)return reference;let item=await Zotero.Items.getAsync(id);if(!item||item.deleted)return reference;if(item.isAttachment?.()&&item.parentID)item=await Zotero.Items.getAsync(item.parentID);await item?.loadDataType?.('itemData');return {...reference,...(item?{...U.E.library.describe(item),abstract:item.getField('abstractNote')}: {})};};
  const openDetail=async(reference,{view:initialView='info'}={})=>{
   close();const owner=U.conversationSession.id,request=++generation;controller=new win.AbortController();activeID=reference.id;activeSession=owner;detailSignature=detailKey(reference);U.p.ui.rightOpen=true;U.workflow?.closePanel();U.applyPanels();

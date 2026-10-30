@@ -2,13 +2,17 @@
 import {RESEARCH_MESSAGE_MIME,resolveDroppedAnswer} from '../shared/message-transfer.mjs';
 import {sectionInsertionAnchor,sectionInsertionIndex} from './section-insertion.mjs';
 import {createAssemblyDropFeedback} from './assembly-file-drop.mjs';
+import {libraryAsset} from '../shared/material-access.mjs';
+import {placedBlock} from './assembly-placement.mjs';
 
 // The paper receives a research-note material, not generated manuscript prose.
 // This uses the same published note and source links as every other chat view.
 export function installAssemblyMessageDrop({U,canvas,paperPosition,snapshot,attachMaterial,changed,persist,status}){
  let disposed=false,busy=false;const feedback=createAssemblyDropFeedback(canvas);
  const advertised=event=>Array.from(event.dataTransfer?.types||[]).includes(RESEARCH_MESSAGE_MIME);
- const pageFor=event=>{const paper=event.target.closest?.('.paper'),page=paper||event.target.closest?.('.writing-digest-chapter[data-framework-section]'),sectionID=page?.dataset.section||page?.dataset.frameworkSection;return page&&canvas.contains(page)&&U.p.sections.some(row=>row.id===sectionID)?{element:page,sectionID,digest:!paper}:null;};
+ // Paper pages, digest chapters and read chapters all accept a dropped answer;
+ // outside a paper page it is placed at the end of the chapter.
+ const pageFor=event=>{const paper=event.target.closest?.('.paper'),page=paper||event.target.closest?.('.writing-digest-chapter[data-framework-section],.assembly-read-chapter[data-framework-section]'),sectionID=page?.dataset.section||page?.dataset.frameworkSection;return page&&canvas.contains(page)&&U.p.sections.some(row=>row.id===sectionID)?{element:page,sectionID,digest:!paper}:null;};
  const clear=()=>{feedback.clear();delete canvas.dataset.messageDrop;for(const node of canvas.querySelectorAll('.block-drop-before,.block-drop-after'))node.classList.remove('block-drop-before','block-drop-after');};
  const over=event=>{
   if(disposed||!advertised(event))return;clear();const page=pageFor(event);if(busy||!page){event.dataTransfer.dropEffect='none';feedback.show(event,busy?'正在保存研究笔记，请稍候。':'请放到论文页面中的具体位置；左右卡片可固定回答。',{rejected:true});return;}
@@ -27,9 +31,12 @@ export function installAssemblyMessageDrop({U,canvas,paperPosition,snapshot,atta
    if(!U.saveResearchMessage)throw Error('研究笔记保存尚未就绪，请稍后重新拖动。');
    const saved=await U.saveResearchMessage(answer.message,{sessionID:answer.sessionID});
    if(disposed||U.p.id!==projectID)return;
-   const material=U.p.materials.find(value=>value.id===saved.materialID)||U.A.assetLibrary()[saved.materialID];
+   const material=U.p.materials.find(value=>value.id===saved.materialID)||libraryAsset(U.A,saved.materialID);
    if(!material)throw Error('笔记已保存；素材尚未入库，请重新拖动。');
    if(!U.p.sections.some(value=>value.id===sectionID))throw Error('笔记已保存；原章节已移除，请从素材库拖入新的位置。');
+   // Dropping the same answer into the same chapter again selects its card.
+   const existing=placedBlock(U.p,sectionID,{material,researchMessageID:answer.message.id});
+   if(existing){U.p.ui.blockID=existing.id;U.p.ui.sectionID=sectionID;changed({editor:true});canvas.querySelector('[data-id="'+existing.id+'"],[data-read-block="'+existing.id+'"]')?.scrollIntoView({block:'nearest'});status('这条回答已在本章，已定位到原卡片；未重复插入');return;}
    snapshot();const block=U.M.block('paragraph',sectionID,{assembly:true,title:material.title,spaceBefore:pos.spaceBefore,conversationID:answer.sessionID,researchMessageID:answer.message.id});
    attachMaterial(block,material.id);
    const index=sectionInsertionIndex(U.p.blocks,U.p.sections,sectionID,anchor);U.p.blocks.splice(index,0,block);U.p.ui.blockID=block.id;U.p.ui.sectionID=sectionID;U.p.ui.caret=0;

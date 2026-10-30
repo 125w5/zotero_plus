@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {arxivID} from './arxiv.mjs';
-export const referenceArxiv = text => arxivID(String(text||'').match(/(?:arxiv\s*:\s*|arxiv\.org\/(?:abs|pdf)\/)((?:\d{4}\.\d{4,5}|[a-z][a-z.-]*\/\d{7})(?:v[1-9]\d*)?)/i)?.[1]);
+export const referenceArxiv = text => arxivID(String(text||'').match(/(?:arxiv\s*:\s*|arxiv\.org\/(?:abs|pdf)\/|10\.48550\/arxiv\.)((?:\d{4}\.\d{4,5}|[a-z][a-z.-]*\/\d{7})(?:v[1-9]\d*)?)/i)?.[1]);
 const identity = p => p.doi?'doi:'+cleanDOI(p.doi):'arxiv:'+(arxivID(p.id)||arxivID(p.url));
 export const cleanDOI = value => String(value || '').trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i, '').replace(/[.,;]+$/, '').toLowerCase();
 const norm = value => String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');

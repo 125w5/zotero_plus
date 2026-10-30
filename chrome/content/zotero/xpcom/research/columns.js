@@ -12,7 +12,10 @@
 		cell.style.cssText = 'display:flex;gap:5px;align-items:center;overflow:hidden';
 		let item = tree.getRow(index)?.ref;
 		if (!item) return cell;
-		let metric = R.metrics.get(R.issn(item))?.[0];
+		// The same metric R.field shows as the value, so a tooltip never names
+		// another year or source; a current snapshot may carry no year.
+		let metric = item.isRegularItem?.() ? R.currentMetric?.(item) || R.metrics.get(R.issn(item))?.[0] : null;
+		let provenance = metric ? `${metric.metric_year || '年份未标明'} · ${metric.source}` : '';
 		let badge = (text, color = '#81609b') => {
 			let node = doc.createElementNS('http://www.w3.org/1999/xhtml', 'span');
 			node.textContent = text;
@@ -28,14 +31,14 @@
 			if (metric) {
 				if (metric.impact_factor != null) badge('IF ' + metric.impact_factor, '#b15c46');
 				for (let value of [metric.jcr_quartile, metric.cas_large_category, metric.indexing, metric.ccf]) if (value) badge(value, '#b15c46');
-				cell.title = `${metric.metric_year} · ${metric.source} · ${R.formatTime(metric.fetched_at)}`;
+				cell.title = [provenance, R.formatTime(metric.fetched_at)].filter(Boolean).join(' · ');
 			}
 		}
 		else if (data !== '') {
 			let bar = doc.createElementNS('http://www.w3.org/1999/xhtml', 'span');
 			bar.style.cssText = `height:3px;background:#68a5a0;flex:0 0 ${Math.min(38, Math.max(3, Number(data)))}px`;
 			cell.append(bar, doc.createTextNode(String(data)));
-			cell.title = metric ? `${metric.metric_year} · ${metric.source}` : '';
+			cell.title = provenance;
 		}
 		return cell;
 	};

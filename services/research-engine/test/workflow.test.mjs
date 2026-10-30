@@ -1,10 +1,12 @@
+import * as WorkspaceOutputs from '../../../chrome/content/zotero/research/shared/workspace-outputs.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs/promises';
 import * as Ref from '../../../chrome/content/zotero/research/shared/reference-matcher.mjs';
 import * as Feed from '../../../chrome/content/zotero/research/shared/discovery-feed.mjs';
-const ChromeUtils={importESModule:url=>{if(url.endsWith('/reference-matcher.mjs'))return Ref;if(url.endsWith('/discovery-feed.mjs'))return Feed;throw Error('Unexpected fixture module: '+url);}};
+import * as ReferenceMetadata from '../../../chrome/content/zotero/research/shared/reference-metadata.mjs';
+const ChromeUtils={importESModule:url=>{if(url.endsWith('/workspace-outputs.mjs'))return WorkspaceOutputs;if(url.endsWith('/reference-matcher.mjs'))return Ref;if(url.endsWith('/reference-metadata.mjs'))return ReferenceMetadata;if(url.endsWith('/discovery-feed.mjs'))return Feed;throw Error('Unexpected fixture module: '+url);}};
 const source = await fs.readFile(
 	new URL(
 		'../../../chrome/content/zotero/xpcom/research/discovery.js',
@@ -18,7 +20,7 @@ test('reference discovery preserves publisher provenance, caches by DOI and neve
 	const E = {
 		assets:{key: value => JSON.stringify(value)},
 		store: {
-			get: () => structuredClone(state),
+			get: (...path) => structuredClone(path.reduce((value, key) => value?.[key], state)),
 			update: async (fn) => fn(state),
 		},
 		requestProvider: async (url) => {

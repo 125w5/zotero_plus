@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateRapidReading,selectRapidSources,rapidEvidenceExcerpts,bindRapidReadingEvidence,rapidModelIdentity,rapidReadingFlow,rapidReadingArticleFlow,rapidReadingBrief,rapidAuthorNames,rapidReadingEditKey,rapidReadingEditedText,assetAtPoint,visibleComments} from '../../chrome/content/zotero/research/shared/rapid-reading-data.mjs';
+import {validateRapidReading,selectRapidSources,rapidSourceCacheValid,RAPID_SOURCE_VERSION,rapidEvidenceExcerpts,bindRapidReadingEvidence,rapidModelIdentity,rapidReadingFlow,rapidReadingArticleFlow,rapidReadingBrief,rapidAuthorNames,rapidReadingEditKey,rapidReadingEditedText,assetAtPoint,visibleComments} from '../../chrome/content/zotero/research/shared/rapid-reading-data.mjs';
 const sources=[{id:'p1',text:'The detector uses a voting rule across three complementary scores.',pageIndex:2}];
 const result={sections:[{role:'method',heading:'互补分数投票',points:[{text:'三种互补评分共同决定是否拒绝样本。',evidence:[{sourceID:'p1',quote:'a voting rule across three complementary scores'}]}]}]};
 test('reading explanation retains real exact evidence and rejects invented source/quote',()=>{assert.equal(validateRapidReading(result,sources).sections[0].points[0].evidence[0].sourceID,'p1');for(const e of [{sourceID:'missing',quote:'a voting rule'},{sourceID:'p1',quote:'100% accuracy on all benchmarks'}]){const bad=structuredClone(result);bad.sections[0].points[0].evidence=[e];assert.throws(()=>validateRapidReading(bad,sources));}assert.throws(()=>validateRapidReading({sections:[{role:'method',heading:'无依据',points:[{text:'自称有效',evidence:[]}]}]},sources));});
@@ -18,8 +18,8 @@ test('small rapid inputs keep source IDs and positions after foreign attachments
 });
 test('74-page rapid sampling covers every page with bounded balanced contiguous original passages',()=>{
  const pages=Array.from({length:74},(_,pageIndex)=>({id:'page-'+pageIndex,attachmentID:8,pageIndex,position:{pageIndex,rects:[[1,2,3,4]]},text:`START-${pageIndex} `+'start passage '.repeat(160)+`MIDDLE-${pageIndex} `+'ending passage '.repeat(160)+`END-${pageIndex}`}));
- const input=[{id:'foreign',attachmentID:9,pageIndex:90,text:'Wrong PDF '.repeat(10000)},{id:'annotation',annotationKey:'USER',attachmentID:8,pageIndex:91,text:'User note '.repeat(10000)},...pages],before=structuredClone(input),selected=selectRapidSources(input,{attachmentID:8});
- assert.equal(selected.coverage.availablePages,74);assert.equal(selected.coverage.selectedPages,74);assert.equal(new Set(selected.sources.map(source=>source.pageIndex)).size,74);assert.ok(selected.coverage.selectedChars<=48000);assert.ok(selected.sources.length<=96);assert.equal(selected.coverage.sampled,true);assert.deepEqual(selectRapidSources(input,{attachmentID:8}),selected);assert.deepEqual(input,before);
+ const input=[{id:'foreign',attachmentID:9,pageIndex:90,text:'Wrong PDF '.repeat(10000)},{id:'annotation',annotationKey:'USER',attachmentID:8,pageIndex:91,text:'User note '.repeat(10000)},...pages],before=structuredClone(input),options={attachmentID:8,maxChars:48000,maxSources:96,chunkChars:650},selected=selectRapidSources(input,options);
+ assert.equal(selected.coverage.availablePages,74);assert.equal(selected.coverage.selectedPages,74);assert.equal(new Set(selected.sources.map(source=>source.pageIndex)).size,74);assert.ok(selected.coverage.selectedChars<=48000);assert.ok(selected.sources.length<=96);assert.equal(selected.coverage.sampled,true);assert.deepEqual(selectRapidSources(input,options),selected);assert.deepEqual(input,before);
  for(const source of selected.sources){const original=pages[source.pageIndex];assert.equal(source.attachmentID,8);assert.ok(original.text.includes(source.text));assert.ok(source.text.length<=650);assert.deepEqual(source.position,original.position);assert.equal(source.originSourceID,original.id);assert.equal(original.text.slice(...source.sourceTextRange),source.text);}
  const initial=selected.sources.slice(0,74);assert.equal(initial[0].sourceTextRange[0],0);assert.ok(initial[1].sourceTextRange[0]>0&&initial[1].sourceTextRange[1]<pages[1].text.length);assert.equal(initial[2].sourceTextRange[1],pages[2].text.length);
 });
@@ -31,7 +31,13 @@ test('sampling under smaller limits retains distributed first and final pages an
 });
 test('paragraphs on the same page share coverage slots instead of crowding later PDF pages out',()=>{
  const input=[...Array.from({length:120},(_,index)=>({id:'paragraph-'+index,attachmentID:8,pageIndex:0,text:'First-page paragraph '+index+' '+ 'original evidence '.repeat(20)})),...Array.from({length:73},(_,index)=>({id:'page-'+(index+1),attachmentID:8,pageIndex:index+1,text:'Later page original evidence. '.repeat(100)}))];
- const selected=selectRapidSources(input,{attachmentID:8});assert.equal(selected.coverage.selectedPages,74);assert.ok(selected.sources.length<=96);assert.ok(selected.coverage.selectedChars<=48000);
+ const selected=selectRapidSources(input,{attachmentID:8,maxChars:48000,maxSources:96,chunkChars:650});assert.equal(selected.coverage.selectedPages,74);assert.ok(selected.sources.length<=96);assert.ok(selected.coverage.selectedChars<=48000);
+});
+
+test('a normal thirteen-page research paper retains complete methods and result text instead of three short excerpts per page',()=>{
+ const pages=Array.from({length:13},(_,pageIndex)=>({id:'paper-page-'+pageIndex,attachmentID:8,pageIndex,text:'Exact original page '+pageIndex+' '+('Methods, numerical controls, ablations and failure cases in this paper. '.repeat(110))})),before=structuredClone(pages),selected=selectRapidSources(pages,{attachmentID:8});
+ assert.equal(selected.coverage.sampled,false);assert.equal(selected.coverage.selectedChars,selected.coverage.totalChars);assert.deepEqual(selected.sources,pages);assert.deepEqual(pages,before);assert.ok(rapidSourceCacheValid(selected));
+ const old={sources:selected.sources,coverage:{...selected.coverage,selectionVersion:'source-reading-2'}};assert.equal(rapidSourceCacheValid(old),false);assert.equal(rapidSourceCacheValid({...selected,coverage:{...selected.coverage,selectedChars:20}}),false);assert.equal(selected.coverage.selectionVersion,RAPID_SOURCE_VERSION);
 });
 test('software excerpts bind quote IDs to real source text without model retyping or source overrides',()=>{
  const original=[{id:'p1',text:'Actual PDF\nline break remains unchanged. '+ 'Contiguous original evidence. '.repeat(40),pageIndex:2}],excerpts=rapidEvidenceExcerpts(original);
@@ -92,6 +98,17 @@ test('brief tabs reuse concrete verified text and local edits with intact quanti
  const point={text:'独立测试准确率为 91.2%，阈值为 $x_i \\leq 2$。',evidence:[{sourceID:'actual',quote:'Accuracy 91.2%, x_i <= 2.'}]},record={sections:[{role:'results',heading:'独立测试条件',points:[point,{text:'无来源的套话。',evidence:[]}]},{role:'method',heading:'阈值方法',points:[{text:'方法文字。',evidence:[{sourceID:'actual',quote:'x_i <= 2.'}]}]}]},before=structuredClone(record),edited='我的核对：独立测试为 91.2%，仍使用 $x_i \\leq 2$。';
  const initial=rapidReadingBrief(record,'results');assert.equal(initial.length,1);assert.equal(initial[0].text,point.text);assert.strictEqual(initial[0].point,point);assert.equal(initial[0].section.heading,'独立测试条件');
  const changed=rapidReadingBrief(record,'results',{textForPoint:current=>current===point?edited:current.text});assert.equal(changed[0].text,edited);assert.deepEqual(rapidReadingBrief(record,'limitations'),[]);assert.deepEqual(record,before);
+});
+
+test('independent brief quote IDs bind to evidence and remain distinct from the detailed article',()=>{
+ const original=[{id:'paper',text:'The detector uses three complementary scores. The independent evaluation reports 91.2% accuracy.'}],excerpts=rapidEvidenceExcerpts(original),detailed='方法把互补评分组合为同一个拒绝规则，再在独立测试集上记录91.2%的准确率。',value={sections:[{role:'method',heading:'三分数联合判定',brief:{text:'三个互补评分联合决定拒绝条件。',quoteIDs:['Q1']},points:[{text:detailed,quoteIDs:['Q1']}]}]},before=structuredClone(value),record=bindRapidReadingEvidence(value,excerpts,original),rows=rapidReadingBrief(record,'method');
+ assert.equal(rows.length,1);assert.equal(rows[0].text,value.sections[0].brief.text);assert.notEqual(rows[0].text,record.sections[0].points[0].text);assert.equal(record.sections[0].points[0].text,detailed);assert.deepEqual(record.sections[0].brief.evidence,[{sourceID:'paper',quote:excerpts[0].text}]);assert.deepEqual(value,before);
+ value.sections[0].brief.quoteIDs=['Q404'];assert.throws(()=>bindRapidReadingEvidence(value,excerpts,original),/不存在或无法核对/);
+});
+
+test('a long legacy manual note is previewed by a whole sentence without overwriting its full text',()=>{
+ const point={text:'手工核对的结论是准确率91.2%，阈值为 $x_i \\leq 2$。'+'以下是手工保存的完整机制说明。'.repeat(30),evidence:[{sourceID:'actual',quote:'Actual original evidence.'}]},record={sections:[{role:'method',heading:'旧人工稿',points:[point]}]},before=structuredClone(record),preview=rapidReadingBrief(record,'method');
+ assert.equal(preview[0].text,'手工核对的结论是准确率91.2%，阈值为 $x_i \\leq 2$。');assert.deepEqual(record,before);
 });
 test('rapid authors preserve complete personal and institutional names and filter known nonauthor roles',()=>{
  const creators=[{firstName:' Ada ',lastName:' Lovelace ',creatorTypeID:1},{lastName:'Research Group',fieldMode:1,creatorType:'author'},{firstName:'Grace',lastName:'Hopper',creatorTypeID:4},{firstName:'Alan',lastName:'Turing',creatorType:'editor'},{firstName:'Unknown',lastName:'Role'},{firstName:'Ada',lastName:'Lovelace',creatorTypeID:1}],before=structuredClone(creators);

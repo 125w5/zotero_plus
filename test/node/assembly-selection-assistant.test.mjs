@@ -71,3 +71,16 @@ test('actual selection service forwards the scoped writing plan and refuses a re
  const preview=await A.previewSelection(p.id,{target:capture(p),instruction:'学术化改写选段',modelID:'selected-model',thinkingLevel:'high'});assert.equal(preview.status,'pending');assert.deepEqual(p,before);assert.equal(calls[0].options.modelConfig.model,'selected-model');assert.equal(calls[0].options.modelConfig.thinkingLevel,'high');assert.equal(calls[0].input.writingWorkflow.section.structure,'先条件再指标');assert.match(calls[0].system,/禁止 AI 套话/);assert.match(calls[0].system,/范文只学习结构与语言/);
  const original=E.studio.request;E.studio.request=async(...args)=>{const result=await original(...args);updateWritingWorkflow(p,{structure:'请求途中变更结构'},{sectionID:'intro'});return result;};await assert.rejects(A.previewSelection(p.id,{target:capture(p),instruction:'改写选段',modelID:'selected-model'}),/计划或要求已经变化/);assert.deepEqual(p.blocks,before.blocks);assert.deepEqual(p.materials,before.materials);
 });
+
+test('a selection rewrite sizes its budget from the selection, and a request to shorten asks for one variant (addendum 2)',async()=>{
+ assert.deepEqual(Selection.selectionBudget('短句'),{maxTokens:3000,maxVariants:3,minVariants:2});
+ const long='长'.repeat(1600),budget=Selection.selectionBudget(long);assert.equal(budget.maxVariants,1);assert.ok(budget.maxTokens>3000&&budget.maxTokens<=8000);
+ assert.deepEqual(Selection.selectionBudget('一段需要缩短的正文。','精简一点'),{maxTokens:3000,maxVariants:1,minVariants:1});
+ assert.equal(validateSelectionPreview(capture(fixture()),{variants:[variants().variants[0]]},{minVariants:1}).variants.length,1,'one variant is accepted when only one was asked for');
+ assert.throws(()=>validateSelectionPreview(capture(fixture()),{variants:[variants().variants[0]]}),/两个或三个/);
+ const p=fixture(),calls=[],A={model:{clone:structuredClone},get:()=>p},E={manuscripts:A,assets:{key:JSON.stringify},store:{get:()=>({})},settings:()=>({endpoint:'https://fixture.invalid/v1',model:'configured'}),core:{endpoint:value=>value},studio:{request:async(system,input,_progress,_signal,options)=>{calls.push({system,input,options});return {value:{variants:[variants().variants[0]]},model:options.modelConfig.model};}}};
+ const modules={'topic-materials.mjs':{},'research-ai-policy.mjs':Policy,'material-content.mjs':{},'assembly-writing-preview.mjs':{},'writing-framework.mjs':Framework,'selection-target.mjs':Selection};
+ vm.runInNewContext(await readFile(new URL('../../chrome/content/zotero/xpcom/research/manuscript-writing.js',import.meta.url),'utf8'),{Zotero:{Research:E,Utilities:{randomString:()=> 'budget-test'}},ChromeUtils:{importESModule:path=>{const module=modules[path.split('/').at(-1)];if(!module)throw Error('Unexpected import '+path);return module;}},URL});
+ const preview=await A.previewSelection(p.id,{target:capture(p),instruction:'精简这句',modelID:'selected-model'});
+ assert.equal(preview.variants.length,1);assert.equal(calls[0].input.maxVariants,1);assert.match(calls[0].system,/提供一个简洁方案/);assert.ok(calls[0].options.maxTokens>=5000,'never below the earlier fixed budget');
+});

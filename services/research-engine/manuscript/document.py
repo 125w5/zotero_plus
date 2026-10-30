@@ -149,7 +149,11 @@ def default_reference(path):
     math = OxmlElement('m:mathPr'); font = OxmlElement('m:mathFont'); font.set(qn('m:val'),'Cambria Math'); math.append(font); doc.settings.element.append(math)
     doc.save(path)
 
-def academic_default_styles(doc, is_plan=False):
+EXPORT_HEADERS = {'manuscript-plan-export': '执行方案', 'manuscript-read-export': '速读与任务计划'}
+KEEP_TASK_OPERATIONS = ('manuscript-plan-export', 'manuscript-read-export')
+
+
+def academic_default_styles(doc, header_text='研究稿'):
     # Only the bundled default is normalized. A user-selected reference.docx
     # remains authoritative for fonts, colors, borders, headers and footers.
     for name in ['Normal', 'Title', 'Caption'] + ['Heading '+str(i) for i in range(1, 10)]:
@@ -172,7 +176,7 @@ def academic_default_styles(doc, is_plan=False):
             if header.is_linked_to_previous:
                 continue
             for paragraph in header.paragraphs:
-                paragraph.text = '执行方案' if is_plan else '研究稿'
+                paragraph.text = header_text
                 for run in paragraph.runs:
                     run.font.size = Pt(9)
                     run.font.color.rgb = RGBColor.from_string('777777')
@@ -291,7 +295,7 @@ def export(req):
     if not reference.exists(): raise ValueError('找不到 reference.docx')
     doc=Document(reference)
     if not req.get('referenceDoc'):
-        academic_default_styles(doc, req.get('operation') == 'manuscript-plan-export')
+        academic_default_styles(doc, EXPORT_HEADERS.get(req.get('operation'), '研究稿'))
     layout=apply_journal_layout(doc, req['project'].get('journalFormat')) if not req.get('referenceDoc') else None
     available_width=((210-2*layout['margin']-(7.5 if layout['columns']>1 else 0))/layout['columns']) if layout else None
     # Retain styles/headers/footers/section properties; discard template example body.
@@ -306,6 +310,7 @@ def export(req):
     for section in p['sections']:
         blocks=[b for b in p['blocks'] if b['sectionID']==section['id'] and not (b.get('emptyStarter') and not b.get('text','').strip() and not b.get('materials'))]
         if not blocks:continue
+        section_start=len(doc.paragraphs)
         doc.add_heading(section['title'],1)
         for b in blocks:
             kind=b['type'];text=b.get('text','')
@@ -346,6 +351,15 @@ def export(req):
                 paragraph_alignment(par,b)
                 if b.get('spaceBefore'):par.paragraph_format.space_before=Pt(b['spaceBefore'])
                 write_runs(par,b.get('runs'),text,math_context)
+        if req.get('operation') in KEEP_TASK_OPERATIONS and len(blocks)==4 and re.match(r'^预计[\s：:]',blocks[-1].get('text','')):
+            # A plan task's action, deliverable, check and estimated hours form
+            # one reading unit. Keep the short task together so the final hours
+            # line cannot be orphaned on the next page. Word can still split a
+            # task longer than a page; this never inserts artificial page breaks.
+            task_paragraphs=doc.paragraphs[section_start:]
+            for index,par in enumerate(task_paragraphs):
+                par.paragraph_format.keep_together=True
+                par.paragraph_format.keep_with_next=index<len(task_paragraphs)-1
     if req.get('bibliography'):
         doc.add_heading('参考文献',1)
         for entry in req['bibliography']:doc.add_paragraph(entry.strip())
@@ -369,6 +383,9 @@ if __name__=='__main__':
         elif req['operation']=='manuscript-plan-export':
             from plan_export import export_plan
             value=export_plan(req)
+        elif req['operation']=='manuscript-read-export':
+            from read_export import export_read
+            value=export_read(req)
         else:
             value=dataset(req['file']) if req['operation']=='manuscript-data' else export(req)
         print(json.dumps(dict(type='result',value=value),ensure_ascii=False))

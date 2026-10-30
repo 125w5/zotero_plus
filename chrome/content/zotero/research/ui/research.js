@@ -33,7 +33,7 @@ Object.assign(EasySchUI, {
 			this.renderResult();
 		});
 	},
-	records() { return this.current ? this.E.store.get().papers[this.E.core.paperKey(this.current)]?.records || [] : []; },
+	records() { return this.current ? (this.E.store.peek?this.E.store.peek('papers'):this.E.store.get().papers)[this.E.core.paperKey(this.current)]?.records || [] : []; },
 	renderPapers() {
 		let list = this.$('paper-list'); list.replaceChildren(); this.$('paper-count').textContent = this.papers.length;
 		for (let paper of this.papers) {
@@ -122,7 +122,7 @@ Object.assign(EasySchUI, {
 		let actions = ['analyze', 'translate', 'synthesize', 'make-outline', 'ask', 'presentation', 'refresh', 'clear-memory', 'run-paper-skill'];
 		for (let id of actions) this.$(id).disabled = true;
 		try {
-			let record = await this.E.ai.run({ mode, papers, prompt, selection: this.selection,
+			let record = await this.E.ai.run({ mode, papers, prompt, selection: this.selection, signal: this.legacyJobSignal(),
 				onStatus: s => this.status(s) });
 			this.renderHistory(); this.record = record; this.renderResult();
 			this.status('分析已保存。请核对原文证据；可保存为研究笔记。');

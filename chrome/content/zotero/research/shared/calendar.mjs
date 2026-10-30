@@ -11,7 +11,9 @@ export function mountCalendar(host,E,{openSchedule=()=>{}}={}) {
  const root=el('section',undefined,'compact-calendar calendar-inline'),head=el('div',undefined,'calendar-heading'),grid=el('div',undefined,'calendar-grid'),drawer=el('section',undefined,'calendar-drawer');
  root.setAttribute('aria-label','日历与待办');root.append(head,grid,drawer);host.append(root);drawer.hidden=true;
  let month=new Date(),chosen=dateKey(month);month.setDate(1);
- const tasks=()=>calendarTasks({projects:E.store.get('projects'),tasks:E.store.get('tasks')});
+ let read=key=>E.store.peek?E.store.peek(key):E.store.get(key);
+ const tasks=()=>calendarTasks({projects:read('projects'),tasks:read('tasks')});
+ let taskInputs=()=>[read('tasks'),...Object.values(read('projects')||{}).map(p=>p?.tasks)],shown=null;
  const button=(text,fn,parent,cls)=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;parent.append(b);return b;};
  const updateTask=async(id,done)=>{await E.store.update(s=>{for(const t of [...(s.tasks||[]),...Object.values(s.projects||{}).flatMap(p=>p.tasks||[])])if(t.id===id)t.done=done;});render();};
  const showDay=(key,edit=false)=>{chosen=key;drawer.hidden=false;render();if(edit)drawer.querySelector('input[type=text]')?.focus();};
@@ -29,13 +31,21 @@ export function mountCalendar(host,E,{openSchedule=()=>{}}={}) {
   button('管理当天日程',()=>{menu.remove();openSchedule(chosen);},menu);button('关闭',()=>menu.remove(),menu);root.append(menu);menu.querySelector('button').focus();
  };
  function render(){
-  const all=tasks(),today=dateKey(new Date()),pending=all.filter(t=>!t.done&&t.due?.slice(0,10)===today);
+  shown=taskInputs();const all=tasks(),today=dateKey(new Date()),pending=all.filter(t=>!t.done&&t.due?.slice(0,10)===today);
   head.replaceChildren();button('‹',()=>{month.setMonth(month.getMonth()-1);render();},head).ariaLabel='上个月';const title=button(month.toLocaleDateString('zh-CN',{year:'numeric',month:'long'}),()=>{month=new Date();month.setDate(1);showDay(today);},head);title.title='回到今天 · '+pending.length+' 项待办';button('›',()=>{month.setMonth(month.getMonth()+1);render();},head).ariaLabel='下个月';
   grid.replaceChildren();for(const d of ['一','二','三','四','五','六','日'])grid.append(el('small',d));const start=new Date(month);start.setDate(1-((start.getDay()+6)%7));
   for(let i=0;i<42;i++){const day=new Date(start);day.setDate(start.getDate()+i);const key=dateKey(day),onDay=all.filter(t=>t.due?.slice(0,10)===key),tone=taskTone(onDay,key,today),b=button(String(day.getDate()),()=>showDay(key),grid);b.dataset.date=key;b.dataset.tone=tone;b.classList.toggle('outside',day.getMonth()!==month.getMonth());b.setAttribute('aria-pressed',String(key===chosen));if(key===today)b.setAttribute('aria-current','date');b.title=key+' · '+onDay.filter(t=>!t.done).length+' 项待办';b.ondblclick=()=>showDay(key,true);b.oncontextmenu=e=>{e.preventDefault();showDay(key);showActions(e);};}
   root.querySelector('.calendar-today')?.remove();const todayLine=el('small','今天 · '+pending.length+' 项待办','calendar-today');root.insertBefore(todayLine,drawer);renderDrawer();
  }
  root.onkeydown=e=>{if(e.key==='Escape'){drawer.hidden=true;root.querySelector('.calendar-context')?.remove();}};
- const off=E.store.subscribe?.(()=>{if(!drawer.contains(doc.activeElement))render();}),timer=win.setInterval(()=>{if(!drawer.contains(doc.activeElement))render();},60000);
- const dispose=()=>{off?.();win.clearInterval(timer);};win.addEventListener('unload',dispose,{once:true});render();return {render,dispose};
+ // Only task and project commits change the grid; a search or download commits
+ // dozens of unrelated cache branches. The store notifies inside its commit, so a
+ // microtask renders before a writer's update() resolves; a frame callback can
+ // wait indefinitely in a hidden window. Committed task arrays are replaced,
+ // never edited, so equal identities mean an unchanged grid.
+ let queued=false,disposed=false;
+ let sameInputs=(a,b)=>!!a&&a.length===b.length&&a.every((value,i)=>value===b[i]);
+ let scheduleRender=()=>{if(queued)return;queued=true;Promise.resolve().then(()=>{queued=false;if(disposed||drawer.contains(doc.activeElement))return;try{render();}catch(error){(win.reportError||(e=>{throw e;}))(error);}});};
+ const off=E.store.subscribe?.(change=>{if(change?.changedBranches&&!change.changedBranches.some(key=>key==='tasks'||key==='projects'))return;if(sameInputs(shown,taskInputs()))return;scheduleRender();}),timer=win.setInterval(()=>{if(!drawer.contains(doc.activeElement))render();},60000);
+ const dispose=()=>{disposed=true;off?.();win.clearInterval(timer);};win.addEventListener('unload',dispose,{once:true});render();return {render,dispose};
 }

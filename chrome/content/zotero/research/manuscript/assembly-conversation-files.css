@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
-.assembly-conversation-files{display:flex;flex-direction:column;gap:12px;padding:12px;min-width:0;color:var(--text,#35465a);font:12px/1.6 var(--ui-font,system-ui)}
+.assembly-conversation-files{display:flex;flex-direction:column;gap:12px;padding:12px;min-width:0;color:var(--text,#35465a);font:13px/1.5 var(--ui-font,system-ui)}
 .assembly-files-heading,.assembly-files-tools{display:flex;align-items:center;gap:8px}.assembly-files-heading{justify-content:space-between}.assembly-files-heading strong{font-size:13px}
 .assembly-file-control,.assembly-file-feature,.assembly-file-name,.assembly-file-session{font:inherit;color:inherit;cursor:pointer}.assembly-file-control{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px;border:1px solid color-mix(in srgb,var(--line,#dce4ec) 85%,transparent);border-radius:9px;padding:5px 10px;background:linear-gradient(145deg,var(--surface,#fff),var(--soft,#f4f6fa));box-shadow:0 2px 6px #263b5d07,inset 0 1px #ffffffb3;transition:background 140ms,box-shadow 140ms}
 .assembly-file-control:hover{background:var(--selected-bg,#e9f2ff);box-shadow:0 3px 9px #263b5d10}.assembly-file-control svg,.assembly-file-name svg,.assembly-file-session svg{width:16px;height:16px;flex:none}
@@ -20,12 +20,17 @@ html[data-appearance] .assembly-conversation-files .assembly-file-row{min-height
 html[data-appearance] .assembly-conversation-files .assembly-file-name>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 html[data-appearance] .assembly-conversation-files .assembly-file-name{border-radius:0;background:transparent!important;padding:0!important;}
 .assembly-file-grip{display:inline-grid;place-items:center;flex:none;width:24px;height:32px;border-radius:8px;color:var(--muted,#7d8998);cursor:grab;user-select:none;touch-action:none;}.assembly-file-grip svg{width:15px;height:18px;pointer-events:none}.assembly-file-grip:hover{background:var(--selected-bg,#e9f2ff);color:var(--text,#35465a)}.assembly-file-grip:active{cursor:grabbing}.assembly-file-name,.assembly-file-name>span,.ai-attachment-name{user-select:text}.chat-context-file>.assembly-file-grip{position:absolute;right:3px;top:4px}.chat-context-file:has(.assembly-file-grip){padding-right:30px!important}.ai-attachment>.assembly-file-grip{height:26px;width:19px}
-/* The legacy #library button rule must not restyle the shared source rail. */
-html[data-appearance] #library .conversation-files button{font-size:11px;min-height:30px;border:1px solid transparent;border-radius:9px;background:transparent;box-shadow:none;color:var(--text)}
-html[data-appearance] #library .conversation-files button:hover{background:var(--soft);border-color:var(--line)}
-html[data-appearance] #library .conversation-files :is(.conversation-files-new,.conversation-files-import){padding:4px 9px;background:linear-gradient(160deg,var(--surface),var(--soft));border-color:var(--line);box-shadow:inset 0 1px #ffffff70,0 1px 3px #1830440b;white-space:nowrap}
-html[data-appearance] #library .conversation-files :is(.conversation-file-preview,.conversation-file-star){border:0;box-shadow:none;padding:0;background:transparent}
-html[data-appearance] #library .conversation-files :is(.conversation-files-session[aria-current=true],.conversation-files-filters button[aria-pressed=true]){background:var(--ui-selection,var(--soft));border-color:var(--line)}
-html[data-appearance] #library .conversation-files-filters button{min-height:27px;padding:3px 7px;font-size:10px}
-html[data-appearance] #library .conversation-file-star{font-size:18px}
+/* Shared files own their gutters, scrolling and controls. The library's
+   material browser retains its original layout and manually resized width. */
+html[data-appearance] #left:has(#library>.conversation-files){min-width:190px;background:var(--ui-tray,#f5f6f8)}
+html[data-appearance] #library:has(>.conversation-files){display:flex;flex-direction:column;padding:0;overflow:hidden}
+html[data-appearance] #library>.conversation-files .assembly-file-control{font:12px/1.5 var(--ui-font,system-ui);min-height:34px;padding:5px 8px;gap:4px;border:1px solid var(--line);border-radius:7px;box-shadow:0 2px 4px #21384d08,inset 0 1px var(--ui-glint,#ffffff9c);background:linear-gradient(155deg,var(--surface),color-mix(in srgb,var(--surface) 72%,var(--soft)));white-space:nowrap}
 .assembly-conversation-file-detail{backdrop-filter:blur(16px)}
+/* The older attachment detail uses the same hierarchy as the shared rail;
+   it remains an overlay and never changes the manuscript's pane widths. */
+html[data-appearance] .assembly-conversation-file-detail{inset:8px;border:1px solid var(--ui-border,var(--line));border-radius:var(--ui-radius-panel,14px);background:var(--ui-card,var(--surface));background-clip:padding-box;box-shadow:none}
+html[data-appearance] .assembly-conversation-file-detail .assembly-file-control{border-radius:var(--ui-radius-control,8px);border-color:var(--ui-border,var(--line));background:var(--ui-card,var(--surface));box-shadow:0 1px 3px var(--es-read-shadow,#1625360a)}
+html[data-appearance] .assembly-file-detail-tabs{gap:4px;padding:4px;margin:0 12px 10px;border:0;border-radius:var(--ui-radius-control,8px);background:var(--ui-tray,var(--soft))}
+html[data-appearance] .assembly-file-detail-tabs button{font-size:12px;min-height:32px;border-radius:6px;border-color:transparent;box-shadow:none}
+html[data-appearance] .assembly-file-detail-tabs button[aria-selected=true]{background:var(--ui-card,var(--surface));color:var(--ui-text,var(--text));box-shadow:0 1px 3px var(--es-read-shadow,#1625360a)}
+html[data-appearance] .assembly-file-detail-body :is(.assembly-file-content,.assembly-file-clue,figure){border-radius:var(--ui-radius-card,10px);border-color:var(--ui-border,var(--line));box-shadow:none}

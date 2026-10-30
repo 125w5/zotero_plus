@@ -5,7 +5,7 @@ Zotero.Research = {
 			EasySch: this };
 		this.id = 'easysch-builtin';
 		this.rootURI = 'chrome://zotero/content/xpcom/research/';
-		for (let name of ['core', 'paper-skills', 'storage', 'zotero', 'model-service', 'ai', 'export', 'artifacts', 'assets', 'asset-reader', 'database', 'metrics-provider', 'providers', 'distribution', 'search', 'discovery', 'arxiv', 'columns', 'sidebar', 'meetings', 'ppt-studio', 'ppt-studio-ai', 'workflow', 'manuscript', 'manuscript-writing', 'manuscript-direction', 'manuscript-automation', 'manuscript-assessment', 'manuscript-index', 'manuscript-translation', 'content-renderer', 'notebook', 'conversations', 'chat-attachments', 'workbench-agent', 'reader-results', 'reader-tools', 'research-message-notes', 'reader-panes', 'workbench-reader', 'evidence-links', 'academic-assistant', 'reader-ai-orb', 'research-resources', 'app']) {
+		for (let name of ['core', 'paper-skills', 'storage', 'zotero', 'model-service', 'ai', 'export', 'artifacts', 'assets', 'asset-reader', 'database', 'metrics-provider', 'providers', 'distribution', 'search', 'discovery', 'arxiv', 'columns', 'sidebar', 'meetings', 'ppt-studio', 'ppt-studio-ai', 'workflow', 'manuscript', 'manuscript-writing', 'manuscript-direction', 'manuscript-automation', 'manuscript-assessment', 'manuscript-index', 'manuscript-translation', 'content-renderer', 'notebook', 'conversations', 'chat-attachments', 'workbench-agent', 'reader-results', 'reader-tools', 'reader-preparation', 'research-message-notes', 'reader-panes', 'workbench-reader', 'evidence-links', 'academic-assistant', 'reader-ai-orb', 'research-resources', 'task-progress', 'app']) {
 			Services.scriptloader.loadSubScript(this.rootURI + name + '.js', scope, 'UTF-8');
 		}
 		await this.initDatabase();

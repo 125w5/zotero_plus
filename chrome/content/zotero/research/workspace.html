@@ -36,8 +36,8 @@
 	<script src="ui/ppt-editor.js" defer="defer"></script>
 	<script src="ui/ppt-diagram.js" defer="defer"></script>
 	<script src="ui/ppt-crop.js" defer="defer"></script>
-<script src="ui/flow.js" defer="defer"></script><script src="ui/tasks.js" defer="defer"></script><script src="ui/discovery.js" defer="defer"></script><script src="ui/knowledge.js" defer="defer"></script><script src="ui/writing-cards.js" defer="defer"></script><link rel="stylesheet" href="appearance.css"><script src="appearance.js"></script><script type="module" src="prompt-entry.mjs"></script><style>.project-create{max-width:760px;padding:24px;background:var(--bg,#fff);border:1px solid #d7dce2;border-radius:10px}.project-create>input,.project-create>textarea{display:block;width:100%;margin:12px 0;padding:12px}.project-create>textarea{min-height:110px}.project-create button{margin:8px 8px 0 0}.project-card{max-width:900px}.project-goal{color:var(--muted,#59616d);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.project-secondary{margin-left:14px}</style><link rel="stylesheet" href="surface.css"><script src="ui/surface.js" defer="defer"></script><link rel="stylesheet" href="brand/brand.css"><link rel="stylesheet" href="agent-workbench.css"><link rel="stylesheet" href="shared/unified-ui.css"><link rel="stylesheet" href="discovery-unified.css"><link rel="stylesheet" href="shared/reader-workspace.css"></head>
-<body>
+<script src="ui/flow.js" defer="defer"></script><script src="ui/tasks.js" defer="defer"></script><script src="ui/discovery.js" defer="defer"></script><script src="ui/knowledge.js" defer="defer"></script><script src="ui/writing-cards.js" defer="defer"></script><link rel="stylesheet" href="appearance.css"><script src="appearance.js"></script><script type="module" src="prompt-entry.mjs"></script><style>.project-create{max-width:760px;padding:24px;background:var(--bg,#fff);border:1px solid #d7dce2;border-radius:10px}.project-create>input,.project-create>textarea{display:block;width:100%;margin:12px 0;padding:12px}.project-create>textarea{min-height:110px}.project-create button{margin:8px 8px 0 0}.project-card{max-width:900px}.project-goal{color:var(--muted,#59616d);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.project-secondary{margin-left:14px}</style><link rel="stylesheet" href="surface.css"><script src="ui/surface.js" defer="defer"></script><link rel="stylesheet" href="brand/brand.css"><link rel="stylesheet" href="agent-workbench.css"><link rel="stylesheet" href="shared/unified-ui.css"><link rel="stylesheet" href="discovery-unified.css"><link rel="stylesheet" href="shared/reader-workspace.css"><link rel="stylesheet" href="shared/workspace-controls.css"><link rel="stylesheet" href="shared/workflow-progress.css"><link rel="stylesheet" href="shared/workspace-geometry.css"></head>
+<body data-workspace-chrome="true">
 	<aside class="rail">
 		<div class="brand"><span class="brand-icon" aria-hidden="true"></span><div><strong>EasySch</strong><small data-l10n-id="easysch-subtitle">简单研究</small></div></div>
 		<p class="eyebrow">RESEARCH WORKSPACE</p>
@@ -64,7 +64,7 @@
 					<div class="analysis-column">
 						<div id="selection-box" hidden="hidden"><h3>阅读器选段</h3><blockquote id="selection-text"></blockquote><button id="translate">翻译并生成追问</button></div>
 						<div id="paper-details" class="metadata"></div>
-						<div class="card"><label for="paper-skill">论文专用模式</label><div class="actions"><select id="paper-skill"></select><button id="run-paper-skill" class="primary">运行论文技能</button></div><small id="paper-skill-version"></small><details><summary>编辑此技能提示词</summary><textarea id="paper-skill-instruction" rows="5" maxlength="12000" aria-label="个人论文技能提示词"></textarea><button id="save-paper-skill">保存个人版本</button><button id="reset-paper-skill">恢复内置版本</button><p class="muted">借鉴 OpenPaper / ScholarQA 的证据与综合规则。模型沿用当前设置；修改任务提示词不会关闭原文引文校验。</p></details></div>
+						<div class="card"><label for="paper-skill">论文专用模式</label><div class="actions"><select id="paper-skill"></select><button id="run-paper-skill" class="primary">运行论文技能</button></div><small id="paper-skill-version"></small><details><summary>编辑此技能提示词</summary><textarea id="paper-skill-instruction" rows="5" maxlength="12000" aria-label="个人论文技能提示词"></textarea><button id="save-paper-skill">保存个人版本</button><button id="reset-paper-skill">恢复内置版本</button></details></div>
 						<div class="actions"><button class="primary" id="analyze">分析当前论文</button><button id="synthesize">多文献研究构思</button><button id="make-outline">生成写作大纲</button></div>
 						<label for="prompt">研究问题或分析要求</label><textarea id="prompt" rows="3" placeholder="例如：比较实验基线是否公平，并指出复现需要的数据与设备。"></textarea>
 						<div class="actions"><button id="youdao-translate">有道翻译选段 / 输入文字</button><button id="ask">结合记忆提问</button><button id="save-note">存为 Zotero 笔记</button><button id="apply-keywords">将关键词加入标签</button><button id="to-draft">追加到写作草稿</button></div>
@@ -76,7 +76,7 @@
 							<label><input type="checkbox" name="slide-part" value="逐页演讲稿"/>讲稿</label></div><button id="presentation">生成演示大纲</button>
 						</details>
 						<div class="section-heading"><h2>分析与证据</h2><select id="history" aria-label="分析历史"><option value="">尚无记录</option></select><button id="clear-memory">清除此篇记忆</button></div>
-						<p class="muted">AI 分析需核对原文；点击证据可回到附件。未配置模型时不会生成模拟回答。</p>
+
 						<div id="result" class="empty">选择一篇论文，开始建立可追溯的研究笔记。</div><div id="questions" class="actions"></div>
 					</div>
 				</div>
@@ -121,7 +121,7 @@
  <div class="card"><h2>翻译</h2><p>选区优先使用 Azure 机翻。整篇译文和完整素材使用独立的低价模型，PDF 打开时后台准备并缓存，不改变研究对话模型。</p>
  <label>Azure 资源区域 <input id="azure-region" placeholder="例如 eastasia" autocomplete="off"/></label><label>Azure 密钥 <input id="azure-key" type="password" autocomplete="off" placeholder="留空保留已保存密钥"/></label><button id="save-azure">保存选区机翻</button>
  <label>翻译接口 <input id="translation-endpoint" type="url" placeholder="https://api.deepseek.com"/></label><label>翻译模型 <input id="translation-model" placeholder="deepseek-flash"/></label><label>翻译密钥 <input id="translation-key" type="password" autocomplete="off" placeholder="留空保留已有 DeepSeek 密钥"/></label><button id="save-translation">保存学术翻译</button></div>
- <p id="provider-status" role="status"></p><button id="test-providers">测试已配置服务</button><div class="card"><h2>有道翻译</h2><label>应用 ID <input id="youdao-app-id" autocomplete="off"/></label><label>应用密钥 <input id="youdao-secret" type="password" autocomplete="off" placeholder="留空保留已保存密钥"/></label><button id="save-youdao">保存有道配置</button><p>选中文字后可在阅读器内翻译；LaTeX 公式保留原样。调用使用有道账户的额度。</p></div><div class="card"><h2>期刊指标服务</h2><p>支持 easyScholar 和 JSON 数据导入。接口查询按期刊名称匹配，保存前需核对期刊与指标年份。</p>
+ <p id="provider-status" role="status"></p><button id="test-providers">测试已配置服务</button><button id="stop-provider-test" type="button" hidden="hidden">停止测试</button><div class="card"><h2>有道翻译</h2><label>应用 ID <input id="youdao-app-id" autocomplete="off"/></label><label>应用密钥 <input id="youdao-secret" type="password" autocomplete="off" placeholder="留空保留已保存密钥"/></label><button id="save-youdao">保存有道配置</button><p>选中文字后可在阅读器内翻译；LaTeX 公式保留原样。调用使用有道账户的额度。</p></div><div class="card"><h2>期刊指标服务</h2><p>支持 easyScholar 和 JSON 数据导入。接口查询按期刊名称匹配，保存前需核对期刊与指标年份。</p>
  <label>easyScholar 密钥 <input id="metrics-key" type="password" autocomplete="off"/></label><button id="metrics-save-key">保存指标服务密钥</button><button id="metrics-remove-key">删除指标服务密钥</button></div>
 				<div class="settings-grid"><div><h2>模型连接</h2><p class="muted">研究对话使用本轮选用的资料。已配置翻译后，打开 PDF 会在后台准备中文译文并缓存；翻译接口与对话接口分别管理。</p>
 					<label for="endpoint">接口基础地址</label><input id="endpoint" type="url" placeholder="https://api.example.com/v1 或 http://localhost:11434/v1"/>
@@ -136,7 +136,7 @@
 					<label for="referenceDoc">Word 参考样式 reference.docx</label><div class="path-field"><input id="referenceDoc"/><button data-pick="referenceDoc">选择</button></div>
 					<label for="latexTemplate">Pandoc LaTeX 模板</label><div class="path-field"><input id="latexTemplate"/><button data-pick="latexTemplate">选择</button></div>
 					<p class="muted">DOCX 使用原生 Word 公式和 CSL 静态引文。Zotero 动态引文请继续使用原生 Word 插件。</p>
-					<h3>当前论文的期刊指标</h3><label for="metric-value">影响因子（需人工核验）</label><input id="metric-value" type="number" min="0" step="0.001"/><label for="metric-year">指标年份</label><input id="metric-year" type="number" min="1900" max="2200"/><label for="metric-source">可核验来源网址</label><input id="metric-source" type="url"/>
+					<h3>当前论文的期刊指标</h3><label for="metric-value">影响因子（需人工核验）</label><input id="metric-value" type="number" min="0" step="0.001"/><label for="metric-year">指标年份</label><input id="metric-year" type="number" min="1900" max="2200"/><label for="metric-source">可核验来源网址</label><input id="metric-source" type="url"/><label for="metric-top">中科院 TOP</label><select id="metric-top"><option value="">未填写</option><option value="TOP">TOP 期刊</option><option value="非TOP">非 TOP 期刊</option></select>
 				</div></div><div class="actions"><button id="save-settings" class="primary">保存设置</button><button id="save-metric">保存此篇期刊指标</button></div><p id="compatibility" class="muted"></p>
 			</section>
 		</main>

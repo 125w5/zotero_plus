@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {captureWritingPreview,assertWritingPreviewCurrent,latestWritingPreview,validateWritingPreview,writingPreviewDiff,applyWritingPreview,revertWritingPreview} from '../shared/assembly-writing-preview.mjs';
 import {renderAssemblyFramework} from './assembly-framework.mjs';
+import {streamPreview} from '../shared/research-thread.mjs';
 
 export async function requestAssemblyWritingPreview(U,{instruction='',capture,sessionID=U.conversationSession?.id,modelID,thinkingLevel,executionMode,signal,onProgress=()=>{},fresh=false,fromChat=false,onToolPermission}={}, {persist=U.persist,changed=U.changed,status=()=>{}}={}){
  if(U.writingPreviewBusy||U.busy&&!fromChat)throw Error('当前任务尚未结束，请等待或停止');
@@ -15,12 +16,12 @@ export async function requestAssemblyWritingPreview(U,{instruction='',capture,se
  try{
   await persist({flush:true});if(U.saveError)throw U.saveError;assertWritingPreviewCurrent(U.p,capture,{selected:true});
   if(!U.A.previewWriting)throw Error('候选服务尚未加载，请重启新版');
-  const preview=await U.A.previewWriting(p.id,{capture,instruction,modelID,thinkingLevel,fresh,signal,onProgress});
+  const live=streamPreview(onProgress),preview=await U.A.previewWriting(p.id,{capture,instruction,modelID,thinkingLevel,fresh,signal,onProgress,onText:text=>live(text,'正在生成候选')});
   if(signal?.aborted)throw Error('已停止，正文保留');if(U.p!==p)throw Error('论文已切换，本次候选未写入');assertWritingPreviewCurrent(p,capture,{selected:true});
   p.proposals||=[];for(const row of p.proposals)if(row.kind==='assembly-writing-preview'&&row.blockID===capture.blockID&&row.sectionID===capture.sectionID&&row.status==='pending')row.status='superseded';
   p.proposals.push(preview);p.proposals=p.proposals.slice(-80);p.ui.rightOpen=true;U.closeChatRail?.('right');U.applyPanels?.();changed();await persist({flush:true});if(U.saveError)throw U.saveError;
   const stored=U.A.get(p.id)?.proposals?.find(row=>row.id===preview.id);if(!stored)throw Error('候选尚未保存，请检查本机存储后重试');
-  status('候选已准备，请在装配结果中比较并选择。');return preview;
+  status(preview.incomplete?'回复达到输出长度上限，已保留 '+preview.variants.length+' 个完整候选，请在装配结果中比较并选择。':'候选已准备，请在装配结果中比较并选择。');return preview;
  }finally{U.writingPreviewBusy=false;if(U.p===p)changed();}
 }
 
@@ -41,12 +42,12 @@ export function renderAssemblyWritingResult(U,host,b,{el,button,snapshot,changed
   try{await requestAssemblyWritingPreview(U,{instruction:instruction.value,fresh:!!preview,signal:controller.signal,onProgress:value=>{if(root.isConnected)notice.textContent=value;}},{persist,changed,status});}
   catch(error){if(root.isConnected)notice.textContent=error.message;throw error;}
   finally{if(U.writingPreviewAbort===controller)delete U.writingPreviewAbort;if(root.isConnected){delete root.dataset.state;generate.disabled=!!b.locked||!supported;}}
- },controls,'writing-result-generate');generate.dataset.action='generate-writing-preview';generate.disabled=!!b.locked||!supported||!!U.writingPreviewBusy;generate.title=b.text?.trim()?'根据原文准备改写候选，采用前正文保留':'根据真实素材准备正文候选，采用前正文保留';
+ },controls,'writing-result-generate');generate.dataset.action='generate-writing-preview';generate.disabled=!!b.locked||!supported||!!U.writingPreviewBusy||!b.text?.trim();generate.title=b.text?.trim()?'根据原文准备改写候选，采用前正文保留':'装配阶段不由素材生成正文；可在速读中整理本章要点';
  const notice=el('p',undefined,'writing-result-notice');notice.setAttribute('role','status');root.append(instruction,controls,notice);
  if(!supported){notice.textContent='图表与公式使用上方插入和编辑工具，原始内容保留。';return {root};}
- if(!preview){notice.textContent=b.text?.trim()?'保留原段落，比较表达与论证顺序。':'依据本模块来源准备正文，缺少证据的判断不会补写。';return {root};}
+ if(!preview)return {root};
  root.dataset.previewId=preview.id;root.dataset.state=preview.status;
- let stale='';if(preview.status==='pending')try{assertWritingPreviewCurrent(p,preview.capture);}catch(error){stale=error.message;}
+ let stale='';if(preview.status==='pending')try{assertWritingPreviewCurrent(p,preview.capture);U.A.assertMaterialEvidenceCurrent?.(preview.capture.evidenceExcerpts||preview.variants.flatMap(row=>row.evidence),p.materials);}catch(error){stale=error.message;}
  if(stale)notice.textContent=stale;else notice.textContent=({pending:'红色为删去的文字，绿色为新增的文字。',accepted:'已采用此版本，可继续在正文中编辑。',reverted:'已还原原段落。',rejected:'保留原文。'})[preview.status]||'此版本已由新候选替代。';
  if(preview.capture.readingCoverage?.some(row=>row.truncated)){const coverage=el('details',undefined,'writing-reading-coverage');coverage.append(el('summary','本次读取范围'));for(const row of preview.capture.readingCoverage){const line=el('p',undefined,'muted');line.textContent=(row.title||'关联素材')+' · '+row.readCharacters+' / '+row.totalCharacters+' 字符'+(row.truncated?'，仅依据所读摘录':'');coverage.append(line);}root.append(coverage);}
  const tabs=el('div',undefined,'writing-variant-tabs');tabs.setAttribute('role','tablist');root.append(tabs);
@@ -60,9 +61,9 @@ export function renderAssemblyWritingResult(U,host,b,{el,button,snapshot,changed
   const explanation=el('div',undefined,'writing-result-evidence-heading');explanation.append(el('span','依据'),el('small',String(variant.evidence.length)));evidence.append(explanation);
   for(const row of variant.evidence){const source=p.materials.find(material=>material.id===row.sourceID);if(source){const control=button(source.title||row.title,()=>{if(isCurrent())materialDetails(source);},evidence,'writing-result-source');control.dataset.materialId=source.id;control.title=row.quote;}else{const text=el('span','当前人工正文','writing-result-author-source');text.title=row.quote;evidence.append(text);}}
   if(preview.status==='pending'){
-   const edit=button('调整候选',()=>{if(!isCurrent())return;const input=el('textarea');input.className='writing-candidate-editor';input.value=variant.text;input.setAttribute('aria-label','编辑所选候选正文');content.replaceChildren(input);const done=button('完成调整',()=>{if(!isCurrent())return;const value={variants:preview.variants.map(row=>({label:row.label,text:row.id===variant.id?input.value:row.text,quoteIDs:row.evidence.map(item=>item.quoteID)}))};const checked=validateWritingPreview(preview.capture,value,{id:preview.id,model:preview.model,thinkingLevel:preview.thinkingLevel});preview.variants=checked.variants;persist();renderVariant();},content,'writing-candidate-done');done.dataset.action='finish-candidate-edit';input.focus();},footer,'writing-result-secondary');edit.dataset.action='edit-writing-candidate';edit.disabled=!!stale||!!b.locked;
+   const edit=button('调整候选',()=>{if(!isCurrent())return;const input=el('textarea');input.className='writing-candidate-editor';input.value=variant.text;input.setAttribute('aria-label','编辑所选候选正文');content.replaceChildren(input);const done=button('完成调整',()=>{if(!isCurrent())return;const value={variants:preview.variants.map(row=>({label:row.label,text:row.id===variant.id?input.value:row.text,quoteIDs:row.evidence.map(item=>item.quoteID)}))};const checked=validateWritingPreview(preview.capture,value,{id:preview.id,model:preview.model,thinkingLevel:preview.thinkingLevel,minVariants:1});preview.variants=checked.variants;persist();renderVariant();},content,'writing-candidate-done');done.dataset.action='finish-candidate-edit';input.focus();},footer,'writing-result-secondary');edit.dataset.action='edit-writing-candidate';edit.disabled=!!stale||!!b.locked;
    const keep=button('保留原文',async()=>{if(!isCurrent())return;snapshot();preview.status='rejected';changed();await persist({flush:true});if(U.saveError)throw U.saveError;},footer,'writing-result-secondary');keep.dataset.action='keep-writing-original';
-   const accept=button('采用此版',async()=>{if(!isCurrent())return;snapshot();const adopted=applyWritingPreview(p,preview,currentVariant().id,{confirmed:true,createBlock:U.M.block});changed({editor:true});await persist({flush:true});if(U.saveError)throw U.saveError;if(U.A.get(p.id)?.blocks.find(row=>row.id===adopted.id)?.text!==adopted.text)throw Error('正文尚未保存，请检查本机存储');status('已采用所选版本，来源保留；可撤销。');},footer,'writing-result-accept');accept.dataset.action='accept-writing-candidate';accept.disabled=!!stale||!!b.locked;
+   const accept=button('采用此版',async()=>{if(!isCurrent())return;U.A.assertMaterialEvidenceCurrent?.(currentVariant().evidence,p.materials);snapshot();const adopted=applyWritingPreview(p,preview,currentVariant().id,{confirmed:true,createBlock:U.M.block});changed({editor:true});await persist({flush:true});if(U.saveError)throw U.saveError;if(U.A.get(p.id)?.blocks.find(row=>row.id===adopted.id)?.text!==adopted.text)throw Error('正文尚未保存，请检查本机存储');status('已采用所选版本，来源保留；可撤销。');},footer,'writing-result-accept');accept.dataset.action='accept-writing-candidate';accept.disabled=!!stale||!!b.locked;
   }else if(preview.status==='accepted'){
    const revert=button('还原原段落',async()=>{if(!isCurrent())return;snapshot();revertWritingPreview(p,preview,{confirmed:true});changed({editor:true});await persist({flush:true});if(U.saveError)throw U.saveError;status('已还原原段落和原有格式。');},footer,'writing-result-secondary');revert.dataset.action='revert-writing-candidate';revert.disabled=!!b.locked;
   }

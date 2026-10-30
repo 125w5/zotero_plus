@@ -56,7 +56,7 @@
     message('暂无本地 PDF；题录与摘要仍保留。');
     if(typeof E.obtainPaper==='function'&&(row.doi||row.pdf||row.url)){
      const button=element(doc,'button','获取公开全文','agent-text-action');button.type='button';root.append(button);
-     button.onclick=async()=>{if(!valid()||button.disabled)return;button.disabled=true;button.textContent='正在获取…';try{const result=await E.obtainPaper(row,{open:false});if(!valid())return;const obtained=await attachmentFor({attachmentID:result.attachmentID});if(!valid())return;if(!obtained)throw Error('附件保存完成，但本地 PDF 暂不可用');await mount(obtained);}catch(error){if(valid()){message(error.message);button.disabled=false;button.textContent='重试获取公开全文';root.append(button);}}};
+     button.onclick=async()=>{if(!valid()||button.disabled)return;button.disabled=true;button.textContent='正在获取…';try{const result=await (E.obtainReferencePaper||E.obtainPaper)(row,{open:false});if(!valid())return;const obtained=await attachmentFor({attachmentID:result.attachmentID});if(!valid())return;if(!obtained)throw Error('附件保存完成，但本地 PDF 暂不可用');await mount(obtained);}catch(error){if(valid()){message(error.message);button.disabled=false;button.textContent='重试获取公开全文';root.append(button);}}};
     }
    }
    if(!valid())cleanup();return cleanup;

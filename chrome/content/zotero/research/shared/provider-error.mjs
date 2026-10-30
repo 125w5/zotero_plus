@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 // Convert remote failures to a small, local vocabulary. Provider messages can
 // contain echoed prompts, URLs and credentials; they are diagnostic input only.
-const PARAMETERS=new Set(['max_tokens','max_completion_tokens','reasoning_effort','thinking','stream','stream_options','tools','tool_choice','messages','model','response_format']);
+const PARAMETERS=new Set(['max_tokens','max_completion_tokens','reasoning_effort','thinking','temperature','stream','stream_options','tools','tool_choice','messages','model','response_format']);
 const STATUS=/^服务返回 HTTP [4-5]\d{2}$/;
 // These are complete local messages created by requestProvider. Recognizing a
 // class alone is insufficient: an arbitrary provider message with that name
@@ -10,13 +10,13 @@ const LOCAL_ERRORS = new Map([
  ['ProviderTransportError', new Set(['无法连接服务，请检查网络或代理'])],
  ['ProviderResponseError', new Set(['服务已连接，但返回内容无法读取，请重试', '模型流式响应格式不完整，请重试', '模型响应在完成前中断，请重试'])],
  ['AbortError', new Set(['服务请求已取消'])],
- ['TimeoutError', new Set(['服务请求超时，请重试'])],
+ ['TimeoutError', new Set(['服务请求超时，请重试','模型较长时间没有开始回复，请重试或降低思考强度','模型输出中断时间过长，请重试','本次生成超过时长上限，请重试或降低思考强度'])],
  ['Error', new Set(['后台网络环境不可用，请重新打开软件'])],
 ]);
 function diagnostic(status,code='',param=''){
  const base='服务返回 HTTP '+status;
- if(code==='unsupported_parameter'&&PARAMETERS.has(param))return base+'：接口不支持参数 '+param+'，请调整模型兼容设置';
- if(code==='invalid_parameter'&&PARAMETERS.has(param))return base+'：参数 '+param+' 不符合接口要求，请检查模型兼容设置';
+ if(code==='unsupported_parameter'&&PARAMETERS.has(param))return base+'：接口不支持参数 '+param+'，'+(['reasoning_effort','thinking'].includes(param)?'可把思考强度改为“标准”，或换用支持思考强度的模型':'请换用兼容的模型或接口');
+ if(code==='invalid_parameter'&&PARAMETERS.has(param))return base+'：参数 '+param+' 不符合接口要求，'+(['max_tokens','max_completion_tokens','reasoning_effort'].includes(param)?'请降低思考强度后重试':'请换用兼容的模型或接口');
  if(code==='context_length_exceeded')return base+'：本次论文与对话超出模型上下文，请减少附加资料或新建对话';
  if(code==='model_not_found')return base+'：当前配置的模型不可用，请在设置中选择已开通的模型';
  if(code==='invalid_tool_schema')return base+'：应用工具的参数格式与接口不兼容，本轮未执行工具';

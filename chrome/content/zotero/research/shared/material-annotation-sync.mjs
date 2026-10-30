@@ -8,7 +8,7 @@ const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof v
 const sameHighlight=(a,b)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
 const highlightSignature=value=>writingSnapshotHash(JSON.stringify(canonical(value)));
 const original=m=>String(m.sourceText||m.anchor?.sourceText||'');
-export const materialAnnotationIdentity=m=>String(m.assetID||m.sourceRecordID||m.id||writingSnapshotHash(original(m)));
+export const materialAnnotationIdentity=m=>(m.projectAnnotationProjectID?String(m.projectAnnotationProjectID)+':':'')+String(m.assetID||m.sourceRecordID||m.id||writingSnapshotHash(original(m)));
 const validRects=rects=>Array.isArray(rects)&&rects.length>0&&rects.every(r=>Array.isArray(r)&&r.length===4&&r.every(Number.isFinite)&&r[2]>r[0]&&r[3]>r[1]);
 const validPosition=p=>p&&Number.isInteger(p.pageIndex)&&p.pageIndex>=0&&validRects(p.rects)&&(!p.nextPageRects||validRects(p.nextPageRects));
 const within=(rect,boxes)=>!boxes?.length||boxes.some(b=>(rect[0]+rect[2])/2>=b[0]&&(rect[0]+rect[2])/2<=b[2]&&(rect[1]+rect[3])/2>=b[1]&&(rect[1]+rect[3])/2<=b[3]);
@@ -45,6 +45,30 @@ export function materialHighlightAnchor(material,highlight) {
  return null;
 }
 
+// Reopening the PDF helps only when glyph coordinates were missing, so each
+// pending reason is reported with the action that can actually resolve it.
+// Native save errors are English; they go to the error log, not the status.
+const SAVE_FAILED='原文批注保存失败';
+let SYNC_HINTS=new Map([
+ ['原文位置尚未解析','从原文 PDF 重新摘取这段素材后再应用'],
+ ['原文附件不可编辑','批注只保存在本项目'],
+ ['原文附件不可编辑，原文批注未移除','原文中的旧批注需在可编辑的文库中删除'],
+ ['原文 PDF 已移入回收站','从回收站恢复该 PDF 后再应用'],
+ ['原文 PDF 已移入回收站，原文批注未移除','从回收站恢复该 PDF 后再应用'],
+ ['原文 PDF 已不可用','从现有 PDF 重新摘取这段素材后再应用'],
+ ['原文 PDF 已不可用，原文批注未移除','原文中的旧批注需在文库中删除'],
+ ['原文版本已变化','从新版 PDF 重新摘取这段素材后再应用'],
+ ['尚无可核对的原文选段坐标','打开原文 PDF 后会自动重试'],
+ ['关联的原文附件已变化','从当前 PDF 重新摘取这段素材后再应用'],
+ [SAVE_FAILED,'可稍后再次点击“应用批注到原文”']
+]);
+export function materialAnnotationSyncStatus(result){
+ if(!result?.pending)return '已将本次素材批注应用到原文';
+ let counts=new Map();for(let reason of result.reasons||[]){reason=String(reason||'').replace(/[。；;.\s]+$/u,'');if(!SYNC_HINTS.has(reason))reason=SAVE_FAILED;counts.set(reason,(counts.get(reason)||0)+1);}
+ let parts=[...counts].map(([reason,count])=>count+' 处'+reason+'（'+SYNC_HINTS.get(reason)+'）');
+ return '素材批注已保存'+(result.synced?'，已应用 '+result.synced+' 处':'')+'；'+result.pending+' 处未同步到原文'+(parts.length?'：'+parts.join('；'):'')+'。';
+}
+
 export function installMaterialAnnotationSync(E,{Zotero,cloneInto=value=>value}={}) {
  const A=E.manuscripts,jobs=new Map(),writing=new Set();let observer,readerListener,reverse=Promise.resolve();
  const links=()=>E.store.get('materialAnnotationLinks')||{};
@@ -52,7 +76,7 @@ export function installMaterialAnnotationSync(E,{Zotero,cloneInto=value=>value}=
  const updateLink=(id,patch)=>E.store.update(s=>{s.materialAnnotationLinks||={};s.materialAnnotationLinks[id]={...s.materialAnnotationLinks[id],...clone(patch)};});
  const readerFor=id=>E.readerForAttachment?.(id)||Zotero.Reader?._readers?.find(r=>r.itemID===id);
  const nativeItem=async link=>link?.annotationID?await Zotero.Items.getAsync(link.annotationID):link?.key&&link.libraryID?await Zotero.Items.getByLibraryAndKeyAsync(link.libraryID,link.key):null;
- const editable=attachment=>attachment?.isPDFAttachment?.()&&!attachment.deleted&&Zotero.Libraries.get(attachment.libraryID)?.editable;
+ const attachmentIssue=attachment=>(!attachment?.isPDFAttachment?.()?'原文 PDF 已不可用':attachment.deleted?'原文 PDF 已移入回收站':Zotero.Libraries.get(attachment.libraryID)?.editable?'':'原文附件不可编辑');
  const nativeComment=h=>[h.translation?.quote,h.comment].filter(Boolean).join('\n\n');
  const positionFor=async(m,h,anchor)=>{
   const reader=readerFor(anchor.attachmentID),view=reader?._internalReader?._primaryView,pageIndex=anchor.pageIndex??anchor.position?.pageIndex;
@@ -69,19 +93,20 @@ export function installMaterialAnnotationSync(E,{Zotero,cloneInto=value=>value}=
   return null;
  };
  A.materialAnnotationLinks=material=>Object.values(links()).filter(link=>link.materialKey===materialAnnotationIdentity(material));
+ A.materialAnnotationSyncStatus=materialAnnotationSyncStatus;
  A.syncMaterialHighlights=(material,{previousHighlights=[],onlyHighlightIDs}={})=>{
   const key=materialAnnotationIdentity(material),task=(jobs.get(key)||Promise.resolve()).catch(()=>{}).then(async()=>{
-   const result={synced:0,pending:0,removed:0},nextIDs=new Set((material.highlights||[]).map(h=>h.id)),only=onlyHighlightIDs&&new Set(onlyHighlightIDs);
+   const result={synced:0,pending:0,removed:0,reasons:[]},nextIDs=new Set((material.highlights||[]).map(h=>h.id)),only=onlyHighlightIDs&&new Set(onlyHighlightIDs);
    for(const link of Object.values(links()).filter(row=>!only&&row.materialKey===key&&!nextIDs.has(row.highlightID)&&!row.removed)){
     const item=await nativeItem(link);
-    if(item&&!item.deleted){const attachment=await Zotero.Items.getAsync(link.attachmentID);if(!editable(attachment)){result.pending++;continue;}writing.add(item.id);try{item.deleted=true;await item.saveTx();}finally{writing.delete(item.id);}}
+    if(item&&!item.deleted){const attachment=await Zotero.Items.getAsync(link.attachmentID);let issue=attachmentIssue(attachment);if(issue){result.pending++;result.reasons.push(issue+'，原文批注未移除');continue;}writing.add(item.id);try{item.deleted=true;await item.saveTx();}finally{writing.delete(item.id);}}
     await updateLink(linkID(key,link.highlightID),{removed:true,status:'removed',override:null});result.removed++;
    }
    for(const highlight of material.highlights||[]){
     if(only&&!only.has(highlight.id))continue;
     const id=linkID(key,highlight.id),old=links()[id],anchor=materialHighlightAnchor(material,highlight),attachment=anchor&&await Zotero.Items.getAsync(anchor.attachmentID);
-    const pending=async(reason)=>{await updateLink(id,{materialKey:key,highlightID:highlight.id,attachmentID:anchor?.attachmentID||material.attachmentID||material.anchor?.attachmentID,status:'pending',reason,removed:false});result.pending++;};
-    if(!anchor||!editable(attachment)){await pending(!anchor?'原文位置尚未解析':'原文附件不可编辑');continue;}
+    const pending=async(reason)=>{await updateLink(id,{materialKey:key,highlightID:highlight.id,attachmentID:anchor?.attachmentID||material.attachmentID||material.anchor?.attachmentID,status:'pending',reason,removed:false});result.pending++;result.reasons.push(reason);};
+    let issue=anchor?attachmentIssue(attachment):'原文位置尚未解析';if(issue){await pending(issue);continue;}
     const currentVersion=E.store.get('manuscriptIndex',anchor.attachmentID)?.pdfHash;
     if(currentVersion&&highlight.sourceVersion&&currentVersion!==highlight.sourceVersion){await pending('原文版本已变化');continue;}
     if(old?.status==='synced'&&!old.override&&JSON.stringify(old.highlight)===JSON.stringify(highlight)){
@@ -98,19 +123,19 @@ export function installMaterialAnnotationSync(E,{Zotero,cloneInto=value=>value}=
     if(item)writing.add(item.id);
     try{item=await Zotero.Annotations.saveFromJSON(attachment,annotation);writing.add(item.id);if(item.deleted){item.deleted=false;await item.saveTx();}await reader?.setAnnotations?.([item]);
      await updateLink(id,{annotationID:item.id,status:'synced',reason:'',lastWritten:annotation,highlight:clone(highlight),override:null});result.synced++;
-    }catch(error){await updateLink(id,{status:'pending',reason:error.message});result.pending++;Zotero.logError(error);}finally{if(item)writing.delete(item.id);}
+    }catch(error){await updateLink(id,{status:'pending',reason:SAVE_FAILED});result.pending++;result.reasons.push(SAVE_FAILED);Zotero.logError(error);}finally{if(item)writing.delete(item.id);}
    }
    return result;
   });jobs.set(key,task);task.finally(()=>{if(jobs.get(key)===task)jobs.delete(key);}).catch(()=>{});return task;
  };
  A.retryMaterialAnnotationsForAttachment=async attachmentID=>{
   const pending=Object.values(links()).filter(link=>link.attachmentID===attachmentID&&['pending','saving'].includes(link.status)&&!link.removed);
-  if(!pending.length)return {synced:0,pending:0,removed:0};
+  if(!pending.length)return {synced:0,pending:0,removed:0,reasons:[]};
   const keys=new Set(pending.map(link=>link.materialKey)),found=new Map();
   for(const key of keys){const material=E.store.get('researchMaterials',key);if(material&&materialAnnotationIdentity(material)===key)found.set(key,material);}
   if(found.size<keys.size)for(const material of Object.values(E.store.get('researchMaterials')||{})){const key=materialAnnotationIdentity(material);if(keys.has(key))found.set(key,material);}
   if(found.size<keys.size)for(const project of Object.values(E.store.get('manuscripts')||{}))for(const material of project.materials||[]){const key=materialAnnotationIdentity(material);if(keys.has(key)&&!found.has(key))found.set(key,material);}
-  const result={synced:0,pending:0,removed:0};for(const [key,material]of found){const value=await A.syncMaterialHighlights(material,{onlyHighlightIDs:pending.filter(link=>link.materialKey===key).map(link=>link.highlightID)});for(const field of Object.keys(result))result[field]+=value[field];}return result;
+  const result={synced:0,pending:0,removed:0,reasons:[]};for(const [key,material]of found){const value=await A.syncMaterialHighlights(material,{onlyHighlightIDs:pending.filter(link=>link.materialKey===key).map(link=>link.highlightID)});for(const field of ['synced','pending','removed'])result[field]+=value[field];result.reasons.push(...value.reasons);}return result;
  };
  A.applyMaterialAnnotationUpdates=project=>{
   let changed=false;const all=Object.values(links());
@@ -122,7 +147,7 @@ export function installMaterialAnnotationSync(E,{Zotero,cloneInto=value=>value}=
     if(base&&!sameHighlight(current,base)&&!sameHighlight(current,link.highlight)&&!sameHighlight(current,link.override.highlight)&&!link.override.baseSignatures?.includes(highlightSignature(current)))continue;
     if(link.override.removed)material.highlights.splice(at,1);else material.highlights[at]=clone(link.override.highlight);
    }
-   if(JSON.stringify(material.highlights)!==before){material.revision=(material.revision||0)+1;if(Array.isArray(project.blocks))A.model?.invalidate?.(project,material.id);changed=true;}
+   if(JSON.stringify(material.highlights)!==before){if(material.projectAnnotationProjectID)material.projectHighlights=clone(material.highlights);material.revision=(material.revision||0)+1;if(Array.isArray(project.blocks))A.model?.invalidate?.(project,material.id);changed=true;}
   }return changed;
  };
  // Assets are synchronized by the writing service's existing get wrapper.

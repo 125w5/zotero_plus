@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {sourceQuote} from './source-quote.mjs';
 import {annotationPresentation} from './annotation-presentation.mjs';
-export const RAPID_VERSION='source-reading-3';
+export const RAPID_VERSION='source-reading-5';
 // Reading language can change without reparsing the same local PDF.
-export const RAPID_SOURCE_VERSION='source-reading-2';
+export const RAPID_SOURCE_VERSION='source-reading-3';
+export const RAPID_SOURCE_LIMITS=Object.freeze({maxChars:160000,maxSources:512,chunkChars:2000});
 export const READING_ROLES=['summary','problem','method','results','limitations'];
 export const READING_LABELS={summary:'核心概览',problem:'研究问题',method:'方法与原理',results:'结果与证据',limitations:'边界与要点'};
 const normalize=value=>String(value||'').replace(/\s+/g,' ').trim();
@@ -11,15 +12,15 @@ const bound=(value,fallback)=>Number.isFinite(value)?Math.max(0,Math.floor(value
 const pageKey=source=>Number.isInteger(source.pageIndex)&&source.pageIndex>=0?`${source.attachmentID??''}:${source.pageIndex}`:null;
 // Sample real, contiguous passages. A fragment never joins distant PDF text.
 // Give every available page a slot before adding a second or third passage.
-export function selectRapidSources(input,{attachmentID,maxChars=48000,maxSources=96,chunkChars=650}={}){
- maxChars=bound(maxChars,48000);maxSources=bound(maxSources,96);chunkChars=bound(chunkChars,650);
+export function selectRapidSources(input,{attachmentID,maxChars=RAPID_SOURCE_LIMITS.maxChars,maxSources=RAPID_SOURCE_LIMITS.maxSources,chunkChars=RAPID_SOURCE_LIMITS.chunkChars}={}){
+ maxChars=bound(maxChars,RAPID_SOURCE_LIMITS.maxChars);maxSources=bound(maxSources,RAPID_SOURCE_LIMITS.maxSources);chunkChars=bound(chunkChars,RAPID_SOURCE_LIMITS.chunkChars);
  const seen=new Set(),sources=(Array.isArray(input)?input:[]).filter(source=>{
   if(!source||typeof source.id!=='string'||!source.id.trim()||typeof source.text!=='string'||!source.text.trim()||source.annotationKey||source.annotationID||source.kind==='annotation')return false;
   if(attachmentID!==undefined&&source.attachmentID!=null&&source.attachmentID!==attachmentID||seen.has(source.id))return false;
   seen.add(source.id);return true;
  });
  const totalChars=sources.reduce((sum,source)=>sum+source.text.length,0),pages=new Set(sources.map(pageKey).filter(key=>key!==null));
- const finish=selected=>({sources:selected,coverage:{sampled:selected.reduce((sum,source)=>sum+source.text.length,0)<totalChars,availableSources:sources.length,selectedSources:selected.length,totalChars,selectedChars:selected.reduce((sum,source)=>sum+source.text.length,0),availablePages:pages.size,selectedPages:new Set(selected.map(pageKey).filter(key=>key!==null)).size,maxChars,maxSources}});
+ const finish=selected=>({sources:selected,coverage:{selectionVersion:RAPID_SOURCE_VERSION,sampled:selected.reduce((sum,source)=>sum+source.text.length,0)<totalChars,availableSources:sources.length,selectedSources:selected.length,totalChars,selectedChars:selected.reduce((sum,source)=>sum+source.text.length,0),availablePages:pages.size,selectedPages:new Set(selected.map(pageKey).filter(key=>key!==null)).size,maxChars,maxSources}});
  if(!maxChars||!maxSources||!chunkChars)return finish([]);
  if(totalChars<=maxChars&&sources.length<=maxSources)return finish(sources.map(source=>({...source})));
  const grouped=new Map();for(const source of sources){const key=pageKey(source)??'source:'+source.id;if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(source);}
@@ -46,6 +47,12 @@ export function selectRapidSources(input,{attachmentID,maxChars=48000,maxSources
  for(let round=0;round<3&&selected.length<maxSources;round++)for(const [index,group]of groups.entries())passage(group,(index+round)%3);
  return finish(selected);
 }
+// Old sampled records remain available for restoring manual edits, but cannot
+// silently become the source of a new full-length reading.
+export function rapidSourceCacheValid(value){
+ const sources=value?.sources,coverage=value?.coverage;
+ return Array.isArray(sources)&&sources.length>0&&sources.every(source=>typeof source?.id==='string'&&typeof source.text==='string'&&source.text.trim())&&coverage?.selectionVersion===RAPID_SOURCE_VERSION&&coverage.maxChars===RAPID_SOURCE_LIMITS.maxChars&&coverage.maxSources===RAPID_SOURCE_LIMITS.maxSources&&coverage.selectedSources===sources.length&&coverage.selectedChars===sources.reduce((sum,source)=>sum+source.text.length,0);
+}
 // Only the client assigns excerpt IDs; the model does not retype PDF quotes.
 export function rapidEvidenceExcerpts(sources){
  const excerpts=[];for(const source of sources){if(typeof source?.id!=='string'||typeof source.text!=='string')continue;for(let start=0;start<source.text.length;){let end=Math.min(start+650,source.text.length);if(end<source.text.length){const space=source.text.lastIndexOf(' ',end);if(space>start+520)end=space;}const text=source.text.slice(start,end);if(normalize(text).length>=8)excerpts.push({quoteID:'Q'+(excerpts.length+1),sourceID:source.id,text});start=end;}}
@@ -53,12 +60,13 @@ export function rapidEvidenceExcerpts(sources){
 }
 export function bindRapidReadingEvidence(value,excerpts,sources){
  const known=new Map(sources.map(source=>[source.id,source])),byID=new Map(excerpts.map(excerpt=>[excerpt.quoteID,excerpt]));
- const sections=Array.isArray(value?.sections)?value.sections.map(section=>({...section,points:Array.isArray(section?.points)?section.points.map(point=>{
+ const bind=point=>{
   let references;if(Object.hasOwn(point||{},'quoteIDs'))references=point.quoteIDs;else if(Array.isArray(point?.evidence)&&point.evidence.some(evidence=>Object.hasOwn(evidence||{},'quoteID')))references=point.evidence.map(evidence=>evidence?.quoteID);else return point;
   if(!Array.isArray(references)||!references.length)throw Error('速读说明缺少原文摘录编号');
   const evidence=[...new Set(references)].map(id=>{const excerpt=byID.get(id),source=known.get(excerpt?.sourceID);if(typeof id!=='string'||!excerpt||!source||typeof excerpt.text!=='string'||!source.text.includes(excerpt.text))throw Error('速读选择了不存在或无法核对的原文摘录');return {sourceID:source.id,quote:excerpt.text};});
   return {...point,evidence};
- }):section?.points})):value?.sections;
+ };
+ const sections=Array.isArray(value?.sections)?value.sections.map(section=>({...section,...(section?.brief?{brief:bind(section.brief)}:{}),points:Array.isArray(section?.points)?section.points.map(bind):section?.points})):value?.sections;
  return validateRapidReading({...value,sections},sources);
 }
 export function rapidModelIdentity(config={}){
@@ -104,9 +112,9 @@ export function rapidReadingArticleFlow(record,sources,assets,{attachmentID}={})
   return Number.isFinite(height)&&rects?.length?height-Math.max(...rects.filter(rect=>Array.isArray(rect)&&Number.isFinite(rect[3])).map(rect=>rect[3])):null;
  };
  const reference=asset=>{
-  const match=String(asset.label||'').match(/^(?:图|表|式|公式|figure|fig\.?|table|tab\.?|equation|eq\.?)\s*[(（]?\s*(\d+[a-z]?|[ivxlc]+)\s*[)）]?/iu);if(!match)return null;
+  const match=String(asset.label||'').match(/^(?:图|表|式|公式|figure|fig\.?|table|tab\.?|equation|eq\.?)\s*[(（]?\s*((?:[a-z]{1,2}[.\-]?)?\d+[a-z]?|[ivxlc]+)\s*[)）]?/iu);if(!match)return null;
   const terms=asset.kind==='table'?'表|table|tab\\.?':asset.kind==='formula'?'式|公式|equation|eq\\.?':'图|figure|fig\\.?';
-  return new RegExp('(?:'+terms+')\\s*[(（]?\\s*'+match[1]+'\\s*[)）]?(?![a-z0-9])','iu');
+  return new RegExp('(?:'+terms+')\\s*[(（]?\\s*'+match[1].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*[)）]?(?![a-z0-9])','iu');
  };
  const references=new Map(visuals.map(entry=>[entry.asset,reference(entry.asset)]));
  const mentions=(entry,asset)=>{const pattern=references.get(asset);return !!pattern&&pattern.test([entry.point.text,...(entry.point.evidence||[]).map(item=>item.quote)].join('\n'));};
@@ -135,13 +143,22 @@ export function rapidReadingArticleFlow(record,sources,assets,{attachmentID}={})
   return a.sourceOrder-b.sourceOrder||(a.sourceOffset??0)-(b.sourceOffset??0)||a.index-b.index||(a.pointIndex??0)-(b.pointIndex??0);
  });
 }
-// Brief tabs reuse concrete, evidence-bound reading points; they do not call a
-// model, synthesize facts or truncate a number/LaTeX expression mid-sentence.
+// Briefs are independently authored, evidence-bound orientation notes. They do
+// not replace the detailed article. Old manual records get a complete-sentence
+// preview, without cutting a number/LaTeX expression or changing their text.
 export function rapidReadingBrief(record,role,{textForPoint=point=>point.text,maxPoints=3}={}){
  const rows=[],seen=new Set();for(const [index,section]of (record?.sections||[]).entries()){
-  if(section.role!==role)continue;for(const [pointIndex,point]of (section.points||[]).entries()){
+  if(section.role!==role)continue;
+  if(typeof section.brief?.text==='string'&&section.brief.text.trim()&&section.brief.evidence?.length){
+   const text=section.brief.text;if(!seen.has(text)){seen.add(text);rows.push({section,index,point:section.brief,pointIndex:-1,text});if(rows.length>=maxPoints)return rows;}continue;
+  }
+  for(const [pointIndex,point]of (section.points||[]).entries()){
    if(!point.evidence?.length)continue;const text=textForPoint(point,section,index,pointIndex);if(typeof text!=='string'||!text.trim()||seen.has(text))continue;
-   seen.add(text);rows.push({section,index,point,pointIndex,text});if(rows.length>=maxPoints)return rows;
+   const firstSentence=text.match(/^.*?[。！？](?=\s|[^”’」』）\])]|$)/su)?.[0]||text.split(/\r?\n[\t ]*\r?\n/u)[0];
+   // An intact short legacy note is safer than inventing a new summary.
+   const preview=text.length>220&&firstSentence?.trim()?firstSentence.trim():text;
+   seen.add(preview);rows.push({section,index,point,pointIndex,text:preview});if(rows.length>=maxPoints)return rows;
+   break;
   }
  }return rows;
 }
@@ -172,14 +189,16 @@ export function rapidReadingEditedText(point,edit){
 // Every reading claim must carry a supplied source and an exact source excerpt.
 export function validateRapidReading(value,sources){
  const byID=new Map(sources.map(s=>[s.id,s]));
+ const pointValue=(point,{brief=false}={})=>{
+  if(!point||typeof point.text!=='string'||!normalize(point.text)||point.text.length>(brief?700:5000)||!Array.isArray(point.evidence)||!point.evidence.length)throw Error(brief?'速读概览缺少简要内容或原文依据':'速读说明缺少原文依据');
+  const evidence=point.evidence.map(e=>{const source=byID.get(e?.sourceID),quote=sourceQuote(source?.text,e?.quote);if(!source||!quote||normalize(quote).length<8)throw Error('速读依据不能在提供的原文中核对');return {sourceID:source.id,quote};});
+  return {text:point.text,evidence};
+ };
  if(!Array.isArray(value?.sections)||!value.sections.length||value.sections.length>12)throw Error('速读内容缺少可核对的章节');
  const sections=value.sections.map(section=>{
   if(!section||!READING_ROLES.includes(section.role)||typeof section.heading!=='string'||!normalize(section.heading)||!Array.isArray(section.points)||!section.points.length||section.points.length>12)throw Error('速读章节格式无效');
-  const points=section.points.map(point=>{
-   if(!point||typeof point.text!=='string'||!normalize(point.text)||point.text.length>5000||!Array.isArray(point.evidence)||!point.evidence.length)throw Error('速读说明缺少原文依据');
-   const evidence=point.evidence.map(e=>{const source=byID.get(e?.sourceID),quote=sourceQuote(source?.text,e?.quote);if(!source||!quote||normalize(quote).length<8)throw Error('速读依据不能在提供的原文中核对');return {sourceID:source.id,quote};});
-   return {text:point.text,evidence};
-  });return {role:section.role,heading:section.heading,points};
+  const points=section.points.map(point=>pointValue(point));
+  return {role:section.role,heading:section.heading,points,...(section.brief?{brief:pointValue(section.brief,{brief:true})}:{})};
  });
  return {sections};
 }

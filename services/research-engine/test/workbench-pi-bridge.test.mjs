@@ -17,6 +17,7 @@ import * as Pi from '../../../chrome/content/zotero/research/vendor/pi-agent.mjs
 import * as Manuscript from '../../../chrome/content/zotero/research/shared/manuscript-model.mjs';
 import * as Pages from '../../../chrome/content/zotero/research/shared/assembly-pages.mjs';
 import * as ChatFiles from '../../../chrome/content/zotero/research/shared/chat-attachments.mjs';
+import * as PlanEdit from '../../../chrome/content/zotero/research/shared/academic-plan-edit.mjs';
 import { assemblyTaskContext } from '../../../chrome/content/zotero/research/manuscript/assembly-task-context.mjs';
 import { providerHTTPError } from '../../../chrome/content/zotero/research/shared/provider-error.mjs';
 
@@ -76,6 +77,7 @@ function fixture(replies = [], overrides = {}) {
 		if (uri.endsWith('/pi-chat-transport.mjs')) return Transport;
 		if (uri.endsWith('/chat-evidence.mjs')) return Evidence;
 		if (uri.endsWith('/chat-attachments.mjs')) return ChatFiles;
+		if (uri.endsWith('/academic-plan-edit.mjs')) return PlanEdit;
 		if (uri.endsWith('/evidence-reading-context.mjs')) return VisualReading;
 		if (uri.endsWith('/formula-research.mjs')) return Formula;
 		if (uri.endsWith('/pi-agent.mjs')) return Pi;
@@ -89,6 +91,7 @@ test('actual bridge performs local tool continuation, unwraps passages and keeps
 		const result = toolResult(payload);
 		assert.equal(result.materials[0].id, 'material:m1');
 		assert.equal(result.passages[0].id, 'evidence:passage:document-hash:3');
+		assert.equal(result.passages[0].pageNumber,5);assert.equal(result.passages[0].pageNumbering,'physical');
 		assert.match(result.passages[0].text, /disjoint validation/);
 		assert.doesNotMatch(JSON.stringify(payload.messages), /personal resume information/);
 		return text('原文使用独立验证划分，应继续核验域划分的公平性。[evidence:passage:document-hash:3]');
@@ -110,6 +113,22 @@ test('actual bridge performs local tool continuation, unwraps passages and keeps
 	assert.ok(!names.includes('evaluate_experiment_plan'));
 	assert.ok(!names.includes('list_project_materials'));
 	assert.ok(!names.some(name => /delete|shell|exec|write|generate_image|generate_chart/.test(name)));
+});
+
+function withPlan(h){const version={id:'real-plan-1',number:3,plan:{title:'独立验证方案',feasibility:'拟比较独立测试集，实验尚未进行。',experiments:[{id:'experiment-1',data:'既定样本'}]},inputs:{researchScope:{domain:'communications'},constraints:'保留既定数据与资源'},sources:[]},state={versions:[version],selectedVersion:version.id};h.E.notebook.state=()=>state;h.E.notebook.proposePlanEdit=async(id,args,_status,_signal,options)=>{h.calls.push({kind:'planEdit',id,args,options});const before=PlanEdit.planField(version.plan,args.path),selection=PlanEdit.planSelection(before,{selectedText:args.selectedText}),selectedAfter='计划对独立测试集进行比较';return {id:'candidate-real-1',versionID:version.id,path:args.path,before,selectedBefore:selection.text,selectedStart:selection.start,selectedEnd:selection.end,selectedAfter,value:before.slice(0,selection.start)+selectedAfter+before.slice(selection.end),model:options.modelConfig.model};};return {version,state};}
+test('an actual plan-content request reads the bound version and returns only a candidate with the selected model',async()=>{
+ const h=fixture([payload=>{assert.deepEqual(payload.tool_choice,{type:'function',function:{name:'read_research_plan'}});return call('read_research_plan',{});},payload=>{const read=toolResult(payload);assert.equal(read.versionID,'real-plan-1');assert.equal(read.researchScope.domain,'communications');assert.equal(read.fields.find(row=>row.path==='experiments.0.data').recordID,'experiment-1');assert.deepEqual(payload.tool_choice,{type:'function',function:{name:'propose_research_plan_edit'}});return call('propose_research_plan_edit',{versionID:read.versionID,path:'feasibility',selectedText:'拟比较独立测试集',instruction:'精炼计划的表达'});},payload=>{assert.equal(toolResult(payload).status,'候选待用户采用，当前方案和装配内容尚未改动');assert.equal(payload.tool_choice,'auto');return text('已经修改整个方案。');}]),{state}=withPlan(h),before=JSON.stringify(state),project=JSON.stringify(h.project);
+ const result=await h.E.runWorkbenchTask({prompt:'请精简可行性方案，保留研究条件',projectID:h.project.id,modelID:'plan-selected-model',thinkingLevel:'high'});assert.equal(h.requests.length,3);assert.equal(h.calls.some(row=>row.kind==='evaluate'),false);assert.equal(h.calls.find(row=>row.kind==='planEdit').options.modelConfig.model,'plan-selected-model');assert.equal(h.calls.find(row=>row.kind==='planEdit').options.modelConfig.thinkingLevel,'high');assert.equal(result.planEditProposal.status,'pending');assert.equal(result.planEditProposal.projectID,h.project.id);assert.match(result.text,/候选/);assert.doesNotMatch(result.text,/已经修改/);assert.equal(JSON.stringify(state),before);assert.equal(JSON.stringify(h.project),project);
+});
+test('plan editing rejects unread, invented or stale versions and fields before requesting a rewrite',async()=>{
+ for(const bad of [{versionID:'invented-plan',path:'feasibility'},{versionID:'real-plan-1',path:'experiments.99.data'},{versionID:'real-plan-1',path:'experiments.0.id'}]){
+  const h=fixture([call('read_research_plan',{}),call('propose_research_plan_edit',{...bad,selectedText:'',instruction:'精炼'}),text('已修改。')]);withPlan(h);await assert.rejects(h.E.runWorkbenchTask({prompt:'重写当前方案的可行性',projectID:h.project.id}),/版本或字段已变化/);assert.equal(h.calls.some(row=>row.kind==='planEdit'),false);
+ }
+ const h=fixture([call('propose_research_plan_edit',{versionID:'real-plan-1',path:'feasibility',selectedText:'',instruction:'精炼'}),text('已修改。')]);withPlan(h);await assert.rejects(h.E.runWorkbenchTask({prompt:'精简可行性方案',projectID:h.project.id}),/工具参数不完整/);assert.equal(h.calls.some(row=>row.kind==='planEdit'),false);
+ let current;const stale=fixture([call('read_research_plan',{}),()=>{current.state.selectedVersion='another-real-plan';return call('propose_research_plan_edit',{versionID:'real-plan-1',path:'feasibility',selectedText:'',instruction:'精炼'});},text('已修改。')]);current=withPlan(stale);await assert.rejects(stale.E.runWorkbenchTask({prompt:'重写可行性方案',projectID:stale.project.id}),/版本或字段已变化/);assert.equal(stale.calls.some(row=>row.kind==='planEdit'),false);
+});
+test('an explanation or negated rewrite cannot trigger a plan candidate despite a model tool call',async()=>{
+ const h=fixture([call('propose_research_plan_edit',{versionID:'real-plan-1',path:'feasibility',selectedText:'',instruction:'精炼'}),text('方案的可行性依赖独立测试。')]);withPlan(h);const result=await h.E.runWorkbenchTask({prompt:'不要修改方案，只解释可行性依据',projectID:h.project.id});assert.equal(h.calls.some(row=>row.kind==='planEdit'),false);assert.equal(result.planEditProposal,undefined);assert.equal(h.requests.length,2);
 });
 
 test('a material recommendation defaults to the built-in search and accepts only an exact application-context echo', async () => {
@@ -322,7 +341,8 @@ test('actual decision memory keeps at most ten complete recent choices within si
 test('sources read before bounded recent history remain usable, while ambiguous local paper IDs are still rejected',async()=>{
  const old={id:'P1-T0',stableID:'evidence:paper:3:9:P1-T0',title:'原文方法',coverage:'此前读取的原文片段'},history=[{role:'user',text:'旧问题'},{role:'assistant',text:'旧答复',sources:[old]}];for(let i=0;i<16;i++)history.push({role:i%2?'assistant':'user',text:'新对话'+i});
  const h=fixture([text('继续根据此前原文片段核对。[P1-T0]')]);const result=await h.E.runWorkbenchTask({prompt:'继续',history});assert.equal(result.sources.length,1);assert.equal(result.sources[0].stableID,old.stableID);assert.match(result.text,/\[evidence:paper:3:9:P1-T0\]/);assert.equal(h.requests[0].payload.messages.some(row=>row.content==='旧答复'),false);
- const ambiguous=fixture([text('依据原文。[P1-T0]')]);await assert.rejects(ambiguous.E.runWorkbenchTask({prompt:'继续',history:[{role:'assistant',text:'先前答复',sources:[old,{...old,stableID:'evidence:paper:4:10:P1-T0'}]}]}),/不明确/);
+ const ambiguous=fixture([text('依据原文。[P1-T0]')]),unclear=await ambiguous.E.runWorkbenchTask({prompt:'继续',history:[{role:'assistant',text:'先前答复',sources:[old,{...old,stableID:'evidence:paper:4:10:P1-T0'}]}]});
+ assert.equal(unclear.text,'依据原文。'+Workbench.UNVERIFIED_CITATION);assert.equal(unclear.unverifiedCitations,1);assert.deepEqual(plain(unclear.citedSourceIDs),[]);
 });
 
 test('unrecognized tool arguments retain strict Pi validation and a bare material claim cannot bypass the built-in search', async () => {
@@ -383,7 +403,8 @@ test('two identical greetings after a 63-source answer preserve real roles witho
 
 test('saved source continuity never accepts a fabricated follow-up citation', async () => {
 	const h = fixture([text('无法支持这条引用。[web:invented]')]);
-	await assert.rejects(h.E.runWorkbenchTask({ prompt: '继续讨论', history: [{ role: 'assistant', text: '此前讨论', sources: [{ stableID: 'web:known', title: '已保存来源' }] }] }), /未读取的来源/);
+	const result = await h.E.runWorkbenchTask({ prompt: '继续讨论', history: [{ role: 'assistant', text: '此前讨论', sources: [{ stableID: 'web:known', title: '已保存来源' }] }] });
+	assert.equal(result.text, '无法支持这条引用。' + Workbench.UNVERIFIED_CITATION); assert.equal(result.sources.some(row => row.stableID === 'web:invented'), false);
 	assert.equal(h.requests.length, 1);
 });
 
@@ -470,13 +491,17 @@ test('unknown project, missing required project and blocked authorship fail befo
 	for (const request of [
 		{ prompt: '普通学术问题', projectID: 'missing' },
 		{ prompt: '评估实验方案' }, { prompt: '按主题整理素材' }, { prompt: '调整布局' },
-		{ prompt: '帮我写论文正文', projectID: 'project-1' },
 	]) {
 		const h = fixture();
 		await assert.rejects(h.E.runWorkbenchTask(request), /研究项目|AI 不/);
 		assert.equal(h.requests.length, 0);
 		assert.equal(h.calls.length, 0);
 	}
+	// A drafting request gets an answer that points to the assembly preview,
+	// still without any model, credential or store access.
+	const h = fixture(), redirect = await h.E.runWorkbenchTask({ prompt: '帮我写论文正文', projectID: 'project-1' });
+	assert.equal(redirect.authorshipRedirect, true); assert.match(redirect.text, /装配页/); assert.deepEqual(plain(redirect.sources), []);
+	assert.equal(h.requests.length, 0); assert.equal(h.calls.length, 0);
 });
 
 test('an explicit image request runs the configured generator and reports a saved local AI image through Pi',async()=>{
@@ -502,7 +527,8 @@ test('search/evaluate/organize/layout cannot claim completion without a successf
 test('forged canonical and legacy evidence references are rejected instead of being saved as facts', async () => {
 	for (const id of ['material:missing', 'evidence:missing', 'web:missing', 'paper:9999', 'source:made-up', 'web-unknown', 'Q999', '999']) {
 		const h = fixture([text('这是未经读取的结论。[' + id + ']')]);
-		await assert.rejects(h.E.runWorkbenchTask({ prompt: '解释协变量漂移的概念' }), /未读取的来源/);
+		const result = await h.E.runWorkbenchTask({ prompt: '解释协变量漂移的概念' });
+		assert.equal(result.text, '这是未经读取的结论。' + Workbench.UNVERIFIED_CITATION, id); assert.deepEqual(plain(result.citedSourceIDs), [], id);
 	}
 });
 
@@ -523,6 +549,7 @@ test('paper reading canonicalizes anchors and mismatched/deleted sources cannot 
 	const h = fixture([call('read_selected_source', {}), payload => {
 		const result = toolResult(payload);
 		assert.equal(result.sources[0].id, 'evidence:paper:3:9:P1-T0');
+		assert.equal(result.sources[0].pageNumber,3);assert.equal(result.sources[0].pageNumbering,'physical');
 		return text('原文给出了数据划分说明。[evidence:paper:3:9:P1-T0]');
 	}]);
 	const result = await h.E.runWorkbenchTask({ prompt: '解释论文的划分依据', selectedSource: { id: 3, kind: 'paper', title: '论文' } });
@@ -530,7 +557,8 @@ test('paper reading canonicalizes anchors and mismatched/deleted sources cannot 
 	assert.equal(result.sources[0].anchor.attachmentID, 9);
 	assert.equal(result.sources[0].anchor.pageIndex, 2);
 	const mismatch = fixture([call('read_selected_source', {}), payload => { assert.match(payload.messages.at(-1).content, /选区与所选论文不一致/); return text('不能核验。[evidence:paper:3:9:P1-T0]'); }]);
-	await assert.rejects(mismatch.E.runWorkbenchTask({ prompt: '解释该论文', selectedSource: { id: 3, kind: 'paper', selection: { attachmentID: 10, text: '别的论文' } } }), /未读取的来源/);
+	const unread = await mismatch.E.runWorkbenchTask({ prompt: '解释该论文', selectedSource: { id: 3, kind: 'paper', selection: { attachmentID: 10, text: '别的论文' } } });
+	assert.equal(unread.text, '不能核验。' + Workbench.UNVERIFIED_CITATION); assert.equal(unread.sources.length, 0);
 	assert.equal(mismatch.calls.some(row => row.kind === 'readPaper'), false);
 });
 
@@ -555,11 +583,12 @@ test('PPT tool invokes the existing ready-checking workflow whose API returns vo
 	assert.deepEqual(plain(h.calls.find(row => row.kind === 'openPPT').options.papers), [{ id: 3, title: '来源论文' }]);
 });
 
-test('restricted gateway rejects a forbidden selected model without substituting another one', async () => {
-	const h = fixture(); h.settings.endpoint = 'https://openai.goldgom.top/v1'; h.settings.model = 'gpt-6-luna';
-	await assert.rejects(h.E.runWorkbenchTask({ prompt: '解释协变量漂移', modelID: 'another-model' }), /仅开放 GPT-6 Luna/);
-	assert.equal(h.calls.length, 0);
-	assert.equal(h.requests.length, 0);
+test('gateway accepts an explicit Sol choice and sends high reasoning without substituting Luna', async () => {
+	const h = fixture([text('协变量漂移指输入分布变化。')]); h.settings.endpoint = 'https://openai.goldgom.top/v1'; h.settings.model = 'gpt-6-luna';
+	await h.E.runWorkbenchTask({ prompt: '解释协变量漂移', modelID: 'gpt-6.1-sol', thinkingLevel:'xhigh' });
+	assert.equal(h.requests[0].payload.model,'gpt-6.1-sol');
+	assert.equal(h.requests[0].payload.reasoning_effort,'xhigh');
+	assert.equal(h.calls.includes('resolveModel'),false);
 });
 
 test('model catalog cache follows a changed explicit configuration at the same endpoint', async () => {
@@ -590,6 +619,12 @@ test('chat attachments contain actual document text and image pixels in the pinn
  h.settings.reasoningParameter='reasoning_effort';const refs=[{id:'attachment:71',title:'文件名不能替代全文.docx'}];
  const result=await h.E.runWorkbenchTask({prompt:'解释附加文档中的数据划分，并解读图片。',attachments:refs,mode:'discuss',modelID:'selected-vision-model',thinkingLevel:'high'});
  assert.equal(calls.length,1);assert.deepEqual(calls[0].refs,refs);assert.equal(result.sources[0].stableID,id);assert.ok(result.steps.includes('读取附加资料'));
+});
+
+test('actual Pi request retains all-file coverage and canonicalizes observed fullwidth hash citations before persistence',async()=>{
+ const id='evidence:passage:actual-hash:pymupdf-blocks-v3:144',coverage=[{id:'attachment:71',title:'Actual PDF',kind:'pdf',excerptCount:2,truncated:true,physicalPages:[7,10]}];let options;
+ const h=fixture([payload=>{const input=JSON.parse(payload.messages.at(-1).content);assert.deepEqual(input.attachmentCoverage,coverage);assert.equal(input.attachedSources[0].pageNumber,10);assert.equal(input.attachedSources[0].pageNumbering,'physical');assert.match(payload.messages[0].content,/物理页/);return text('训练条件见 PDF 第10页。［'+id+'］');}],{chatAttachments:{async read(_refs,value){options=value;return {rows:[{id,stableID:id,attachmentID:71,pageIndex:9,sourceText:'Controlled original statement.',coverage:'原文件取样'}],images:[],warnings:[],coverage};}}});
+ const result=await h.E.runWorkbenchTask({prompt:'核对训练条件与页码',attachments:[{id:'attachment:71'}]});assert.equal(options.query,'核对训练条件与页码');assert.equal(result.text,'训练条件见 PDF 第10页。['+id+']');assert.deepEqual(plain(result.citedSourceIDs),[id]);assert.deepEqual(plain(result.sourceCoverage),coverage);assert.equal(result.sources[0].pageNumber,10);
 });
 
 test('unreadable attached documents fail before any model request without fabricated content',async()=>{

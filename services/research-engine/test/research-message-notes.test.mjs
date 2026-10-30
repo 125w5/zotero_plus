@@ -89,6 +89,12 @@ test('saving uses the real publisher, stores the answer once and preserves safe 
 	assert.equal(Object.values(h.calls.publish[0].registry)[0].noteID, saved.noteID, 'note mapping exists before asset publication');
 });
 
+test('saving a retained answer persists its saved-note state without overwriting its transcript or fullwidth citation',async()=>{
+ const h=fixture(),m=message('retained-answer');m.text='原文讨论。［'+m.sources[0].stableID+'］';let current={id:'retained-session',messages:[{id:'question',role:'user',text:'问题原文'},m]};
+ h.E.workbenchConversations={get:id=>id===current.id?plain(current):undefined,async update(id,patch){assert.equal(id,current.id);current.messages=current.messages.map(row=>({...row,...patch.messages.find(value=>value.id===row.id)}));}};
+ const saved=await h.E.saveResearchMessageNote(m,{sessionID:current.id});assert.equal(current.messages[1].savedNoteID,saved.noteID);assert.equal(current.messages[1].savedMaterialID,saved.materialID);assert.equal(current.messages[1].text,m.text);assert.match(h.items.get(saved.noteID).html,/\[1\]/);assert.doesNotMatch(h.items.get(saved.noteID).html,/evidence:paper/);
+});
+
 test('same message saved concurrently and into multiple projects reuses one note and one material', async () => {
 	const h = fixture(), m = message('answer-2');
 	const [a, b] = await Promise.all([h.E.saveResearchMessageNote(m, { sessionID: 's1', projectID: 'p1' }), h.E.saveResearchMessageNote(m, { sessionID: 's1', projectID: 'p2' })]);

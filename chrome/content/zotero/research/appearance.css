@@ -25,7 +25,8 @@ html[data-appearance] #grid button.highlight{background:#315e89;color:#fff}
 .theme-card{border:1px solid var(--line);padding:12px;margin:10px 0;border-radius:6px}.theme-card p{white-space:pre-wrap}
 html[data-appearance] #steps button.active{background:var(--soft);color:var(--text)}
 html[data-appearance] :is(.heading,#selection-tools){color:var(--text)}
-html[data-appearance] :is(#selection-tools,nav:not(#steps):not(#left-tabs)){background:var(--surface)}
+/* The nav default stays below component rules; :not(#id) would otherwise give it ID weight. */
+html[data-appearance] #selection-tools,html[data-appearance] :where(nav:not(#steps):not(#left-tabs)){background:var(--surface)}
 html[data-appearance] #notice{background:var(--soft);color:var(--warning);border-color:var(--line)}
 html[data-appearance] .slide-canvas :is(td,th){color:inherit}
 html[data-appearance] .editable:empty::before{color:var(--muted)}

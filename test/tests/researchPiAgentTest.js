@@ -42,7 +42,10 @@ describe('Pi application tools in native Zotero', function () {
 		assert.equal(JSON.stringify(E.manuscripts.get(project.id)), before, '不写入或改动论文正文');
 	});
 	it('blocks direct manuscript writing while exposing explicitly authorized image generation', async () => {
-		let error; try { await E.runWorkbenchTask({ prompt:'帮我写论文引言' }); } catch (e) { error = e; } assert.match(error?.code || '', /^AI_/);
+		// The chat answers a drafting request with the preview route instead of
+		// failing it; the policy code still names why nothing was sent.
+		const result = await E.runWorkbenchTask({ prompt:'帮我写论文引言' });
+		assert.isTrue(result.authorshipRedirect); assert.match(result.code || '', /^AI_/); assert.include(result.text, '装配页');
 		assert.equal(requests, 0); assert.isTrue(E.piExtensions().find(row => row.id === 'images').enabled);
 	});
 	it('an explicit image request reaches the configured generator once through the real Pi tool loop',async()=>{

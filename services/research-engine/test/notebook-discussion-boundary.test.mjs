@@ -58,7 +58,7 @@ test('excluded discussion remains excluded and invented discussion quote is not 
 test('evaluation and prior source restoration never promote AI discussions to closest work',async()=>{
  const oldSources=[{id:'legacy',materialID:'legacy',title:'旧讨论',text:legacy.sourceText,coverage:'实际提供的原文摘录'},{id:'registered',materialID:'registered',text:registryOnly.sourceText,coverage:'实际提供的原文摘录'},{id:'orphan-discussion',materialID:'orphan-discussion',text:'旧讨论已缺失',coverage:'实际提供的原文摘录'},{id:'marked',text:'历史讨论',coverage:'AI 研究讨论，推断与建议需核验'},{id:'previous-paper',text:'Prior real paper excerpt.',coverage:'仅依据摘要'}];
  const previous={id:'v1',plan:plan(oldSources.map(s=>({sourceID:s.id,quote:s.text}))),sources:oldSources,sourceRevisions:{},number:1},f=fixture({previous}),before=JSON.stringify(f.N.state(f.id).versions[0]),assets=JSON.stringify(f.project.materials);
- const version=await f.N.evaluate(f.id,'迁移方法',()=>{}),query=f.calls[0],assessment=f.calls[1];
+ const version=await f.N.evaluate(f.id,'迁移方法',()=>{},undefined,{online:true}),query=f.calls[0],assessment=f.calls[1];
  assert.deepEqual(query.input.local.map(s=>s.id),['paper','previous-paper']);
  assert.deepEqual(query.input.discussionContext,[],'评估只使用当前方案与有效决定，不重放已保存的讨论轨迹');
  assert.deepEqual(assessment.input.sources.map(s=>s.id),['paper','previous-paper','web-https://example.org/paper']);
@@ -81,7 +81,7 @@ test('feasibility reads only selected project papers and records its exact input
  const f=fixture();f.papers.get(102).getField=key=>key==='title'?'Unrelated transfer study':key==='abstractNote'?'Unrelated paper evidence.':'';f.E.manuscripts.assetLibrary=()=>({outside:{...real,id:'outside',anchor:{paperItemID:102}}});
  await f.N.savePreparation(f.id,{constraints:'两周，只有现有数据',structure:'引言｜说明迁移缺口\n方法｜独立域验证'});const result=await f.N.evaluate(f.id,'迁移方法',()=>{}),input=f.calls.find(row=>row.input?.sourceSelection).input;
  assert.deepEqual(input.sourceSelection.paperIDs,[101]);assert.deepEqual(input.sources.filter(row=>row.materialID).map(row=>row.materialID),['paper']);assert.ok(!input.sources.some(row=>row.title==='Unrelated transfer study'));assert.equal(input.resourceConstraints,'两周，只有现有数据');assert.equal(input.writingStructure[1].purpose,'独立域验证');assert.equal(result.inputs.collectionID,1);assert.equal(result.inputs.constraints,'两周，只有现有数据');assert.ok(result.inputSignature);
- await f.N.setPaperScope(f.id,{paperIDs:[]});assert.equal(f.N.assessmentCurrent(f.id,result),false);const next=await f.N.evaluate(f.id,'迁移方法',()=>{});assert.ok(next.sources.every(row=>!row.materialID&&!row.paperItemID),'取消论文不会退回全局文库或保留以前的本地证据');
+ await f.N.setPaperScope(f.id,{paperIDs:[]});assert.equal(f.N.assessmentCurrent(f.id,result),false);const next=await f.N.evaluate(f.id,'迁移方法',()=>{},undefined,{online:true});assert.ok(next.sources.every(row=>!row.materialID&&!row.paperItemID),'取消论文不会退回全局文库或保留以前的本地证据');
 });
 test('chosen feasibility version and custom chapter tasks reach assembly without replacing authored blocks',async()=>{
  const f=fixture({planReply:{...plan(),minimumValidation:'先做独立域对照，不预设结果'}}),section=f.project.sections[0];f.project.blocks=[M.block('paragraph',section.id,{text:'已经写好的研究背景。'})];const authored=M.clone(f.project.blocks);
@@ -99,8 +99,33 @@ test('fresh local note candidates use stable item versions, not nonexistent mate
 test('research field and double keywords filter local and online inputs and survive assembly',async()=>{
  const f=fixture({materials:[{...real,title:'AMC wireless modulation at low SNR',summary:'无线调制低信噪比',sourceText:'AMC wireless modulation at low SNR needs independent channel evaluation.'},{...discussion,id:'foreign',sourceType:'paper',title:'CNN image classification',sourceText:'Convolutional image segmentation',paperItemID:101}]}),scope={domain:'communications',primaryKeyword:'AMC',secondaryKeyword:'low SNR',fuzzy:true};
  f.E.searchPaperPage=async(query,options)=>{assert.deepEqual(options.researchScope,{...scope,excludedKeywords:[],acronymMeaning:''});assert.match(query,/AMC/);assert.match(query,/low SNR/);return {provider:'controlled',records:[{title:'AMC wireless at low SNR',abstract:'AMC modulation in wireless channels at low SNR',url:'https://example.org/matched'},{title:'CNN classification',abstract:'Computer vision image recognition',url:'https://example.org/foreign'}]};};
- await f.N.savePreparation(f.id,{researchScope:scope});const version=await f.N.evaluate(f.id,'研究无线调制',()=>{}),input=f.calls.find(row=>row.input?.sourceSelection).input;
+ await f.N.savePreparation(f.id,{researchScope:scope});const version=await f.N.evaluate(f.id,'研究无线调制',()=>{},undefined,{online:true}),input=f.calls.find(row=>row.input?.sourceSelection).input;
  assert.equal(input.researchScope.domain,'communications');assert.ok(input.sources.every(row=>!row.title.includes('CNN')));assert.ok(input.sources.some(row=>row.url==='https://example.org/matched'));assert.equal(input.discussionContext.length,0);
  await f.N.enterAssembly(f.id,{versionID:version.id});assert.equal(f.project.researchPreparation.researchScope.secondaryKeyword,'low SNR');assert.equal(f.project.researchPreparation.planVersionID,version.id);
  await f.N.savePreparation(f.id,{researchScope:{...scope,secondaryKeyword:'high SNR'}});assert.equal(f.N.assessmentCurrent(f.id,version),false);
+});
+
+test('evaluation without options compares only local sources and never searches the web',async()=>{
+ const f=fixture();let searches=0;f.E.searchPaperPage=async()=>{searches++;return {records:[]};};f.E.discoverySearch=async()=>{searches++;return [];};
+ const version=await f.N.evaluate(f.id,'迁移方法',()=>{}),input=f.calls.find(row=>row.input?.sourceSelection).input;
+ assert.equal(searches,0);assert.equal(f.calls.length,1,'no query-planning call without the online option');assert.equal(input.retrievalScope,'local-only');assert.equal(version.retrieval.length,0);assert.ok(version.sources.every(row=>!String(row.id).startsWith('web-')));
+});
+
+test('each research call carries the shared AI policy exactly once after the studio prefix',async()=>{
+ const f=fixture({previous:{id:'v1',plan:plan(),sources:[],sourceRevisions:{},number:1}});await f.N.ask(f.id,'分析迁移方法有哪些可检验的问题',()=>{});await f.N.evaluate(f.id,'迁移方法',()=>{},undefined,{online:true});
+ const composed=f.calls.filter(row=>row.system).map(row=>Policy.RESEARCH_AI_RULES+'\n'+row.system);assert.equal(composed.length,3,'ask, online query and plan');
+ for(const system of composed)assert.equal(system.split(Policy.RESEARCH_AI_RULES).length-1,1);
+ assert.doesNotMatch(Prompts.SOURCE_RULES,/证据只摘录逐字原文/);assert.match(Prompts.PLAN_RULES,/不要重抄摘录/);
+});
+
+test('an answer is appended inside the store queue, so a plan message committed while the model answers stays (FLOW-WSB03-06)',async()=>{
+	let f=fixture(),request=f.E.studio.request;
+	f.E.studio.request=async(system,input,...rest)=>{
+		let reply=await request(system,input,...rest);
+		await f.N.mutate(f.id,['messages'],notebook=>{notebook.messages.push({id:'plan-message',role:'assistant',channel:'plan',text:'已生成第 2 版方案'});});
+		return reply;
+	};
+	let message=await f.N.ask(f.id,'分析迁移方法有哪些可检验的问题',()=>{}),messages=f.state.researchNotebooks[f.id].messages;
+	assert.deepEqual(messages.map(row=>row.id==='plan-message'?'plan':row.role),['plan','user','assistant'],'the evaluation message is kept and the answer follows it');
+	assert.equal(messages.at(-1).text,message.text);
 });

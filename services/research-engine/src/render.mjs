@@ -19,8 +19,10 @@ export async function renderAndInspect(result, config) {
   for (const executable of [config.soffice, config.pdftoppm]) await fs.access(executable);
   const directory=path.dirname(result.path), profile=await fs.mkdtemp(path.join(directory,'lo-profile-'));
   const signal=AbortSignal.any([AbortSignal.timeout(120000),...(config.signal?[config.signal]:[])]);
-  await run(config.soffice,[`-env:UserInstallation=${pathToFileURL(profile).href}`,'--headless','--nologo','--nodefault','--nofirststartwizard','--convert-to','pdf','--outdir',directory,result.path],signal);
-  const pdf=path.join(directory,'presentation.pdf'), prefix=path.join(directory,'page');
+  // The LibreOffice profile is only needed for this conversion.
+  try {await run(config.soffice,[`-env:UserInstallation=${pathToFileURL(profile).href}`,'--headless','--nologo','--nodefault','--nofirststartwizard','--convert-to','pdf','--outdir',directory,result.path],signal);}
+  finally {await fs.rm(profile,{recursive:true,force:true}).catch(()=>{});}
+  const pdf=path.join(directory,path.basename(result.path,path.extname(result.path))+'.pdf'), prefix=path.join(directory,'page');
   await fs.access(pdf);
   await run(config.pdftoppm,['-png','-scale-to','1280',pdf,prefix],signal);
   const loading=getDocument({data:new Uint8Array(await fs.readFile(pdf)),useSystemFonts:true,verbosity:0});
@@ -49,5 +51,6 @@ export async function renderAndInspect(result, config) {
   }
   const report={renderer:'LibreOffice + Poppler',status:findings.some(p=>p.warnings.length)?'needs_review':'mechanical_checks_passed',pages:findings,limitations:['文字边界检查不能证明图形未遮挡文字；仍需人工逐页核对。','不验证论文结论和引用事实。']};
   await fs.writeFile(path.join(directory,'render-report.json'),JSON.stringify(report,null,2));
-  return {...result,pdf,previews:images.map(n=>path.join(directory,n)),renderStatus:report.status,renderReport:report,visualReview:'human_review_required'};
+  const pageWarnings=findings.flatMap(page=>page.warnings.map(text=>`第 ${page.page} 页${text}`));
+  return {...result,warnings:[...(result.warnings||[]),...pageWarnings],pdf,previews:images.map(n=>path.join(directory,n)),renderStatus:report.status,renderReport:report,visualReview:'human_review_required'};
 }

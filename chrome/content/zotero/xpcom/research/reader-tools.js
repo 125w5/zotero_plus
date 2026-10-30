@@ -21,6 +21,13 @@
   for(let i=0;!reader&&i<200;i++){await Zotero.Promise.delay(50);reader=E.readerForAttachment(attachmentID);}
   if(!reader)throw Error('PDF 阅读器未能加载，请重试已有标签');await reader._initPromise;return reader;
  };
+ // ReaderInstance.navigate moves only the reader itself. An explicit locate
+ // from another pane must also bring that reader's tab or window forward.
+ E.showReader=reader=>{
+  let tabs=reader?._window?.Zotero_Tabs;
+  if(reader?.tabID&&tabs){if(tabs.selectedID!==reader.tabID)tabs.select(reader.tabID,true);}
+  else if(reader?._window&&!reader._window.closed)reader._window.focus?.();
+ };
  E.readerSelection=reader=>{
   const core=reader._internalReader,view=core?._lastView||core?._primaryView;
   const ranges=view?._selectionRanges;
@@ -34,58 +41,102 @@
   if(!selection?.position?.rects?.length)throw Error('请先选择 PDF 文字');
   const core=reader._internalReader;E.assertReaderWritable(reader,Zotero.Items.get(selection.attachmentID));
   const positions=type==='strikeout'?Geometry.strikePositions(selection.position):[clone(selection.position)];
-  const created=[];
+  const created=[],exclusions=[];
   for(const position of positions){
    if(type!=='strikeout'){position.rects=Geometry.lineRects(position.rects);if(position.nextPageRects)position.nextPageRects=Geometry.lineRects(position.nextPageRects);}
-   const a={type:type==='strikeout'?'ink':type,color:type==='strikeout'?'#e33b46':type==='underline'?'#2ea8e5':'#ffd400',text:selection.text,comment:'',position,pageLabel:String(position.pageIndex+1),sortIndex:selection.sortIndex||String(position.pageIndex).padStart(5,'0')+'|000000|00000',tags:type==='strikeout'?[{name:'删除线'}]:[]};
-   created.push(core._annotationManager.addAnnotation(Cu.cloneInto(a,reader._iframeWindow)));
+   const a={type:type==='strikeout'?'ink':type,color:type==='strikeout'?'#e33b46':type==='underline'?'#2ea8e5':'#ffd400',text:selection.text,comment:'',position,pageLabel:String(position.pageIndex+1),sortIndex:selection.sortIndex||String(position.pageIndex).padStart(5,'0')+'|000000|00000',tags:type==='strikeout'?[{name:'删除线'},{name:'easysch:material-exclude'}]:[]};
+   const annotation=core._annotationManager.addAnnotation(Cu.cloneInto(a,reader._iframeWindow));created.push(annotation);
+   if(type==='strikeout'&&annotation?.id){
+    const rects=position.pageIndex===selection.position.pageIndex?selection.position.rects:selection.position.nextPageRects;
+    exclusions.push([selection.attachmentID+':'+annotation.id,{text:selection.text,position:{pageIndex:position.pageIndex,rects:clone(rects||[])}}]);
+   }
+  }
+  // Zotero intentionally has no annotationText for ink. Keep the exact quote
+  // beside its native key so a persistent strike can exclude only that text;
+  // removing the native marker makes the record inert without deleting prose.
+  if(exclusions.length){
+   const apply=quotes=>{quotes||={};for(const [key,value]of exclusions)quotes[key]=value;return quotes;};
+   const saved=E.store.updateBranch?E.store.updateBranch('materialExclusionQuotes',apply):E.store.update(state=>{state.materialExclusionQuotes=apply(state.materialExclusionQuotes);});
+   saved.catch(Zotero.logError);
   }
   core._lastView?.clearSelection();core._primaryView?.clearSelection();core.setSelectedAnnotations(Cu.cloneInto(created.map(a=>a.id),reader._iframeWindow));return created;
  };
  E.openReaderNote=async(noteID,reader)=>{
   const note=await Zotero.Items.getAsync(noteID);if(!note||note.deleted)throw Error('关联笔记已移入回收站');
-  const win=reader?._window||Zotero.getMainWindow(),pane=win.ZoteroContextPane;
-  if(!pane?.context)throw Error('请先在中央标签打开 PDF');
+  const win=reader?._window||Zotero.getMainWindow(),pane=win?.ZoteroContextPane;
+  // A separate reader window has no right pane; open the note in its own window.
+  if(!pane?.context){await Zotero.Notes.open(note.id,undefined,{openInWindow:true});return null;}
   if(reader?.tabID)win.Zotero_Tabs.select(reader.tabID);
   pane.collapsed=false;pane.context.mode='notes';pane.context._selectNotesContext(note.libraryID);
-  const context=pane.context._getNotesContext(note.libraryID);context._getCurrentEditor()?.saveSync();context._setPinnedNote(note);pane.updateAddToNote();return context;
+  const context=pane.context._getNotesContext(note.libraryID);context._setPinnedNote(note);pane.updateAddToNote();return context;
  };
- let noteLinkRevision=-1,noteLinkIndex=new Map();
- E.noteLinkForAnnotation=(attachmentID,key)=>{
+ // After the note and its marker are saved, failing to show the note must not
+ // look like a failed save: a retry would create a second copy.
+ E.openSavedReaderNote=async(noteID,reader)=>{
+  try{await E.openReaderNote(noteID,reader);return '';}
+  catch(error){Zotero.logError(error);return '笔记已保存，但未能打开：'+error.message+'。可在文库中该论文下打开这条笔记';}
+ };
+ let noteLinkRevision=-1,noteLinkIndex=new Map(),noteLinksByNote=new Map(),noteLinksByMarker=new Map(),noteLinksByAttachment=new Map();
+ const refreshNoteLinks=()=>{
   const revision=E.store.branchRevision?.('readerNoteLinks')??E.store.revision;
   if(revision===undefined||revision!==noteLinkRevision){
-   noteLinkRevision=revision;noteLinkIndex=new Map();
-   for(const link of Object.values(E.store.get('readerNoteLinks')||{})){
+   noteLinkRevision=revision;noteLinkIndex=new Map();noteLinksByNote=new Map();noteLinksByMarker=new Map();noteLinksByAttachment=new Map();
+   for(const [key,link] of Object.entries(E.store.get('readerNoteLinks')||{})){
     const lookup=link.attachmentID+':'+link.annotationKey,entries=noteLinkIndex.get(lookup)||[];entries.push(link);noteLinkIndex.set(lookup,entries);
+    const notes=noteLinksByNote.get(link.noteID)||[];notes.push([key,link]);noteLinksByNote.set(link.noteID,notes);
+    const markers=noteLinksByMarker.get(link.annotationID)||[];markers.push(link);noteLinksByMarker.set(link.annotationID,markers);
+    let siblings=noteLinksByAttachment.get(link.attachmentID)||[];siblings.push(link);noteLinksByAttachment.set(link.attachmentID,siblings);
    }
   }
+ };
+ const updateNoteLinks=async update=>{
+  if(E.store.updateBranch)await E.store.updateBranch('readerNoteLinks',links=>{links||={};update(links);return links;});
+  else await E.store.update(state=>{state.readerNoteLinks||={};update(state.readerNoteLinks);});
+  noteLinkRevision=-1;
+ };
+ const noteLink=(annotation,note,extra={})=>({noteID:note.id,annotationID:annotation.id,annotationKey:annotation.key,attachmentID:annotation.parentID,pageIndex:JSON.parse(annotation.annotationPosition).pageIndex,...extra});
+ E.noteLinkForAnnotation=(attachmentID,key)=>{
+  refreshNoteLinks();
   return noteLinkIndex.get(attachmentID+':'+key)?.find(link=>Zotero.Items.get(link.noteID)?.deleted===false);
  };
+ // The same selection saved again with the same generated text reopens its note.
+ // Another translation of that selection is different content and gets its own.
+ E.selectionNoteLink=(attachmentID,position,comment)=>{
+  refreshNoteLinks();let place=value=>JSON.stringify([value?.pageIndex,value?.rects||null,value?.nextPageRects||null]),expected=place(position);
+  return (noteLinksByAttachment.get(attachmentID)||[]).find(link=>{
+   if(link.generatedComment!==comment||link.pageIndex!==position?.pageIndex||Zotero.Items.get(link.noteID)?.deleted!==false)return false;
+   let annotation=Zotero.Items.get(link.annotationID);if(annotation?.deleted!==false)return false;
+   try{return place(JSON.parse(annotation.annotationPosition))===expected;}catch{return false;}
+  })||null;
+ };
  E.rememberNoteLink=async(annotation,note,extra={})=>{
-  const link={noteID:note.id,annotationID:annotation.id,annotationKey:annotation.key,attachmentID:annotation.parentID,pageIndex:JSON.parse(annotation.annotationPosition).pageIndex,...extra};
-  await E.store.update(s=>{s.readerNoteLinks||={};s.readerNoteLinks[note.id+':'+annotation.key]=link;});return link;
+  const link=noteLink(annotation,note,extra);
+  await updateNoteLinks(links=>{links[note.id+':'+annotation.key]=link;});return link;
  };
  E.discoverNoteLinks=async note=>{
   if(!note?.isNote?.())return;
-  const html=note.getNote(),parser=new (Zotero.getMainWindow().DOMParser)(),doc=parser.parseFromString(html,'text/html'),keys=new Set();
+  const html=note.getNote();if(!/annotation=|data-annotation/.test(html))return;
+  const parser=new (Zotero.getMainWindow().DOMParser)(),doc=parser.parseFromString(html,'text/html'),keys=new Set();
   for(const a of doc.querySelectorAll('a[href*="annotation="]')){const k=a.getAttribute('href').match(/[?&]annotation=([A-Z0-9]{8})/);if(k)keys.add(k[1]);}
   for(const a of doc.querySelectorAll('[data-annotation]'))try{const d=JSON.parse(decodeURIComponent(a.dataset.annotation));if(d.annotationKey)keys.add(d.annotationKey);}catch(_){}
-  for(const key of keys){const annotation=await Zotero.Items.getByLibraryAndKeyAsync(note.libraryID,key);if(!annotation?.isAnnotation?.())continue;const exists=Object.values(E.store.get('readerNoteLinks')||{}).some(x=>x.noteID===note.id&&x.annotationKey===key);if(!exists)await E.rememberNoteLink(annotation,note,{legacy:true});}
+  refreshNoteLinks();const known=new Set((noteLinksByNote.get(note.id)||[]).map(([,link])=>link.annotationKey)),discovered=[];
+  for(const key of keys){if(known.has(key))continue;const annotation=await Zotero.Items.getByLibraryAndKeyAsync(note.libraryID,key);if(annotation?.isAnnotation?.())discovered.push(noteLink(annotation,note,{legacy:true}));}
+  if(discovered.length)await updateNoteLinks(links=>{for(const link of discovered)links[note.id+':'+link.annotationKey]??=link;});
  };
  E.notePage=note=>{
-  const links=Object.values(E.store.get('readerNoteLinks')||{}).filter(x=>x.noteID===note.id);if(links.length)return Math.min(...links.map(x=>x.pageIndex));
+  refreshNoteLinks();const links=noteLinksByNote.get(note.id);if(links?.length)return Math.min(...links.map(([,link])=>link.pageIndex));
   const pages=[...note.getNote().matchAll(/[?&](?:amp;)?page=(\d+)/g)].map(m=>Number(m[1])-1);return pages.length?Math.min(...pages):Infinity;
  };
  E.syncNoteLinks=async ids=>{
   for(const id of ids){const note=await Zotero.Items.getAsync(id);if(!note?.isNote())continue;await E.discoverNoteLinks(note);
-   for(const [key,link]of Object.entries(E.store.get('readerNoteLinks')||{}).filter(([,l])=>l.noteID===id)){
+   refreshNoteLinks();for(const [key,link]of noteLinksByNote.get(id)||[]){
     const annotation=await Zotero.Items.getAsync(link.annotationID);if(!annotation)continue;
     if(note.deleted&&!annotation.deleted){
      // Keep a shared marker when another live note still uses it.
-     const other=Object.values(E.store.get('readerNoteLinks')||{}).some(l=>l.annotationID===link.annotationID&&l.noteID!==id&&!Zotero.Items.get(l.noteID)?.deleted);
+     const other=(noteLinksByMarker.get(link.annotationID)||[]).some(l=>l.noteID!==id&&!Zotero.Items.get(l.noteID)?.deleted);
      if(other)continue;
-     await E.store.update(s=>{s.readerNoteLinks[key].trashedWithNote=true;});await Zotero.Items.trashTx(annotation.id);
-    }else if(!note.deleted&&annotation.deleted&&link.trashedWithNote){annotation.deleted=false;await annotation.saveTx();await E.store.update(s=>{s.readerNoteLinks[key].trashedWithNote=false;});}
+     await updateNoteLinks(links=>{links[key].trashedWithNote=true;});await Zotero.Items.trashTx(annotation.id);
+    }else if(!note.deleted&&annotation.deleted&&link.trashedWithNote){annotation.deleted=false;await annotation.saveTx();await updateNoteLinks(links=>{links[key].trashedWithNote=false;});}
    }
   }
  };
@@ -93,10 +144,10 @@
   const attachment=Zotero.Items.get(reader.itemID);let annotation=Zotero.Items.getByLibraryAndKey(attachment.libraryID,key);
   for(let i=0;!annotation&&i<60;i++){await Zotero.Promise.delay(100);annotation=Zotero.Items.getByLibraryAndKey(attachment.libraryID,key);}
   if(!annotation)throw Error('批注尚未保存，请稍候重试');
-  const existing=E.noteLinkForAnnotation(reader.itemID,key);if(existing){await E.openReaderNote(existing.noteID,reader);return existing;}
+  const existing=E.noteLinkForAnnotation(reader.itemID,key);if(existing){await E.openReaderNote(existing.noteID,reader);return {...existing,reused:true};}
   E.assertReaderWritable(reader,attachment);
   const note=await Zotero.EditorInstance.createNoteFromAnnotations([annotation],{parentID:attachment.parentID||undefined,collectionID:!attachment.parentID?attachment.getCollections()[0]:undefined});
-  const link=await E.rememberNoteLink(annotation,note);await E.openReaderNote(note.id,reader);return link;
+  const link=await E.rememberNoteLink(annotation,note);let warning=await E.openSavedReaderNote(note.id,reader);return warning?{...link,warning}:link;
  };
  E.saveAssetNote=async(asset,{reader:sourceReader}={})=>{
   if(!asset?.attachmentID||!asset?.id)throw Error('图片没有可定位的 PDF 来源，无法保存为关联笔记');
@@ -131,19 +182,31 @@
   const toolbar=({reader,doc,append})=>{
    if(reader.type!=='pdf')return;
    const b=doc.createElement('button');b.className='toolbar-button easysch-rapid-open';b.type='button';b.textContent='速读';b.title='依据当前论文阅读问题、方法、结果与原始图表';b.setAttribute('aria-label','切换速读');b.setAttribute('aria-pressed',E.isReaderRapidReadingOpen(reader)?'true':'false');b.style.cssText='width:auto;padding:4px 9px;font:inherit;color:inherit;border-radius:6px;-moz-window-dragging:no-drag';b.onclick=()=>E.toggleReaderRapidReading(reader).catch(Zotero.logError);append(b);
-   reader._initPromise.then(()=>{E.queueReaderRapidReading?.(reader.itemID,{origin:'open'});return E.attachReaderInteractions(reader);}).catch(e=>Zotero.logError(e));
+   reader._initPromise.then(()=>{if(E.queueReaderPreparation)E.queueReaderPreparation(reader,{origin:'open'});else E.queueReaderRapidReading?.(reader.itemID,{origin:'open'});return E.attachReaderInteractions(reader);}).catch(e=>Zotero.logError(e));
   };
   const context=({reader,params,append})=>{
-   const ids=params.ids||[];for(const id of ids.slice(0,1)){append({label:'打开或保存为笔记',onCommand:()=>E.noteFromAnnotation(reader,id).catch(e=>Zotero.logError(e))});}
+   const ids=params.ids||[];for(const id of ids.slice(0,1)){
+    // A read-only source can still open its linked note, but cannot create one.
+    let disabled=!E.noteLinkForAnnotation(reader.itemID,id)&&!!E.readerWriteIssue(reader,Zotero.Items.get(reader.itemID)),run=()=>E.noteFromAnnotation(reader,id);
+    append({label:'打开或保存为笔记',disabled,onCommand:E.readerCommand?E.readerCommand(reader,'打开或保存为笔记',run,result=>result?.warning||''):()=>run().catch(e=>Zotero.logError(e))});
+   }
   };
   Zotero.Reader.registerEventListener('renderToolbar',toolbar,E.id);Zotero.Reader.registerEventListener('createAnnotationContextMenu',context,E.id);
   E.readerToolHandlers={toolbar,context};
-  let queue=Promise.resolve();
+  const pendingNotes=new Set();let scheduled=false,syncing=false;
+  const flushNotes=async()=>{
+   scheduled=false;if(syncing)return;syncing=true;
+   try{while(pendingNotes.size){const ids=[...pendingNotes];pendingNotes.clear();await E.syncNoteLinks(ids);}}
+   catch(error){Zotero.logError(error);}
+   finally{syncing=false;if(pendingNotes.size&&!scheduled){scheduled=true;E.setTimeout(flushNotes,60);}}
+  };
   E.noteLinkObserver=Zotero.Notifier.registerObserver({notify(event,type,ids){
    if(type!=='item'||!['add','trash','modify'].includes(event))return;
    const noteIDs=ids.filter(id=>Zotero.Items.get(id)?.isNote());if(!noteIDs.length)return;
-   // Run after the notifying transaction; serialize without dropping events.
-   E.setTimeout(()=>{queue=queue.then(()=>E.syncNoteLinks(noteIDs)).catch(e=>Zotero.logError(e));},0);
+   // Run after the notifying transaction and coalesce repeated edits of the
+   // same note instead of building a queue of full HTML parses while typing.
+   for(const id of noteIDs)pendingNotes.add(id);
+   if(!scheduled&&!syncing){scheduled=true;E.setTimeout(flushNotes,60);}
   }},['item'],'easysch-note-links');
  };
  E.prepareNoteStyles=async editor=>{
@@ -194,21 +257,33 @@
   if(editor.getCurrentInstance()!==instance||noteID&&editor.item?.id!==noteID)throw Error('当前笔记已切换，请返回原笔记重新插入');
   instance._postMessage({action:'insertHTML',pos:null,html});return html;
  };
+ // Hovering only previews a highlight. It must not upgrade to a paid model or
+ // rewrite the workspace file, so results stay in this bounded memory cache.
+ const hoverTranslations=new Map(),HOVER_TRANSLATION_LIMIT=200;
+ E.hoverTranslation=async(text,signal)=>{
+	let key=String(text||'').trim(),cached=hoverTranslations.get(key);
+	if(cached)return cached;
+	let result=await E.quickTranslate(key,signal,{allowModelFallback:false,persist:false});
+	hoverTranslations.set(key,result);
+	while(hoverTranslations.size>HOVER_TRANSLATION_LIMIT)hoverTranslations.delete(hoverTranslations.keys().next().value);
+	return result;
+ };
  E.attachReaderInteractions=async reader=>{
   const view=reader._internalReader?._primaryView;if(!view)return;await view.initializedPromise;
   const win=Cu.unwaiveXrays(view._iframeWindow),doc=win?.document;if(!doc||doc._easyschInteractions)return;doc._easyschInteractions=true;
   const parent=Zotero.Items.get(reader.itemID)?.parentItem;E._noteMigrationJobs||=new Map();if(parent&&!E._noteMigrationJobs.has(parent.id))E._noteMigrationJobs.set(parent.id,(async()=>{for(const note of Zotero.Items.get(parent.getNotes()))await E.discoverNoteLinks(note);})().catch(e=>{E._noteMigrationJobs.delete(parent.id);Zotero.logError(e);}));
   const Margin=ChromeUtils.importESModule('chrome://zotero/content/research/shared/reader-margin-comments.mjs');await Margin.installMarginComments(E,reader,view,{Zotero,Cu});
-  let timer,hideTimer,currentID;const outer=reader._iframeWindow.document;const tip=outer.createElement('div');tip.className='easysch-annotation-hover';tip.hidden=true;outer.body.append(tip);
-  const hideNow=()=>{E.clearTimeout(timer);E.clearTimeout(hideTimer);tip.hidden=true;currentID=null;};
-  const hide=()=>{E.clearTimeout(timer);E.clearTimeout(hideTimer);hideTimer=E.setTimeout(()=>{tip.hidden=true;currentID=null;},250);};tip.onpointerenter=()=>E.clearTimeout(hideTimer);tip.onpointerleave=hide;
+  let timer,hideTimer,currentID,hoverController;const outer=reader._iframeWindow.document;const tip=outer.createElement('div');tip.className='easysch-annotation-hover';tip.hidden=true;outer.body.append(tip);
+  const stopHoverTranslation=()=>{hoverController?.abort();hoverController=null;};
+  const hideNow=()=>{E.clearTimeout(timer);E.clearTimeout(hideTimer);stopHoverTranslation();tip.hidden=true;currentID=null;};
+  const hide=()=>{E.clearTimeout(timer);E.clearTimeout(hideTimer);hideTimer=E.setTimeout(()=>{stopHoverTranslation();tip.hidden=true;currentID=null;},250);};tip.onpointerenter=()=>E.clearTimeout(hideTimer);tip.onpointerleave=hide;
   const hit=e=>{const p=view.pointerEventToPosition(e);return p&&view.getSelectableAnnotations(p)?.find(a=>a.comment||a.text||E.noteLinkForAnnotation(reader.itemID,a.id));};
   doc.addEventListener('pointermove',e=>{if(e.buttons||view._selectionRanges?.some(r=>!r.collapsed)){hide();return;}const a=hit(e);if(!a){hide();return;}E.clearTimeout(hideTimer);if(currentID===a.id&&!tip.hidden)return;E.clearTimeout(timer);const x=e.clientX,y=e.clientY;timer=E.setTimeout(()=>{
    currentID=a.id;tip.replaceChildren();const link=E.noteLinkForAnnotation(reader.itemID,a.id),title=outer.createElement('small');title.textContent=link?'关联笔记 · 双击打开':'批注';title.style.color='GrayText';tip.append(title);
    const isGenerated=link?.generatedComment===a.comment||link?.translation&&a.comment?.endsWith(link.translation);
    if(link?.translation){const translated=outer.createElement('div');translated.textContent=link.translation;translated.style.cssText=isGenerated?'font-size:13px':'font-size:12px;color:GrayText';tip.append(translated);}
    if(!isGenerated){const body=outer.createElement('div');body.textContent=a.comment||'';tip.append(body);}
-   if(a.text&&!link?.translation){const translated=outer.createElement('small');translated.style.cssText='display:block;color:GrayText;font-size:12px';tip.prepend(translated);E.quickTranslate(a.text).then(r=>{if(currentID===a.id)translated.textContent=r.text;}).catch(()=>{});}
+   stopHoverTranslation();if(a.text&&!link?.translation){const translated=outer.createElement('small');translated.style.cssText='display:block;color:GrayText;font-size:12px';tip.prepend(translated);let Controller=Zotero.getMainWindow?.()?.AbortController||outer.defaultView.AbortController,controller=hoverController=new Controller();E.hoverTranslation(a.text,controller.signal).then(r=>{if(currentID===a.id&&!controller.signal.aborted)translated.textContent=r.text;}).catch(()=>{});}
    if(link){
     const note=Zotero.Items.get(link.noteID),preview=outer.createElement('div');preview.style.cssText='max-height:140px;overflow:auto;font-size:12px;color:GrayText';
     // Sanitize the current note excerpt; hover never loads external images.

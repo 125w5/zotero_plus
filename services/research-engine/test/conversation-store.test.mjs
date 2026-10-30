@@ -7,6 +7,13 @@ import * as C from '../../../chrome/content/zotero/research/shared/conversation-
 import * as A from '../../../chrome/content/zotero/research/shared/chat-attachments.mjs';
 const source=await readFile(new URL('../../../chrome/content/zotero/xpcom/research/conversations.js',import.meta.url),'utf8');
 function setup(initial={},withRevision=false){let data=structuredClone(initial),sequence=0,writes=0,revision=1,reads=0,normalizations=0;const tracked={...C,normalizeConversations(value){normalizations++;return C.normalizeConversations(value);}},E={store:{get revision(){return withRevision?revision:undefined;},get(key){reads++;return key?data[key]:data;},async update(fn){await Promise.resolve();writes++;fn(data);revision++;}}};vm.runInNewContext(source,{Zotero:{Research:E,Utilities:{randomString:()=>String(++sequence)},logError:error=>{throw error;}},ChromeUtils:{importESModule:uri=>uri.endsWith('chat-attachments.mjs')?A:tracked}});return {S:E.workbenchConversations,store:E.store,get data(){return data;},get writes(){return writes;},get reads(){return reads;},get normalizations(){return normalizations;}};}
+test('naming an empty conversation persists it and later messages cannot overwrite a deliberate name',async()=>{
+ const f=setup(),session=await f.S.create({title:'新研究对话',libraryScopeKey:'C9'});assert.equal(f.S.list().length,0);
+ await f.S.rename(session.id,'  新研究对话  ');assert.equal(f.S.get(session.id).title,'新研究对话');assert.equal(f.S.list().length,1);assert.equal(f.data.researchWorkbench.sessions[0].id,session.id);
+ await f.S.append(session.id,{role:'user',text:'不应覆盖人工名称'});assert.equal(f.S.get(session.id).title,'新研究对话');assert.equal(f.S.get(session.id).libraryScopeKey,'C9');
+ await assert.rejects(f.S.rename(session.id,'  '),/1 至 120/);await assert.rejects(f.S.rename(session.id,'x'.repeat(121)),/1 至 120/);assert.equal(f.S.get(session.id).messages[0].text,'不应覆盖人工名称');
+});
+
 test('legacy normalization gives stable IDs while retaining Unicode, formulas, sources and model settings',()=>{
  const prior={messages:[{role:'assistant',text:'$x_i^2$ 与中文解释',sources:[{attachmentID:31,position:{rects:[[1,2,3,4]]}}]}],draft:'中文组词草稿',modelID:'configured-model',thinkingLevel:'low',executionMode:'ask'};
  const first=C.normalizeConversations(prior),second=C.normalizeConversations(prior);

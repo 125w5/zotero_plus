@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {renderAssemblyWritingResult} from './assembly-writing-result.mjs';
+import {dataRoleLabel} from './dataset-role.mjs';
 
 const typeNames={table:'表格',formula:'公式',image:'图片',citation:'引用',placeholder:'待填内容',heading:'小标题',list:'列表',crossref:'交叉引用'};
 export function moduleWordCount(block){
@@ -40,7 +41,7 @@ export function renderModuleDetails(U,host,b,{el,button,field,snapshot,changed,p
   if(!material){row.append(el('p','此来源当前不可用','muted'));sourceTray.append(row);continue;}
   const heading=el('div',undefined,'module-source-heading'),preview=act(U.A.titleFor(material),()=>materialDetails(material),heading,'module-source-name');preview.dataset.action='preview-material';preview.dataset.materialId=material.id;preview.title='查看此模块关联的素材说明与原文';
   const locate=act('↗',()=>openMaterial(material),heading,'module-source-locate');locate.setAttribute('aria-label','定位此素材原文');locate.title='定位此素材原文';locate.dataset.action='locate-module-source';row.append(heading);
-  const meta=el('div',undefined,'module-source-meta');meta.append(el('span',[material.paperTitle||material.anchor?.paperTitle,Number.isInteger(material.anchor?.pageIndex)?'第 '+(material.anchor.pageIndex+1)+' 页':({note:'笔记',annotation:'批注',formula:'公式',image:'图片',experiment:'实验素材'})[material.kind]||'素材'].filter(Boolean).join(' · ')));
+  const meta=el('div',undefined,'module-source-meta');meta.append(el('span',[material.paperTitle||material.anchor?.paperTitle,Number.isInteger(material.anchor?.pageIndex)?'第 '+(material.anchor.pageIndex+1)+' 页':(material.kind==='experiment'?dataRoleLabel(material):({note:'笔记',annotation:'批注',formula:'公式',image:'图片'})[material.kind])||'素材'].filter(Boolean).join(' · ')));
   const role=el('select');role.setAttribute('aria-label','素材在本模块的用途');for(const [value,label]of [['primary','主要素材'],['support','辅助素材'],['reference','参考方向']]){const option=el('option',label);option.value=value;role.append(option);}role.value=link.role||'primary';role.dataset.materialId=material.id;role.disabled=!!b.locked;
   role.onchange=guard(()=>{if(b.locked)return;snapshot();link.role=role.value;b.revision++;b.review='missing';changed();});meta.append(role);row.append(meta);sourceTray.append(row);
  }

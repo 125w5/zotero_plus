@@ -2,9 +2,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {recentResults,stableMaterialResults,materialResultKey,captureMaterialViewport,restoreMaterialViewport} from '../../chrome/content/zotero/research/shared/material-browser.mjs';
-import {catalogFor,catalogResults,materialRecordType} from '../../chrome/content/zotero/research/shared/material-catalog.mjs';
+import {catalogFor,catalogResults,materialRecordType,materialCatalogState} from '../../chrome/content/zotero/research/shared/material-catalog.mjs';
 
 const rows=ids=>ids.map(id=>({m:{id,summary:'用户说明 '+id,sourceText:'Original '+id}}));
+test('partially saved catalog state receives safe selection defaults without replacing explicit scope or filters',()=>{
+ const project={id:'p',ui:{catalog:{topic:'',sourceScope:'project',facets:{year:'2024'}}}},saved=project.ui.catalog,state=materialCatalogState(project);
+ assert.equal(state,saved);assert.deepEqual(state.selection,[]);assert.equal(state.selection.includes('source'),false);assert.equal(state.topic,'');assert.equal(state.sourceScope,'project');assert.deepEqual(state.facets,{year:'2024'});assert.equal(state.sort,'relevance');
+ state.selection=['kept'];assert.equal(materialCatalogState(project).selection[0],'kept');assert.deepEqual(materialCatalogState({id:'new'}),{topic:'new',type:'',sort:'relevance',selection:[]});
+});
 test('selecting a recent material does not reshuffle an already visible result set',()=>{
  const original=rows(['a','b','c']),before=JSON.stringify(original);
  const initial=recentResults(original,{recentMaterials:['c']},''),refreshed=recentResults(original,{recentMaterials:['b','c']},'');

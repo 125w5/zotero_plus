@@ -1,0 +1,2250 @@
+{
+  "title": "EasySch · 设计、操作与工程交接手册",
+  "date": "2026-10-27",
+  "sections": [
+    {
+      "id": "manual-start",
+      "title": "这份手册如何阅读与交接",
+      "group": "阅读指南"
+    },
+    {
+      "id": "workspace-shell",
+      "title": "全局导航、原生文库与研究工作区的边界",
+      "group": "工作台、资料与对话"
+    },
+    {
+      "id": "workspace-files",
+      "title": "本次资料、文件留存、预览与拖动",
+      "group": "工作台、资料与对话"
+    },
+    {
+      "id": "workspace-conversations",
+      "title": "研究对话、命名、研究选择与可执行 AI 操作",
+      "group": "工作台、资料与对话"
+    },
+    {
+      "id": "workspace-discovery",
+      "title": "文献检索：研究范围、指标、继续加载与真实下载",
+      "group": "工作台、资料与对话"
+    },
+    {
+      "id": "workspace-corpus",
+      "title": "语料库与 Zotero 文库导入",
+      "group": "工作台、资料与对话"
+    },
+    {
+      "id": "workspace-project-preparation",
+      "title": "创建论文项目与准备本地文献、精读和结构参考",
+      "group": "工作台、资料与对话"
+    },
+    {
+      "id": "workspace-feasibility",
+      "title": "可行性方案、版本检索、局部修改与装配衔接",
+      "group": "工作台、资料与对话"
+    },
+    {
+      "id": "workspace-settings-storage",
+      "title": "设置、凭据、数据落点与后台任务生命周期",
+      "group": "工作台、资料与对话"
+    },
+    {
+      "id": "reader-map",
+      "title": "阅读器的区域、来源与基本操作",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "reader-translation",
+      "title": "选区机翻、整篇译文与人工修订",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "reader-rapid-reading",
+      "title": "快速概览与详细速读的分工",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "reader-rapid-edit",
+      "title": "速读选段解释、忠实改写与手工编辑",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "reader-image-evidence",
+      "title": "图片与表格证据：列表、原图和完整解读",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "reader-references",
+      "title": "参考文献：题录、摘要、本文引用与公开全文",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "reader-annotations-notes",
+      "title": "原文批注、关联笔记与装配批注的边界",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "reader-ai-conversation",
+      "title": "阅读器 AI：共享会话、停靠、附件与答案落点",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "reader-preparation-performance",
+      "title": "打开即准备：队列、缓存、取消与退出",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "reader-visual-contract",
+      "title": "视觉约定、字体尺度与后续维护",
+      "group": "阅读器与证据"
+    },
+    {
+      "id": "writing-project-scope",
+      "title": "从项目与研究范围开始",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "writing-literature-materials",
+      "title": "选文献、精读与结构参考，再整理完整素材",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "feasibility-plan-version",
+      "title": "可行性方案：四类结果、局部修改与版本",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "assembly-material-structure",
+      "title": "素材装配：章节、完整材料与自动匹配",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "assembly-direction-draft",
+      "title": "方向讨论与初稿：逐题确认、候选采用、部分缺口保留",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "assembly-refinement-annotations",
+      "title": "初稿细调、选段 AI、项目批注与撤销",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "assembly-verification-export",
+      "title": "来源核查、全文评估与正文导出",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "ppt-materials-weekly",
+      "title": "组会 PPT：入口、取材范围与本周研究汇报",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "ppt-template-outline",
+      "title": "PPT 模板、大纲编辑与 AI 结构建议",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "ppt-pages-contributions",
+      "title": "图文页面、个人实验、逐页编辑与真实预览",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "ppt-chat-outputs",
+      "title": "PPT 讨论、文件预览、成果留存与导出",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "writing-ppt-engineering",
+      "title": "模块、持久化、模型路由与性能边界",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "writing-ppt-build-handoff",
+      "title": "构建、测试、部署与接手顺序",
+      "group": "论文写作、PPT与工程"
+    },
+    {
+      "id": "design-principles",
+      "title": "设计判断：功能丰富，界面仍可顺手",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-layout",
+      "title": "空间骨架：导航、资料栏、工作区、上下文",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-type",
+      "title": "字体与文字：界面、论文、公式分别管理",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-color",
+      "title": "配色与主题：白色纸面、蓝灰工具、语义状态",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-material",
+      "title": "材质、边框、圆角与阴影如何分工",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-controls",
+      "title": "按钮、输入、菜单与选择器的操作语言",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-density",
+      "title": "信息密度、摘要展开与阅读连续性",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-motion",
+      "title": "动效、加载、取消与跨页面稳定性",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-data-memory",
+      "title": "内容、缓存与记忆：哪些能重建，哪些必须保留",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-state-contract",
+      "title": "选区、拖拽、焦点与上下文的共用契约",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-transfer",
+      "title": "迁移到下一款软件：先复制规则，再复制样式",
+      "group": "设计语言与交互规范"
+    },
+    {
+      "id": "design-checklist",
+      "title": "交接验收：怎样确认‘看起来一致’且‘真的能用’",
+      "group": "设计语言与交互规范"
+    }
+  ],
+  "sources": [
+    {
+      "path": "docs/reader-data-and-interaction-repair-2026-10-27.md",
+      "sha256": "9e2180836f2ee6031e4ec956e8635f742c43c3f57c78a79303930d90adbe5c2e",
+      "sections": [
+        {
+          "id": "manual-start",
+          "title": "这份手册如何阅读与交接",
+          "symbol": "本轮事实与验收范围",
+          "line": null
+        },
+        {
+          "id": "design-checklist",
+          "title": "交接验收：怎样确认‘看起来一致’且‘真的能用’",
+          "symbol": "最新验收与限制",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "docs/ui-style-alignment-2026-10-25.md",
+      "sha256": "655250abe3817276f55df65e81d8324bf1139e7c02147493f5a1aea227d19d17",
+      "sections": [
+        {
+          "id": "manual-start",
+          "title": "这份手册如何阅读与交接",
+          "symbol": "显示层统一与原生几何测量",
+          "line": null
+        },
+        {
+          "id": "design-layout",
+          "title": "空间骨架：导航、资料栏、工作区、上下文",
+          "symbol": "原生尺寸测量表",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/sidebar.js",
+      "sha256": "a772c7dfcfa88ea5396a531349231c9a939ac90789198a5139ac069d3b5d2110",
+      "sections": [
+        {
+          "id": "workspace-shell",
+          "title": "全局导航、原生文库与研究工作区的边界",
+          "symbol": "installNavigation / openLibraryReading / addViewMenu / openPageMenu",
+          "line": 76
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/library-workspace.mjs",
+      "sha256": "9cb8b75e792397a956821f0679561f151601f73d828415b48468f81aa80e6752",
+      "sections": [
+        {
+          "id": "workspace-shell",
+          "title": "全局导航、原生文库与研究工作区的边界",
+          "symbol": "installLibraryWorkspace / show / showProject / showItemScope / refreshScope",
+          "line": 11
+        },
+        {
+          "id": "workspace-settings-storage",
+          "title": "设置、凭据、数据落点与后台任务生命周期",
+          "symbol": "scope cache / dispose / ready wait",
+          "line": 89
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/library-scope.mjs",
+      "sha256": "a4702674c32b5703a76ef8c369ae414af5d46a9540ddb10e72e3547c4e274af7",
+      "sections": [
+        {
+          "id": "workspace-shell",
+          "title": "全局导航、原生文库与研究工作区的边界",
+          "symbol": "readNativeLibraryScope / syncLibraryScopeSession",
+          "line": 1
+        },
+        {
+          "id": "workspace-files",
+          "title": "本次资料、文件留存、预览与拖动",
+          "symbol": "libraryScopeReferences",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/main.js",
+      "sha256": "9b292d3288ab5cd72b04ac0b5bae100770ef19700d89cff659a72ce705d5ecea",
+      "sections": [
+        {
+          "id": "workspace-shell",
+          "title": "全局导航、原生文库与研究工作区的边界",
+          "symbol": "show / refresh / init",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/conversation-files.mjs",
+      "sha256": "16540a3f8d1dc162862882bf156e15e327e9b2bd6133f273533da6679faa80ba",
+      "sections": [
+        {
+          "id": "workspace-files",
+          "title": "本次资料、文件留存、预览与拖动",
+          "symbol": "mountConversationFiles / mountConversationFileDetail / receiveConversationDrop",
+          "line": 22
+        },
+        {
+          "id": "ppt-chat-outputs",
+          "title": "PPT 讨论、文件预览、成果留存与导出",
+          "symbol": "mountConversationFiles / mountConversationFileDetail / receiveConversationDrop",
+          "line": null
+        },
+        {
+          "id": "design-state-contract",
+          "title": "选区、拖拽、焦点与上下文的共用契约",
+          "symbol": "资料列表拖拽与选择",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/chat-attachments.js",
+      "sha256": "cd6ad880e22b2eefcae25807625d29c63d48e4e2d288ad8561db569fc9ab1f3c",
+      "sections": [
+        {
+          "id": "workspace-files",
+          "title": "本次资料、文件留存、预览与拖动",
+          "symbol": "chatAttachments.attach / fromItem / read / location / reveal",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/chat-attachments.mjs",
+      "sha256": "e1b00cc8e7bc34ca1c73f3a573584d05a355459adf6bd2509217657332600ca6",
+      "sections": [
+        {
+          "id": "workspace-files",
+          "title": "本次资料、文件留存、预览与拖动",
+          "symbol": "normalizeChatAttachments / history scope filtering",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/workspace-outputs.mjs",
+      "sha256": "88003adb7e0ec784f21b1b947806f8d9c4193eed39233d2edeeef30775fbd688",
+      "sections": [
+        {
+          "id": "workspace-files",
+          "title": "本次资料、文件留存、预览与拖动",
+          "symbol": "installWorkspaceOutputs / listDownloads / open / reveal",
+          "line": 28
+        },
+        {
+          "id": "workspace-discovery",
+          "title": "文献检索：研究范围、指标、继续加载与真实下载",
+          "symbol": "rememberDownload / listDownloads",
+          "line": 28
+        },
+        {
+          "id": "writing-literature-materials",
+          "title": "选文献、精读与结构参考，再整理完整素材",
+          "symbol": "rememberDownload / listDownloads",
+          "line": null
+        },
+        {
+          "id": "ppt-chat-outputs",
+          "title": "PPT 讨论、文件预览、成果留存与导出",
+          "symbol": "pptOutputCandidates / listPPT / rememberPPTExport / open / restore / reveal",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/agent-workbench.js",
+      "sha256": "ac98379a20ead3d2077d222125a2f1217610b30cc62a5471e33df9f72e188bff",
+      "sections": [
+        {
+          "id": "workspace-conversations",
+          "title": "研究对话、命名、研究选择与可执行 AI 操作",
+          "symbol": "initAgentWorkbench / chooseAgentDirection / switchAgentSession / createAgentSession / runAgentTask",
+          "line": 253
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/conversations.js",
+      "sha256": "c5ffd903193cfc22702c2f297ba4ef6427e1565543b1b9843c5d4ef0debbe062",
+      "sections": [
+        {
+          "id": "workspace-conversations",
+          "title": "研究对话、命名、研究选择与可执行 AI 操作",
+          "symbol": "workbenchConversations create / rename / select / append",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/conversation-session-actions.mjs",
+      "sha256": "b15cb3e62676e6880095a5cdb56399c413e93b1e27e2b3e27c758317ed04b810",
+      "sections": [
+        {
+          "id": "workspace-conversations",
+          "title": "研究对话、命名、研究选择与可执行 AI 操作",
+          "symbol": "mountSessionActions",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/conversation-question-choices.mjs",
+      "sha256": "79e28ce9bcc4623052b863088c19db1a3309876247c74ec8b9425421a4470316",
+      "sections": [
+        {
+          "id": "workspace-conversations",
+          "title": "研究对话、命名、研究选择与可执行 AI 操作",
+          "symbol": "mountConversationQuestionChoices",
+          "line": 18
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/conversation-interactions.mjs",
+      "sha256": "d4439c02077cb5221cf677a67c0e1ddcf13ee7405c009394cfe4cad33225063e",
+      "sections": [
+        {
+          "id": "workspace-conversations",
+          "title": "研究对话、命名、研究选择与可执行 AI 操作",
+          "symbol": "installConversationInteractions",
+          "line": 8
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/workbench-agent.js",
+      "sha256": "84606b1b42b021621c152508e3ac82c451c0ad32ede6719b03dcc1d0690f65b6",
+      "sections": [
+        {
+          "id": "workspace-conversations",
+          "title": "研究对话、命名、研究选择与可执行 AI 操作",
+          "symbol": "runWorkbenchTask / permission / ask_research_question / application tools",
+          "line": 38
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/clui-surface.mjs",
+      "sha256": "b6ddda11fd771a3fb80de481d420c7fbea44063d6f6ba6a99b8e2ca12cd18558",
+      "sections": [
+        {
+          "id": "workspace-conversations",
+          "title": "研究对话、命名、研究选择与可执行 AI 操作",
+          "symbol": "installCLUIChatBehavior",
+          "line": 47
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/discovery.js",
+      "sha256": "a188800f80f6937319434890c48d27089f1c240c65970567469d0cfd66b56148",
+      "sections": [
+        {
+          "id": "workspace-discovery",
+          "title": "文献检索：研究范围、指标、继续加载与真实下载",
+          "symbol": "initDiscovery / searchCollection / resolveDiscoveryDestination / renderDiscovery / initJournalTracking",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/discovery.js",
+      "sha256": "9b6f22640b1971207c6d4f123bf9794912cf59a4291d330604804853c2223c5f",
+      "sections": [
+        {
+          "id": "workspace-discovery",
+          "title": "文献检索：研究范围、指标、继续加载与真实下载",
+          "symbol": "searchPaperPage / acquirePDF / obtainPaper",
+          "line": 91
+        },
+        {
+          "id": "reader-references",
+          "title": "参考文献：题录、摘要、本文引用与公开全文",
+          "symbol": "referencesFromPDF / collectReferences",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/discovery-feed.mjs",
+      "sha256": "e975bdcd85a345a9c2117c0d7a7d89a75a7ec19bc44c8781e41094fd465e4abc",
+      "sections": [
+        {
+          "id": "workspace-discovery",
+          "title": "文献检索：研究范围、指标、继续加载与真实下载",
+          "symbol": "recommendation feed / cooldown / fallback",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/discovery-presentation.mjs",
+      "sha256": "5a334484f3c71dd0c63b9889a8afaec43fe429620a5d6b98cdc3c81d2fc666d8",
+      "sections": [
+        {
+          "id": "workspace-discovery",
+          "title": "文献检索：研究范围、指标、继续加载与真实下载",
+          "symbol": "discoveryPDFCandidate / discoveryMetricLabel",
+          "line": 1
+        },
+        {
+          "id": "design-density",
+          "title": "信息密度、摘要展开与阅读连续性",
+          "symbol": "检索结果展示",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/research-domain.mjs",
+      "sha256": "9ffe5500b72ea65fe69aef0153eef0fab9d9fe8b4cbb3120660b70adf1ff825d",
+      "sections": [
+        {
+          "id": "workspace-discovery",
+          "title": "文献检索：研究范围、指标、继续加载与真实下载",
+          "symbol": "normalizeResearchScope / matchesResearchScope / buildResearchQuery",
+          "line": 1
+        },
+        {
+          "id": "writing-project-scope",
+          "title": "从项目与研究范围开始",
+          "symbol": "inferResearchScope / normalizeResearchScope",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/discovery-journals.mjs",
+      "sha256": "8530b5f9d9ecb097f9c0f8c8e825a906d03f73d62fed0c64e2b1646de9d3a41f",
+      "sections": [
+        {
+          "id": "workspace-discovery",
+          "title": "文献检索：研究范围、指标、继续加载与真实下载",
+          "symbol": "TRACKED_JOURNALS / installJournalSubscriptions / installJournalSubscriptionTimer",
+          "line": 3
+        },
+        {
+          "id": "workspace-settings-storage",
+          "title": "设置、凭据、数据落点与后台任务生命周期",
+          "symbol": "installJournalSubscriptionTimer",
+          "line": 42
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/research-resources.html",
+      "sha256": "a6d00b60a8f6a9a89567bf03ed6ba86b516dfb8f8a849201d3e7aafb2fb0be74",
+      "sections": [
+        {
+          "id": "workspace-corpus",
+          "title": "语料库与 Zotero 文库导入",
+          "symbol": "Research corpus page controls",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/research-resources.mjs",
+      "sha256": "0813efde0e3e7e9986bdb49dfd87a0bc43c4ca509a8dc3ac2039c051fb83ed17",
+      "sections": [
+        {
+          "id": "workspace-corpus",
+          "title": "语料库与 Zotero 文库导入",
+          "symbol": "ResearchResourcesUI / collect / render",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/research-resources.js",
+      "sha256": "8cfe3fc35a15c9b9b298252f45054b8a80a92ac8c7259ce4dd39bb9b2bd9213c",
+      "sections": [
+        {
+          "id": "workspace-corpus",
+          "title": "语料库与 Zotero 文库导入",
+          "symbol": "corpus.create / saveEntry / collect / importProject / importZoteroLibrary / openResearchResources",
+          "line": 5
+        },
+        {
+          "id": "ppt-materials-weekly",
+          "title": "组会 PPT：入口、取材范围与本周研究汇报",
+          "symbol": "E.weeklyResearch / E.studio.createWeekly / E.startResearchActivity",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/corpus-library.mjs",
+      "sha256": "5e7d944a2790a5f8bbf501991f77858bfcfc49a3ca132c8736bffd67b5a842c1",
+      "sections": [
+        {
+          "id": "workspace-corpus",
+          "title": "语料库与 Zotero 文库导入",
+          "symbol": "corpusEntry / selectedCorpusMaterials / corpusResearchScope",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/manuscript-projects.js",
+      "sha256": "6a12c7a7dde83349b4e37cea51eed4aff22a79612d85de6aeb7649a2fe29b4cf",
+      "sections": [
+        {
+          "id": "workspace-project-preparation",
+          "title": "创建论文项目与准备本地文献、精读和结构参考",
+          "symbol": "initManuscriptProjects / creation dialog",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/notebook.js",
+      "sha256": "df8401051513d37bda47d8cdc3b8e223d3fdd5ea439c04df0db55c74e81a1430",
+      "sections": [
+        {
+          "id": "workspace-project-preparation",
+          "title": "创建论文项目与准备本地文献、精读和结构参考",
+          "symbol": "preparationLibrary / setPreparationSources / savePreparation / openProject / enterAssembly",
+          "line": 74
+        },
+        {
+          "id": "workspace-project-preparation",
+          "title": "创建论文项目与准备本地文献、精读和结构参考",
+          "symbol": "searchPreparationPapers / acquireRecommendedPapers / collectProjectMaterials / suggestMaterialRecommendations / applyMaterialRecommendations",
+          "line": 229
+        },
+        {
+          "id": "workspace-feasibility",
+          "title": "可行性方案、版本检索、局部修改与装配衔接",
+          "symbol": "assessmentCurrent / savePreparation / resumeAssembly / openProject / enterAssembly",
+          "line": 106
+        },
+        {
+          "id": "workspace-feasibility",
+          "title": "可行性方案、版本检索、局部修改与装配衔接",
+          "symbol": "evaluate / proposePlanEdit / editPlanField / adoptPlanForAssembly / confirm / stale",
+          "line": 236
+        },
+        {
+          "id": "writing-project-scope",
+          "title": "从项目与研究范围开始",
+          "symbol": "N.beginProject / N.savePreparation / N.openProject / N.resumeAssembly / N.enterAssembly",
+          "line": null
+        },
+        {
+          "id": "writing-literature-materials",
+          "title": "选文献、精读与结构参考，再整理完整素材",
+          "symbol": "N.preparationLibrary / N.searchPreparationPapers / N.acquireRecommendedPapers / N.collectProjectMaterials / N.saveReadingSelection",
+          "line": null
+        },
+        {
+          "id": "feasibility-plan-version",
+          "title": "可行性方案：四类结果、局部修改与版本",
+          "symbol": "N.evaluate / N.stale / N.assessmentCurrent / N.proposePlanEdit / N.editPlanField / N.adoptPlanForAssembly / N.confirm",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/notebook-preparation.mjs",
+      "sha256": "a76e7b473e335771befde636a51cddb19bbbb164c60c65bcad12464ec4d037a4",
+      "sections": [
+        {
+          "id": "workspace-project-preparation",
+          "title": "创建论文项目与准备本地文献、精读和结构参考",
+          "symbol": "installPreparationTools / savePaperSelection / showMaterials / chooseAssemblyMaterials",
+          "line": 1
+        },
+        {
+          "id": "workspace-feasibility",
+          "title": "可行性方案、版本检索、局部修改与装配衔接",
+          "symbol": "editField / plan selection / chooseAssemblyMaterials",
+          "line": 78
+        },
+        {
+          "id": "writing-literature-materials",
+          "title": "选文献、精读与结构参考，再整理完整素材",
+          "symbol": "installPreparationTools / renderLocal / renderOnline / showMaterials / chooseAssemblyMaterials",
+          "line": null
+        },
+        {
+          "id": "feasibility-plan-version",
+          "title": "可行性方案：四类结果、局部修改与版本",
+          "symbol": "editField / showMaterials",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/preparation-sources.mjs",
+      "sha256": "e139152af0b2471480f6cb76a1b0999d711af87c43c1716ee73c895b7d9e364e",
+      "sections": [
+        {
+          "id": "workspace-project-preparation",
+          "title": "创建论文项目与准备本地文献、精读和结构参考",
+          "symbol": "rankPreparationPapers / preparationScope / materialChoicePage",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/notebook.mjs",
+      "sha256": "889d734a60d7a09dc2e61b098d6fcef7e86767642afec6770f4da0b43ec7b592",
+      "sections": [
+        {
+          "id": "workspace-feasibility",
+          "title": "可行性方案、版本检索、局部修改与装配衔接",
+          "symbol": "input autosave / plan tabs / version search",
+          "line": 1
+        },
+        {
+          "id": "writing-project-scope",
+          "title": "从项目与研究范围开始",
+          "symbol": "scopeDraft / saveScope / startAssessment / scheduleRender",
+          "line": null
+        },
+        {
+          "id": "feasibility-plan-version",
+          "title": "可行性方案：四类结果、局部修改与版本",
+          "symbol": "renderPlan / planHistory / startAssessment / enterAssembly",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/academic-plan-edit.mjs",
+      "sha256": "54172750f3452566f86f4244571729e4b33b65ced44ab9cbbda9334a5ee8e427",
+      "sections": [
+        {
+          "id": "workspace-feasibility",
+          "title": "可行性方案、版本检索、局部修改与装配衔接",
+          "symbol": "planField / planSelection / replacePlanField",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/plan-edit-proposal.mjs",
+      "sha256": "e192569084b3258c5fb125935aa9cfc657338b53d3b35f17d799bbfc8dbade99",
+      "sections": [
+        {
+          "id": "workspace-feasibility",
+          "title": "可行性方案、版本检索、局部修改与装配衔接",
+          "symbol": "plan edit proposal comparison",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/settings.js",
+      "sha256": "577a0ef5ab0d72ea99c80b6bc08e24081feed01796677e3e30e9a9ef1cc7af1b",
+      "sections": [
+        {
+          "id": "workspace-settings-storage",
+          "title": "设置、凭据、数据落点与后台任务生命周期",
+          "symbol": "initSettings / loadSettings / loadProviderStatus",
+          "line": 2
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/workspace.html",
+      "sha256": "fd72ace0310fed5430d5bda88d0f4e02870369f3ded6905ca8c2c165e08c2cff",
+      "sections": [
+        {
+          "id": "workspace-settings-storage",
+          "title": "设置、凭据、数据落点与后台任务生命周期",
+          "symbol": "view-settings",
+          "line": 120
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/storage.js",
+      "sha256": "ddc90ee50767174ae878f364bce10e582c590a2adcabe37d29e937d094a5b95d",
+      "sections": [
+        {
+          "id": "workspace-settings-storage",
+          "title": "设置、凭据、数据落点与后台任务生命周期",
+          "symbol": "createStore / initStorage",
+          "line": 1
+        },
+        {
+          "id": "writing-ppt-engineering",
+          "title": "模块、持久化、模型路由与性能边界",
+          "symbol": "E.createStore / E.initStorage",
+          "line": null
+        },
+        {
+          "id": "design-data-memory",
+          "title": "内容、缓存与记忆：哪些能重建，哪些必须保留",
+          "symbol": "createStore / 原子写盘",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/zotero.js",
+      "sha256": "a71dd1319a34e8f3dfb7c4d2eaa20de497483166298e47fa9b96a8b4a17cf821",
+      "sections": [
+        {
+          "id": "workspace-settings-storage",
+          "title": "设置、凭据、数据落点与后台任务生命周期",
+          "symbol": "credentials",
+          "line": 243
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/app.js",
+      "sha256": "78ec95192a03c6509c1508c9ba1170b3f52f11295015dcf1655060473a3f9e04",
+      "sections": [
+        {
+          "id": "workspace-settings-storage",
+          "title": "设置、凭据、数据落点与后台任务生命周期",
+          "symbol": "application startup / shutdown",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/reader-tools.js",
+      "sha256": "a7f0d5944ae4bfdd2240690b69d144b7097f1a9d9570d0682b5c2aebee44c947",
+      "sections": [
+        {
+          "id": "reader-map",
+          "title": "阅读器的区域、来源与基本操作",
+          "symbol": "readerWriteIssue / openReaderReady / readerSelection / annotateSelection",
+          "line": 8
+        },
+        {
+          "id": "reader-image-evidence",
+          "title": "图片与表格证据：列表、原图和完整解读",
+          "symbol": "saveAssetNote",
+          "line": 101
+        },
+        {
+          "id": "reader-annotations-notes",
+          "title": "原文批注、关联笔记与装配批注的边界",
+          "symbol": "noteLinkForAnnotation / syncNoteLinks / installNoteTools",
+          "line": 54
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/reader-panes.js",
+      "sha256": "c0a953b09e7a20716c4f645d6107ed7d8ef9e2edca4115187cc74b8707cb1f03",
+      "sections": [
+        {
+          "id": "reader-map",
+          "title": "阅读器的区域、来源与基本操作",
+          "symbol": "paneSource / clearPane / clearChangedPane",
+          "line": 9
+        },
+        {
+          "id": "reader-references",
+          "title": "参考文献：题录、摘要、本文引用与公开全文",
+          "symbol": "renderReferencePane / openDetail / backToList",
+          "line": 80
+        },
+        {
+          "id": "reader-references",
+          "title": "参考文献：题录、摘要、本文引用与公开全文",
+          "symbol": "locateReference",
+          "line": 65
+        },
+        {
+          "id": "design-state-contract",
+          "title": "选区、拖拽、焦点与上下文的共用契约",
+          "symbol": "附件与Reader绑定",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/reader-results.js",
+      "sha256": "8972b75967c812e7ed7eab35ff0a133585006f41fd1a96357f6aaf725840e2b3",
+      "sections": [
+        {
+          "id": "reader-map",
+          "title": "阅读器的区域、来源与基本操作",
+          "symbol": "installReaderContext",
+          "line": 432
+        },
+        {
+          "id": "reader-translation",
+          "title": "选区机翻、整篇译文与人工修订",
+          "symbol": "translationConfig / quickTranslate",
+          "line": 7
+        },
+        {
+          "id": "reader-translation",
+          "title": "选区机翻、整篇译文与人工修订",
+          "symbol": "openReaderTranslation / startEdit / renderQuickTranslation",
+          "line": 69
+        },
+        {
+          "id": "reader-translation",
+          "title": "选区机翻、整篇译文与人工修订",
+          "symbol": "renderQuickTranslation run",
+          "line": 410
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/manuscript-translation.js",
+      "sha256": "232132e34e3b908ae443f230941fa5ca2a1eb8755c5e3b752f0d637f36d31432",
+      "sections": [
+        {
+          "id": "reader-translation",
+          "title": "选区机翻、整篇译文与人工修订",
+          "symbol": "savePage / prepareTranslation / saveTranslationEdit",
+          "line": 209
+        },
+        {
+          "id": "design-data-memory",
+          "title": "内容、缓存与记忆：哪些能重建，哪些必须保留",
+          "symbol": "loadPage / savePage",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/providers.js",
+      "sha256": "569c379816e652bbbe347242e77cf15d7a51e3d218a077cf548c125e9ff9c8dc",
+      "sections": [
+        {
+          "id": "reader-translation",
+          "title": "选区机翻、整篇译文与人工修订",
+          "symbol": "translateAzure",
+          "line": 193
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/rapid-reading-prompt.mjs",
+      "sha256": "4e04df1b101728dd5bc9919795fa50204e5cd2ad07c25ec29eca8cca74f882bf",
+      "sections": [
+        {
+          "id": "reader-rapid-reading",
+          "title": "快速概览与详细速读的分工",
+          "symbol": "RAPID_READING_PROMPT / rapidReadingDepth",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/rapid-reading-data.mjs",
+      "sha256": "4d9a617175287d1921908d63b382ce0ecb78c10e6e8cdd24dab14654dc52d7ba",
+      "sections": [
+        {
+          "id": "reader-rapid-reading",
+          "title": "快速概览与详细速读的分工",
+          "symbol": "RAPID_SOURCE_LIMITS / selectRapidSources / bindRapidReadingEvidence",
+          "line": 4
+        },
+        {
+          "id": "design-density",
+          "title": "信息密度、摘要展开与阅读连续性",
+          "symbol": "独立概览与正文",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/rapid-reading-assets.mjs",
+      "sha256": "f668ff26af36fdad311ff585d206a8fce41b58903d4b2f78dff4f6a4d894eec9",
+      "sections": [
+        {
+          "id": "reader-rapid-reading",
+          "title": "快速概览与详细速读的分工",
+          "symbol": "rapidReadingAssets / rapidAssetPresentation",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/reader-rapid-reading.mjs",
+      "sha256": "95e13a29fceeab72abf8067c74e1b41b00ceb7d2be31325a7cb83c91868b00ed",
+      "sections": [
+        {
+          "id": "reader-rapid-reading",
+          "title": "快速概览与详细速读的分工",
+          "symbol": "prepareReaderRapidReading / renderReading",
+          "line": 87
+        },
+        {
+          "id": "reader-rapid-edit",
+          "title": "速读选段解释、忠实改写与手工编辑",
+          "symbol": "requestReaderRapidReadingSelection",
+          "line": 153
+        },
+        {
+          "id": "reader-rapid-edit",
+          "title": "速读选段解释、忠实改写与手工编辑",
+          "symbol": "storeEdit / paintPoint / editPoint",
+          "line": 215
+        },
+        {
+          "id": "reader-rapid-edit",
+          "title": "速读选段解释、忠实改写与手工编辑",
+          "symbol": "selectedText / selectionMenu",
+          "line": 230
+        },
+        {
+          "id": "reader-rapid-edit",
+          "title": "速读选段解释、忠实改写与手工编辑",
+          "symbol": "point pointer and keyboard handlers",
+          "line": 253
+        },
+        {
+          "id": "reader-preparation-performance",
+          "title": "打开即准备：队列、缓存、取消与退出",
+          "symbol": "shared / retain / stopRapidReadingPreparation",
+          "line": 40
+        },
+        {
+          "id": "design-principles",
+          "title": "设计判断：功能丰富，界面仍可顺手",
+          "symbol": "本地保存、持久生成记录和显式更新",
+          "line": null
+        },
+        {
+          "id": "design-data-memory",
+          "title": "内容、缓存与记忆：哪些能重建，哪些必须保留",
+          "symbol": "installRapidReading / retain / 文档指针",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/asset-reader.js",
+      "sha256": "6db15b86e7691f1b605d6bb9fbbdc2b3d124c7b7eccdea6b3e0f35b484132553",
+      "sections": [
+        {
+          "id": "reader-image-evidence",
+          "title": "图片与表格证据：列表、原图和完整解读",
+          "symbol": "openAssetPanel / load / card interaction",
+          "line": 18
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/reader-evidence-detail.mjs",
+      "sha256": "3009217ba2f0b2a64aa8095c707e28725d03cbee36b87bf67b0dfd538e39274b",
+      "sections": [
+        {
+          "id": "reader-image-evidence",
+          "title": "图片与表格证据：列表、原图和完整解读",
+          "symbol": "visibleReaderEvidence / readerEvidenceSummary / renderReaderEvidenceExplanation",
+          "line": 11
+        },
+        {
+          "id": "reader-image-evidence",
+          "title": "图片与表格证据：列表、原图和完整解读",
+          "symbol": "openReaderEvidenceDetail",
+          "line": 51
+        },
+        {
+          "id": "design-density",
+          "title": "信息密度、摘要展开与阅读连续性",
+          "symbol": "摘要去重与完整解释",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "services/research-engine/pdf/assets.py",
+      "sha256": "4eaebc109e991308215de028389cfcd1b2c5800c2f26c215ea515bf153f3a66d",
+      "sections": [
+        {
+          "id": "reader-image-evidence",
+          "title": "图片与表格证据：列表、原图和完整解读",
+          "symbol": "caption_label / figure_region / EXTRACTOR_VERSION",
+          "line": 1
+        },
+        {
+          "id": "writing-ppt-engineering",
+          "title": "模块、持久化、模型路由与性能边界",
+          "symbol": "解析缓存与受保护资产留存",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/reader-reference-detail.mjs",
+      "sha256": "d3d1fe3baf019b47a4b1b0de959626c00c7837f7ed5910bacae4388713ba8beb",
+      "sections": [
+        {
+          "id": "reader-references",
+          "title": "参考文献：题录、摘要、本文引用与公开全文",
+          "symbol": "fetchReferenceAbstract / createReferenceDetail",
+          "line": 22
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/reader-margin-comments.mjs",
+      "sha256": "3cc69639bcbe4b6d9e2802d1937c493c1a397cf1e235eb459d5d608b148406f6",
+      "sections": [
+        {
+          "id": "reader-annotations-notes",
+          "title": "原文批注、关联笔记与装配批注的边界",
+          "symbol": "installMarginComments",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/workflow.js",
+      "sha256": "a720a26d242a0dc207c2bdfb50ba924e7923504c7380b48333eb8323b05eb264",
+      "sections": [
+        {
+          "id": "reader-annotations-notes",
+          "title": "原文批注、关联笔记与装配批注的边界",
+          "symbol": "saveReaderNote",
+          "line": 116
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/material-project-annotations.mjs",
+      "sha256": "e6b2b490c712d8b9bd2d035a02a381c622fb5ca2a9da6b2f8e36f2b5d5d9feab",
+      "sections": [
+        {
+          "id": "reader-annotations-notes",
+          "title": "原文批注、关联笔记与装配批注的边界",
+          "symbol": "saveProjectMaterialHighlights / mergeMaterialAsset",
+          "line": 5
+        },
+        {
+          "id": "assembly-refinement-annotations",
+          "title": "初稿细调、选段 AI、项目批注与撤销",
+          "symbol": "saveProjectMaterialHighlights / mergeMaterialAsset",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/material-annotation-sync.mjs",
+      "sha256": "d90de5b178bcbf78521ef91df88a2bbceadca709d59a37038ef685270dd3e8fd",
+      "sections": [
+        {
+          "id": "reader-annotations-notes",
+          "title": "原文批注、关联笔记与装配批注的边界",
+          "symbol": "syncMaterialHighlights / applyMaterialAnnotationUpdates",
+          "line": 72
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/manuscript/main.mjs",
+      "sha256": "5900b4476d7318d2ca33c53fd0d85367dd66147facdaf7fdbd8fc201f2c206f0",
+      "sections": [
+        {
+          "id": "reader-annotations-notes",
+          "title": "原文批注、关联笔记与装配批注的边界",
+          "symbol": "apply-source-annotations",
+          "line": 205
+        },
+        {
+          "id": "assembly-material-structure",
+          "title": "素材装配：章节、完整材料与自动匹配",
+          "symbol": "reconcileMaterialSections / changed / attachMaterial / insertMaterial / materialDetails",
+          "line": null
+        },
+        {
+          "id": "assembly-refinement-annotations",
+          "title": "初稿细调、选段 AI、项目批注与撤销",
+          "symbol": "snapshot / saveMaterialHighlights / materialDetails",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/reader-ai-orb.js",
+      "sha256": "dc4b509f03006d1cdf2ceb0339df61e571568474261b6a967c3f5b2d9035a1ff",
+      "sections": [
+        {
+          "id": "reader-ai-conversation",
+          "title": "阅读器 AI：共享会话、停靠、附件与答案落点",
+          "symbol": "openReaderAcademicChat / mountReaderAcademicChat / dockReaderAcademicChat",
+          "line": 82
+        },
+        {
+          "id": "reader-ai-conversation",
+          "title": "阅读器 AI：共享会话、停靠、附件与答案落点",
+          "symbol": "openSurface / installConversationSurface",
+          "line": 183
+        },
+        {
+          "id": "reader-ai-conversation",
+          "title": "阅读器 AI：共享会话、停靠、附件与答案落点",
+          "symbol": "storedMessageDrag / pendingMessage / refresh",
+          "line": 238
+        },
+        {
+          "id": "design-color",
+          "title": "配色与主题：白色纸面、蓝灰工具、语义状态",
+          "symbol": "readerChatAppearance",
+          "line": 91
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/conversation-surface.css",
+      "sha256": "81def4af348cb9cac433167e31db949915a23e71a5681d662244a7f7c850f3d3",
+      "sections": [
+        {
+          "id": "reader-ai-conversation",
+          "title": "阅读器 AI：共享会话、停靠、附件与答案落点",
+          "symbol": "reader and shared conversation presentation",
+          "line": 1
+        },
+        {
+          "id": "design-type",
+          "title": "字体与文字：界面、论文、公式分别管理",
+          "symbol": "对话输入字体",
+          "line": null
+        },
+        {
+          "id": "design-material",
+          "title": "材质、边框、圆角与阴影如何分工",
+          "symbol": "停靠栏圆角关系",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/reader-preparation.mjs",
+      "sha256": "5cebcd1620f4efffbff76244f3fa00b7701999876534cfa3017d1cdfdda678c0",
+      "sections": [
+        {
+          "id": "reader-preparation-performance",
+          "title": "打开即准备：队列、缓存、取消与退出",
+          "symbol": "createReaderPreparationQueue",
+          "line": 9
+        },
+        {
+          "id": "writing-ppt-engineering",
+          "title": "模块、持久化、模型路由与性能边界",
+          "symbol": "共享准备队列与任务生命周期",
+          "line": null
+        },
+        {
+          "id": "design-motion",
+          "title": "动效、加载、取消与跨页面稳定性",
+          "symbol": "排队与取消",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/reader-preparation.js",
+      "sha256": "007422872b142fd75fea2d0f084782f61068b944dfdaa9639a8f416696c6a691",
+      "sections": [
+        {
+          "id": "reader-preparation-performance",
+          "title": "打开即准备：队列、缓存、取消与退出",
+          "symbol": "prepareEvidence / prepareReaderPaper / queueReaderPreparation",
+          "line": 10
+        },
+        {
+          "id": "writing-ppt-engineering",
+          "title": "模块、持久化、模型路由与性能边界",
+          "symbol": "E.prepareReaderPaper / E.queueReaderPreparation",
+          "line": null
+        },
+        {
+          "id": "design-data-memory",
+          "title": "内容、缓存与记忆：哪些能重建，哪些必须保留",
+          "symbol": "rememberState / prepareEvidence",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/assets.js",
+      "sha256": "ba98c5b2e7de8e2402671c88cfdd1c680ffb1b4f981c83c02dfe5371c6098553",
+      "sections": [
+        {
+          "id": "reader-preparation-performance",
+          "title": "打开即准备：队列、缓存、取消与退出",
+          "symbol": "materialFor / index / queueImages",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/reader-surface-tokens.css",
+      "sha256": "1fc57b8a56d0b923fbc69b0f9111311adac114d5b0b26ace2f5d51fe944bbc39",
+      "sections": [
+        {
+          "id": "reader-visual-contract",
+          "title": "视觉约定、字体尺度与后续维护",
+          "symbol": "reading palette",
+          "line": 3
+        },
+        {
+          "id": "design-color",
+          "title": "配色与主题：白色纸面、蓝灰工具、语义状态",
+          "symbol": "阅读纸面语义变量",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/reader-reading-surface.css",
+      "sha256": "dc23fab62d610fbdd14eac6f62db19c8506c5498cada1a8978ae4fc5ebf63e6d",
+      "sections": [
+        {
+          "id": "reader-visual-contract",
+          "title": "视觉约定、字体尺度与后续维护",
+          "symbol": "rapid reading / comments / shared font",
+          "line": 35
+        },
+        {
+          "id": "design-type",
+          "title": "字体与文字：界面、论文、公式分别管理",
+          "symbol": "速读、批注文字参数",
+          "line": null
+        },
+        {
+          "id": "design-material",
+          "title": "材质、边框、圆角与阴影如何分工",
+          "symbol": "页外批注",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/reader-image-evidence.css",
+      "sha256": "5c4c84c56634817898bf0c5f0948ce73b904b472c0cd8a0633ab3325e777c74f",
+      "sections": [
+        {
+          "id": "reader-visual-contract",
+          "title": "视觉约定、字体尺度与后续维护",
+          "symbol": "evidence cards",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/reader-evidence-detail.css",
+      "sha256": "d0629b53f4f0b7cced4e49dc86967370a8f9cf40fb61f1caf993de34cf0a5f91",
+      "sections": [
+        {
+          "id": "reader-visual-contract",
+          "title": "视觉约定、字体尺度与后续维护",
+          "symbol": "evidence modal",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/reader-rail.css",
+      "sha256": "f1b25528cd8a6cd9f18321878af94327e41092807dd10c47dbe16d34bc33e4be",
+      "sections": [
+        {
+          "id": "reader-visual-contract",
+          "title": "视觉约定、字体尺度与后续维护",
+          "symbol": "native rail and note presentation",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/manuscript.js",
+      "sha256": "aad5f6fc952544ab3bde11361fe1467fe6ff042d0717445cb5ac78dc6410681d",
+      "sections": [
+        {
+          "id": "writing-project-scope",
+          "title": "从项目与研究范围开始",
+          "symbol": "A.create / A.ensureLibraryItem",
+          "line": null
+        },
+        {
+          "id": "assembly-verification-export",
+          "title": "来源核查、全文评估与正文导出",
+          "symbol": "A.check / A.ensureJournalStyle / A.export / A.preview",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/material-section-matching.mjs",
+      "sha256": "4bd259bbee698db912307accc42b55b1ed6cbc6fdb1235fe2c39c99993b03b98",
+      "sections": [
+        {
+          "id": "assembly-material-structure",
+          "title": "素材装配：章节、完整材料与自动匹配",
+          "symbol": "matchMaterialSection / associateProjectMaterials / materialPlacementSuggestions / applyMaterialPlacements",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/manuscript/assembly-navigation.mjs",
+      "sha256": "0d3aabe4f1570c197c4202b7a08b987536e8c3c1a9b3d84c1e7e36853376f498",
+      "sections": [
+        {
+          "id": "assembly-material-structure",
+          "title": "素材装配：章节、完整材料与自动匹配",
+          "symbol": "evidenceUsage / moveSection / moveBlockToSection / renderAssemblyNavigation",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/manuscript/direction-workspace.mjs",
+      "sha256": "c16e5e7b68bdda1ced68d578c0e337daac30c114e78b3d0ce3f280a0b7cb5d10",
+      "sections": [
+        {
+          "id": "assembly-material-structure",
+          "title": "素材装配：章节、完整材料与自动匹配",
+          "symbol": "matchMaterials / render",
+          "line": null
+        },
+        {
+          "id": "assembly-direction-draft",
+          "title": "方向讨论与初稿：逐题确认、候选采用、部分缺口保留",
+          "symbol": "prepare / draft / renderPreview / render",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/assembly-direction.mjs",
+      "sha256": "eaade7d00d56941d538ad84acadf8c1c13fa99cb397baa56bf81fd46c4d9a2fe",
+      "sections": [
+        {
+          "id": "assembly-material-structure",
+          "title": "素材装配：章节、完整材料与自动匹配",
+          "symbol": "ASSEMBLY_FLOW_STAGES / migrateAssemblyFlow",
+          "line": null
+        },
+        {
+          "id": "assembly-direction-draft",
+          "title": "方向讨论与初稿：逐题确认、候选采用、部分缺口保留",
+          "symbol": "directionContext / directionSignature / validateDirectionQuestions / captureDraftBatch / acceptDraftBatch / revertDraftBatch / DIRECTION_PROMPT",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/manuscript-direction.js",
+      "sha256": "52bf6a7460ceb2bc13ffe611ac307d75c5455736eedd471eec95e5a29d25cae4",
+      "sections": [
+        {
+          "id": "assembly-direction-draft",
+          "title": "方向讨论与初稿：逐题确认、候选采用、部分缺口保留",
+          "symbol": "A.prepareDirection / A.prepareDraft",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/manuscript/selection-assistant.mjs",
+      "sha256": "6a077bb90d1e6367907394d5ae102812a4c95ecd82bb52e2f0fb637c9add1407",
+      "sections": [
+        {
+          "id": "assembly-refinement-annotations",
+          "title": "初稿细调、选段 AI、项目批注与撤销",
+          "symbol": "rangeTextOffsets / installSelectionAssistant / captureFromRange / accept / revert / saveMaterial",
+          "line": null
+        },
+        {
+          "id": "design-state-contract",
+          "title": "选区、拖拽、焦点与上下文的共用契约",
+          "symbol": "装配选区与修改",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/manuscript/selection-target.mjs",
+      "sha256": "0c0e250ecfdda3231b1f607a091cf64152c8ac1ce2a6caba9f21b18a3ef9a38a",
+      "sections": [
+        {
+          "id": "assembly-refinement-annotations",
+          "title": "初稿细调、选段 AI、项目批注与撤销",
+          "symbol": "captureSelectionTarget / assertSelectionTargetCurrent / applySelectionPreview / revertSelectionPreview",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/material-highlights.mjs",
+      "sha256": "ff31c9b15a83b917346f9a2afe36d8c3ab5087cb2050604bacd550f11803f448",
+      "sections": [
+        {
+          "id": "assembly-refinement-annotations",
+          "title": "初稿细调、选段 AI、项目批注与撤销",
+          "symbol": "captureMaterialSelections / createMaterialHighlightGroup / resolveMaterialHighlight",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/manuscript-writing.js",
+      "sha256": "226a6bb03fa0d54d50e56ee2b9ccda1afbe8f96671f4ae79783e8e14a26310f0",
+      "sections": [
+        {
+          "id": "assembly-refinement-annotations",
+          "title": "初稿细调、选段 AI、项目批注与撤销",
+          "symbol": "A.previewSelection / A.editAsset",
+          "line": null
+        },
+        {
+          "id": "writing-ppt-engineering",
+          "title": "模块、持久化、模型路由与性能边界",
+          "symbol": "A.previewSelection / A.previewWriting / A.assetLibrary / A.editAsset",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/manuscript/assembly-workflow.mjs",
+      "sha256": "a66fbbbc79beeacebf9a5e4e833071e6e3a5066f9e1705961c9cbbd0dcb4972c",
+      "sections": [
+        {
+          "id": "assembly-verification-export",
+          "title": "来源核查、全文评估与正文导出",
+          "symbol": "renderPanel / refresh / assessWhole / executePlanStep / setStep",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/manuscript-assessment.js",
+      "sha256": "f31ac874ccbe7316121407aa3a41999c01d2cbe2fc5ffabb63b36e1363b769d8",
+      "sections": [
+        {
+          "id": "assembly-verification-export",
+          "title": "来源核查、全文评估与正文导出",
+          "symbol": "A.assessWhole",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/manuscript-model.mjs",
+      "sha256": "b33521dd6f0ca8c437df946e8f34ee5321ef7944424e33d551c5b49597ef9b82",
+      "sections": [
+        {
+          "id": "assembly-verification-export",
+          "title": "来源核查、全文评估与正文导出",
+          "symbol": "validate / invalidate",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "services/research-engine/manuscript/document.py",
+      "sha256": "54fb0324a7d98df0478edeff202c9098c693a44e4bf09dc4b5b84f43925d064a",
+      "sections": [
+        {
+          "id": "assembly-verification-export",
+          "title": "来源核查、全文评估与正文导出",
+          "symbol": "export / formula / apply_journal_layout",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "services/research-engine/manuscript/plan_export.py",
+      "sha256": "07285a0826e376cb86c1f5f3407997959058f3d2a658d25361e40a4804f25970",
+      "sections": [
+        {
+          "id": "assembly-verification-export",
+          "title": "来源核查、全文评估与正文导出",
+          "symbol": "执行方案 Word 导出",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/ppt-main.js",
+      "sha256": "455b9afc11cf72051318f4c0a4a63b4c9b8c1a70c29dc677c4ee2a913c171bd7",
+      "sections": [
+        {
+          "id": "ppt-materials-weekly",
+          "title": "组会 PPT：入口、取材范围与本周研究汇报",
+          "symbol": "initPPTStudio / openPPTStudio / createWeeklyPPT / pptTask / renderPPT",
+          "line": null
+        },
+        {
+          "id": "ppt-chat-outputs",
+          "title": "PPT 讨论、文件预览、成果留存与导出",
+          "symbol": "pptRenderReadiness / pptOpenReadinessIssue / pptExportCurrent",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/ppt-flow.js",
+      "sha256": "337c8349a5bf6b415b5bb94b11ae168b37d05f22c12639f533401f3c9d643b45",
+      "sections": [
+        {
+          "id": "ppt-materials-weekly",
+          "title": "组会 PPT：入口、取材范围与本周研究汇报",
+          "symbol": "pptMaterials",
+          "line": 3
+        },
+        {
+          "id": "ppt-template-outline",
+          "title": "PPT 模板、大纲编辑与 AI 结构建议",
+          "symbol": "pptTemplates / pptOutline / pptOutlineProposal",
+          "line": null
+        },
+        {
+          "id": "ppt-pages-contributions",
+          "title": "图文页面、个人实验、逐页编辑与真实预览",
+          "symbol": "pptVisuals",
+          "line": 77
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/ppt-studio.js",
+      "sha256": "bf76bd41d37292ac91df2574eff2f5b0496e621c49bf614c93a2c3975a8d4ea5",
+      "sections": [
+        {
+          "id": "ppt-materials-weekly",
+          "title": "组会 PPT：入口、取材范围与本周研究汇报",
+          "symbol": "S.create / S.selectMaterials / S.collect / S.open / S.installReader",
+          "line": null
+        },
+        {
+          "id": "ppt-template-outline",
+          "title": "PPT 模板、大纲编辑与 AI 结构建议",
+          "symbol": "S.editOutline / S.acceptOutline / S.discardOutline / S.history",
+          "line": null
+        },
+        {
+          "id": "ppt-pages-contributions",
+          "title": "图文页面、个人实验、逐页编辑与真实预览",
+          "symbol": "S.addContribution / S.renderPage / S.renderAll / S.pageKey",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/ppt-scope.mjs",
+      "sha256": "a0810084442618b81d64a45b1370f8c430931c983964f825c67ee896ea57d2e4",
+      "sections": [
+        {
+          "id": "ppt-materials-weekly",
+          "title": "组会 PPT：入口、取材范围与本周研究汇报",
+          "symbol": "scopedPages",
+          "line": 14
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/weekly-research.mjs",
+      "sha256": "e668e4f68d8d73a5aab90de6292077d0178c27ecac3400fa6568b986b36541b1",
+      "sections": [
+        {
+          "id": "ppt-materials-weekly",
+          "title": "组会 PPT：入口、取材范围与本周研究汇报",
+          "symbol": "weeklyResearchEntries / weeklyPresentation",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/ppt-studio-ai.js",
+      "sha256": "f17d60e922acd8f50eacf080d7ccc40e005440fa8d15bbb915c0dd3668593b10",
+      "sections": [
+        {
+          "id": "ppt-template-outline",
+          "title": "PPT 模板、大纲编辑与 AI 结构建议",
+          "symbol": "S.outline / S.proposeOutline / S.prepareSlides",
+          "line": null
+        },
+        {
+          "id": "ppt-pages-contributions",
+          "title": "图文页面、个人实验、逐页编辑与真实预览",
+          "symbol": "S.generatePage / S.generateRemaining",
+          "line": null
+        },
+        {
+          "id": "writing-ppt-engineering",
+          "title": "模块、持久化、模型路由与性能边界",
+          "symbol": "S.request",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/ppt-outline.mjs",
+      "sha256": "b40a22ff97c5dea1cbdfac4a01a7e1e362c6254304865fd2f3bbff491e9496c1",
+      "sections": [
+        {
+          "id": "ppt-template-outline",
+          "title": "PPT 模板、大纲编辑与 AI 结构建议",
+          "symbol": "applyOutlineEdit / outlineFingerprint / outlineDiff / normalizeOutline",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/ppt-model.mjs",
+      "sha256": "8ca8595bdcfbf1f4e84cb35f1bedcb46dd23121a6d3920fdce869fd43ae9fa3b",
+      "sections": [
+        {
+          "id": "ppt-template-outline",
+          "title": "PPT 模板、大纲编辑与 AI 结构建议",
+          "symbol": "CONTENT_TEMPLATES / THEMES",
+          "line": null
+        },
+        {
+          "id": "ppt-pages-contributions",
+          "title": "图文页面、个人实验、逐页编辑与真实预览",
+          "symbol": "BLOCK_TYPES / validateStudioSlide / validateStudioPlan",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "services/research-engine/src/studio-template.mjs",
+      "sha256": "28aa487a550f980ebd89edd29671d07f8f375ec0d735efb5aa6bb689ebf468c6",
+      "sections": [
+        {
+          "id": "ppt-template-outline",
+          "title": "PPT 模板、大纲编辑与 AI 结构建议",
+          "symbol": "PPTX 主题提取",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/ppt-contributions.js",
+      "sha256": "ea266f5e60b99cfb5956eeef0fc4dc4f804152a362dfcbbdb332ab6d67680721",
+      "sections": [
+        {
+          "id": "ppt-pages-contributions",
+          "title": "图文页面、个人实验、逐页编辑与真实预览",
+          "symbol": "pptContributions",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/ppt-editor.js",
+      "sha256": "db5cc5925b4ad3d6c3c30af03400f0083a174a68a986a48db4953ee4dc021607",
+      "sections": [
+        {
+          "id": "ppt-pages-contributions",
+          "title": "图文页面、个人实验、逐页编辑与真实预览",
+          "symbol": "pptCommitEditorEdits / pptFlushEdits / pptInsertBlankPage / pptMoveEditorPage / pptEditor",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/ppt-crop.js",
+      "sha256": "4ef9d4f94684f94724d113a7ae2c343365d3a43aa232abdb6c9f99ff25b424c7",
+      "sections": [
+        {
+          "id": "ppt-pages-contributions",
+          "title": "图文页面、个人实验、逐页编辑与真实预览",
+          "symbol": "pptCrop",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "path": "services/research-engine/src/studio-render.mjs",
+      "sha256": "206939f69fd5c190363c95f63333c1ddce29738857b6f3689264b27e0e6e6c81",
+      "sections": [
+        {
+          "id": "ppt-pages-contributions",
+          "title": "图文页面、个人实验、逐页编辑与真实预览",
+          "symbol": "真实 PPT 页面渲染",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/ui/ppt-assistant.mjs",
+      "sha256": "ed4c9710f9c732d67b7d8a715b1547d114c80d041c3f7d1103442efe33acf4b1",
+      "sections": [
+        {
+          "id": "ppt-chat-outputs",
+          "title": "PPT 讨论、文件预览、成果留存与导出",
+          "symbol": "mountPPTAssistant / pptConversationSessions / pptDiscussionContext / pptAssistantIntent / selectSession / execute",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/workspace-output-list.mjs",
+      "sha256": "55b45736c9ad1f39a0aa3119fd3cd11d7eefc637c1a63c67ebda317d36f7edb9",
+      "sections": [
+        {
+          "id": "ppt-chat-outputs",
+          "title": "PPT 讨论、文件预览、成果留存与导出",
+          "symbol": "成果列表组件",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/ppt-readiness.mjs",
+      "sha256": "4f872be722096744336dd047b7b988596c4b842721f0f78bbfa7b5d99227a1da",
+      "sections": [
+        {
+          "id": "ppt-chat-outputs",
+          "title": "PPT 讨论、文件预览、成果留存与导出",
+          "symbol": "presentationReadiness",
+          "line": 52
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/model-service.js",
+      "sha256": "032434232511bf01b4177b13739a41ac50603b0882cabf413ca7c1d5ffedb449",
+      "sections": [
+        {
+          "id": "writing-ppt-engineering",
+          "title": "模块、持久化、模型路由与性能边界",
+          "symbol": "E.resolveModel / E.aiProgress",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/xpcom/research/artifacts.js",
+      "sha256": "8668058d0d9365a0d185bdc771afa6bd7ae4ba9a0afeb560abdc57924d738cfb",
+      "sections": [
+        {
+          "id": "writing-ppt-engineering",
+          "title": "模块、持久化、模型路由与性能边界",
+          "symbol": "E.runArtifactEngine / E.previewPresentation",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "services/research-engine/src/cli.mjs",
+      "sha256": "c19bc8b8bcf5ae4dd2bfc32629328913d2db550df0bffa5511444592a9b4139a",
+      "sections": [
+        {
+          "id": "writing-ppt-engineering",
+          "title": "模块、持久化、模型路由与性能边界",
+          "symbol": "产物引擎操作分派",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "scripts/build-native.ps1",
+      "sha256": "415c6ae431997673cb036e599a70dd01f423d76fa5a928f91a5255e8d61fed34",
+      "sections": [
+        {
+          "id": "writing-ppt-build-handoff",
+          "title": "构建、测试、部署与接手顺序",
+          "symbol": "Assert-SourceClientClosed / 前端与原生构建",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "scripts/launch-research.ps1",
+      "sha256": "145e0619a0c94fb7a3feafbe8b9c636b0a76d4c2d38076b0bf70a5742d3cb6ff",
+      "sections": [
+        {
+          "id": "writing-ppt-build-handoff",
+          "title": "构建、测试、部署与接手顺序",
+          "symbol": "Test / TestRunID / Suite / 独立 profile 与 dataDir",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "services/research-engine/package.json",
+      "sha256": "e451b1ec1b7dba53f17aa1391a8bc841f896ee270f88394f8b2a5d6be549e882",
+      "sections": [
+        {
+          "id": "writing-ppt-build-handoff",
+          "title": "构建、测试、部署与接手顺序",
+          "symbol": "scripts.test / build:browser / engines",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "services/research-engine/README.md",
+      "sha256": "50127fc987b3dd4ac91c366f70290efd6976b4071ecd2a5032d9273c39f21ed7",
+      "sections": [
+        {
+          "id": "writing-ppt-build-handoff",
+          "title": "构建、测试、部署与接手顺序",
+          "symbol": "产物引擎环境与操作说明",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "scripts/setup-research-engine.ps1",
+      "sha256": "00ea2bf40524006c65977a08a1b44eb50a6de6c844110549e7427d8479b88efe",
+      "sections": [
+        {
+          "id": "writing-ppt-build-handoff",
+          "title": "构建、测试、部署与接手顺序",
+          "symbol": "外部运行依赖准备",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "test/tests/researchAssemblyWorkflowTest.js",
+      "sha256": "dfc32efb5b2f9f2359a20a2a88f4bdf8804fe16bcad0add5c96541bd28c3a9ab",
+      "sections": [
+        {
+          "id": "writing-ppt-build-handoff",
+          "title": "构建、测试、部署与接手顺序",
+          "symbol": "四阶段原生流程测试",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "test/tests/researchAssemblySelectionTest.js",
+      "sha256": "ee4307322e74726a8cd2f282009c687f353060992fa3d1bc446a63d9e259e3d4",
+      "sections": [
+        {
+          "id": "writing-ppt-build-handoff",
+          "title": "构建、测试、部署与接手顺序",
+          "symbol": "选段与候选原生测试",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "test/tests/researchPPTWorkspaceTest.js",
+      "sha256": "e588415bdd6ded9a02ed1dc75ad4a0d5a9181e98eb50c648a43101b748d42500",
+      "sections": [
+        {
+          "id": "writing-ppt-build-handoff",
+          "title": "构建、测试、部署与接手顺序",
+          "symbol": "PPT 工作区原生测试",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "test/tests/researchNotebookTest.js",
+      "sha256": "0453046432f6567593ffbc7945d150810e5f4b272428e193527c9f4b0b74bc21",
+      "sections": [
+        {
+          "id": "writing-ppt-build-handoff",
+          "title": "构建、测试、部署与接手顺序",
+          "symbol": "可行性与素材工作区原生测试",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/conversation-surface.mjs",
+      "sha256": "ad2ebed13be8753d975f61d71898c300a72f2fda0766ea6c57b587c62c6b60a0",
+      "sections": [
+        {
+          "id": "design-principles",
+          "title": "设计判断：功能丰富，界面仍可顺手",
+          "symbol": "共享对话状态与栏位借用",
+          "line": null
+        },
+        {
+          "id": "design-controls",
+          "title": "按钮、输入、菜单与选择器的操作语言",
+          "symbol": "独立菜单层",
+          "line": null
+        },
+        {
+          "id": "design-state-contract",
+          "title": "选区、拖拽、焦点与上下文的共用契约",
+          "symbol": "焦点、放置与清理",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/manuscript/assembly-quick-actions.mjs",
+      "sha256": "c1c2534ab4beb9d07b1acf6e9f27da13cb02326ba6d8244bee387e72834d58f3",
+      "sections": [
+        {
+          "id": "design-principles",
+          "title": "设计判断：功能丰富，界面仍可顺手",
+          "symbol": "装配动作入口",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/workspace-geometry.css",
+      "sha256": "a8d26f971329c64934f09dd999c782ca0c57a2b9c5e1eefd6cb2113d8881f01e",
+      "sections": [
+        {
+          "id": "design-layout",
+          "title": "空间骨架：导航、资料栏、工作区、上下文",
+          "symbol": "嵌入式工作台网格",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/conversation-files.css",
+      "sha256": "4aebc9a32ee8b61dda73ed685d3a6c4f4f67fe49f37a4a247b14c1a32fb91345",
+      "sections": [
+        {
+          "id": "design-layout",
+          "title": "空间骨架：导航、资料栏、工作区、上下文",
+          "symbol": "共享第二左栏",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/surface-tokens.css",
+      "sha256": "fed75f184edd54d426126ac2814644a5430841fe3c2eaf2f4998432557b3e899",
+      "sections": [
+        {
+          "id": "design-type",
+          "title": "字体与文字：界面、论文、公式分别管理",
+          "symbol": "--ui-font",
+          "line": 4
+        },
+        {
+          "id": "design-color",
+          "title": "配色与主题：白色纸面、蓝灰工具、语义状态",
+          "symbol": "浅色/深色与系统回退",
+          "line": null
+        },
+        {
+          "id": "design-material",
+          "title": "材质、边框、圆角与阴影如何分工",
+          "symbol": "阴影/圆角令牌",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/workspace-controls.css",
+      "sha256": "ce1cbaec712846dbccbdacd73c8db6c61a292537fe577719b56bec36fcbcdcb2",
+      "sections": [
+        {
+          "id": "design-type",
+          "title": "字体与文字：界面、论文、公式分别管理",
+          "symbol": "字体继承与文档例外",
+          "line": null
+        },
+        {
+          "id": "design-controls",
+          "title": "按钮、输入、菜单与选择器的操作语言",
+          "symbol": "公共操作与焦点",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/clui-surface.css",
+      "sha256": "a79b02129c15d4e265a81e831fd0ea410f956cbb55d2e8f328fa19450446bc8b",
+      "sections": [
+        {
+          "id": "design-material",
+          "title": "材质、边框、圆角与阴影如何分工",
+          "symbol": "玻璃与前景变暗",
+          "line": null
+        },
+        {
+          "id": "design-motion",
+          "title": "动效、加载、取消与跨页面稳定性",
+          "symbol": "收起/展开/变暗/减少动效",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/workflow-progress.css",
+      "sha256": "b3957ecc7ae5c7f4f1cd89d840836ad38a9058005a07336db66058717d08724f",
+      "sections": [
+        {
+          "id": "design-controls",
+          "title": "按钮、输入、菜单与选择器的操作语言",
+          "symbol": "步骤按钮状态",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/task-progress.css",
+      "sha256": "8b58c5e0b5331189567d3c4b3c79540801087103b517d75ca0a529ef084f022d",
+      "sections": [
+        {
+          "id": "design-motion",
+          "title": "动效、加载、取消与跨页面稳定性",
+          "symbol": "窗口进度",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/shared/workspace-loading.css",
+      "sha256": "46f99e6103f8479e36699f308a1bc00dc53fb72a5689053b63f68ac4c3922310",
+      "sections": [
+        {
+          "id": "design-motion",
+          "title": "动效、加载、取消与跨页面稳定性",
+          "symbol": "居中加载窗",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "test/node/rapid-reading-preparation.test.mjs",
+      "sha256": "71f0450b1fbc60d5cc51e098a8e890b46eb1c70095f2ee6899f86953dffb9188",
+      "sections": [
+        {
+          "id": "design-data-memory",
+          "title": "内容、缓存与记忆：哪些能重建，哪些必须保留",
+          "symbol": "重启、模型切换、失败恢复测试",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "docs/references/clui-native-surface.md",
+      "sha256": "0ff91ee98018db3dcb48657c9d81225d045d984b35d4fba7a99ae4b8d35aad40",
+      "sections": [
+        {
+          "id": "design-transfer",
+          "title": "迁移到下一款软件：先复制规则，再复制样式",
+          "symbol": "参考来源与适配范围",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "chrome/content/zotero/research/vendor/CLUI-CC-LICENSE.txt",
+      "sha256": "6914853767a18dcb31c4d44dc448073b57a818f1ebaf7229fbe409e8dd0a8cf3",
+      "sections": [
+        {
+          "id": "design-transfer",
+          "title": "迁移到下一款软件：先复制规则，再复制样式",
+          "symbol": "CLUI CC MIT license",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "COPYING",
+      "sha256": "8b48612cb5ef7f5107a9e487bf18df73e684c9decf55f602f6139882bf3471ca",
+      "sections": [
+        {
+          "id": "design-transfer",
+          "title": "迁移到下一款软件：先复制规则，再复制样式",
+          "symbol": "仓库许可（以实际文件为准）",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "test/tests/researchRapidReadingTest.js",
+      "sha256": "522d60bc4a405ffcfbcdd94eaf032574f3f7c22a6edf42fa06cf888607511054",
+      "sections": [
+        {
+          "id": "design-checklist",
+          "title": "交接验收：怎样确认‘看起来一致’且‘真的能用’",
+          "symbol": "原生阅读交互",
+          "line": null
+        }
+      ]
+    },
+    {
+      "path": "test/tests/researchImageRowsTest.js",
+      "sha256": "21609ccfe71878bb82bed85b54556f58a1aa6ef54bad03e109e74d1557b53f23",
+      "sections": [
+        {
+          "id": "design-checklist",
+          "title": "交接验收：怎样确认‘看起来一致’且‘真的能用’",
+          "symbol": "图片证据",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "path": "test/tests/researchReferencePaneTest.js",
+      "sha256": "74e0fa475033be567744e0f49f4a658665e2cc3318aaf5134cadcda4b81975e8",
+      "sections": [
+        {
+          "id": "design-checklist",
+          "title": "交接验收：怎样确认‘看起来一致’且‘真的能用’",
+          "symbol": "参考文献",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "path": "test/node/reader-preparation.test.mjs",
+      "sha256": "511342aee46fd8aa3a1c74d4f0340c1c35e1025888cd409351721991bcafc4f5",
+      "sections": [
+        {
+          "id": "design-checklist",
+          "title": "交接验收：怎样确认‘看起来一致’且‘真的能用’",
+          "symbol": "准备链、取消与重启缓存",
+          "line": null
+        }
+      ]
+    }
+  ]
+}

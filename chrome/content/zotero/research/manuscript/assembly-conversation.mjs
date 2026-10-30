@@ -1,15 +1,29 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {installConversationSurface} from '../shared/conversation-surface.mjs';
+import {cluiAttachmentType} from '../shared/clui-surface.mjs';
 import {chatAttachmentDropPayload} from '../shared/chat-attachments.mjs';
 import {answerWithQuestion} from '../shared/chat-evidence.mjs';
 import {assemblyChatIcon} from './assembly-chat-context.mjs';
 import {installMessageDrag} from '../shared/message-transfer.mjs';
 import {assemblyTaskContext} from './assembly-task-context.mjs';
-import {captureAssemblyWritingRequest,runAssemblyWritingRequest} from './assembly-writing-request.mjs';
+import {captureAssemblyWritingRequest,runAssemblyWritingRequest,assemblyDraftPartRoute} from './assembly-writing-request.mjs';
 import {assemblyFrameworkIntent,requestAssemblyFramework} from './assembly-framework.mjs';
 import {captureFramework} from '../shared/writing-framework.mjs';
 import {installMediaPreview,disposeMediaPreviews} from '../shared/media-preview.mjs';
-import {assertDraftBatchCurrent,wholeDraftRevisionIntent} from '../shared/assembly-direction.mjs';
+import {wholeDraftRevisionIntent} from '../shared/assembly-direction.mjs';
+import {workbenchFailure} from '../shared/agent-workbench.mjs';
+
+// Assembly does not write paper prose. Whole-draft requests and material-to-
+// paragraph requests for an empty block get this fixed reply and read/task
+// actions; rewriting the user's own existing text is unchanged.
+export const ASSEMBLY_READ_ROUTE_TEXT='装配阶段不生成论文正文。可以按方向更新各章装配速读、整理任务计划，或选中你已写的文字讨论修改；你的正文保持不变。';
+export function retiredWritingReply({globalWriting=false,capture=null}={}){
+	if(!globalWriting&&capture?.mode!=='assemble')return null;
+	return {text:ASSEMBLY_READ_ROUTE_TEXT,sources:[],assemblyActions:[{type:'refresh-read'},{type:'prepare-task-plan'}],steps:[{tool:'assembly_read_route',label:'已转为速读与任务计划',status:'complete'}]};
+}
+import {researchPlanEditIntent} from '../shared/academic-plan-edit.mjs';
+import {renderPlanEditProposal} from '../shared/plan-edit-proposal.mjs';
+import {libraryAsset,libraryView} from '../shared/material-access.mjs';
 
 export function assemblySelectedSource(project,context,previewID='',assets={}){
  const bound=context?.materialIDs||[];
@@ -52,9 +66,13 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
  const E=U.E,S=E.workbenchConversations;if(!S)throw Error('共享研究对话尚未加载，请重启新版 EasySch。');
  await S.importLegacy('assembly:'+U.p.id,U.p.chat||[],{title:'装配 · '+U.p.title,origin:'assembly',projectID:U.p.id,draft:U.p.ui.aiDraft||''});
  U.conversations=S;await S.open({projectID:U.p.id,origin:'assembly',title:U.p.title});U.conversationSession=S.getForScope({projectID:U.p.id});
+ U.renderPlanEditProposal=(host,message,sessionID=U.conversationSession?.id)=>renderPlanEditProposal(host,message.planEditProposal,{notebook:E.notebook,
+  beforeApply:async()=>{await persist({flush:true});if(U.saveError)throw U.saveError;},
+  onChange:proposal=>S.update(sessionID,{messages:[{id:message.id,planEditProposal:proposal}]},{origin:'assembly'}),
+  onApplied:()=>{const current=E.notebook.project(U.p.id);if(current&&current!==U.p&&current.researchPreparation)U.p.researchPreparation=JSON.parse(JSON.stringify(current.researchPreparation));U.directionWorkspace?.render();U.workflow?.render();U.selectionAssistant?.sync();},onError:error=>status(error.message,true)});
  const draftSaver=createAssemblyDraftSaver({save:(id,draft)=>S.update(id,{draft},{origin:'assembly'}),onError:error=>status(error.message,true)});U.flushResearchDraft=()=>draftSaver.flush();
  U.previewResearchSource=async source=>{
-  const id=source?.materialID||String(source?.stableID||source?.id||'').replace(/^material:/u,''),material=U.p.materials.find(row=>row.id===id)||U.A.assetLibrary()[id];
+  const id=source?.materialID||String(source?.stableID||source?.id||'').replace(/^material:/u,''),material=U.p.materials.find(row=>row.id===id)||libraryAsset(U.A,id);
   if(!material)throw Error('此依据尚未保存为可选素材；请使用“查看原文”打开来源');
   U.p.ui.left='materials';U.p.ui.leftOpen=true;U.p.ui.rightOpen=true;U.closeChatRail?.('left');
   U.p.ui.catalog={...(U.p.ui.catalog||{}),selection:[material.id]};U.materialRevealID=material.id;delete U.materialRevealKey;
@@ -67,40 +85,47 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
   if(!E.saveResearchMessageNote)throw Error('研究笔记保存接口尚未加载，请重启新版。');
   const saved=answerWithQuestion(S.get(sessionID)?.messages,message),result=await E.saveResearchMessageNote(saved,{sessionID,projectID:U.p.id});U.A.syncAssets(U.p);U.renderLibrary();return result;
  };
- const send=async(prompt,{sessionID=U.conversationSession.id,onProgress=()=>{},mode,modelID,thinkingLevel,assemblyContext,executionMode,onToolPermission,onResearchQuestion,stop=false,fromComposer=false}={})=>{
+ // onDraft streams the answer; a failure is saved on the question as a
+ // retryable row, and retryMessageID re-sends that question without a copy.
+ const send=async(prompt,{sessionID=U.conversationSession.id,onProgress=()=>{},onDraft,retryMessageID='',mode,modelID,thinkingLevel,assemblyContext,executionMode,onToolPermission,onResearchQuestion,stop=false,fromComposer=false}={})=>{
   if(stop){U.abort?.abort();return;}if(U.busy||U.frameworkBusy||(U.aiSending&&!fromComposer))throw Error('当前研究任务尚未结束，请等待或停止。');
   await draftSaver.flush();
   if(U.busy||U.frameworkBusy||(U.aiSending&&!fromComposer))throw Error('当前研究任务尚未结束，请等待或停止。');
-  const selectionCapture=U.selectionAssistant?.captureForPrompt(prompt);
-  const globalWriting=U.p.ui.assemblyFlowVersion>=2&&wholeDraftRevisionIntent(prompt,{selection:selectionCapture});
-  const frameworkCapture=!(U.p.ui.assemblyFlowVersion>=2)&&!selectionCapture&&assemblyFrameworkIntent(prompt)?captureFramework(U.p,{instruction:prompt,materialIDs:U.p.ui.frameworkSources?.[U.p.ui.sectionID]}):null;
-  const writingCapture=globalWriting||frameworkCapture||selectionCapture?null:captureAssemblyWritingRequest(U.p,prompt);if(!globalWriting&&!writingCapture&&!selectionCapture)E.aiPolicy?.assertResearchPrompt(prompt);const session=S.get(sessionID);if(!session)throw Error('研究对话已不可用，请重新选择。');
-  U.busy=true;U.activeResearchSessionID=sessionID;U.updateAssemblyTaskState?.('running',sessionID);U.abort=new AbortController();const signal=U.abort.signal;
+  const planEditing=researchPlanEditIntent(prompt)&&E.notebook.state(U.p.id).versions?.length;
+  const selectionCapture=planEditing?null:U.selectionAssistant?.captureForPrompt(prompt);
+  const globalWriting=!planEditing&&U.p.ui.assemblyFlowVersion>=2&&wholeDraftRevisionIntent(prompt,{selection:selectionCapture});
+  const frameworkCapture=!planEditing&&!(U.p.ui.assemblyFlowVersion>=2)&&!selectionCapture&&assemblyFrameworkIntent(prompt)?captureFramework(U.p,{instruction:prompt,materialIDs:U.p.ui.frameworkSources?.[U.p.ui.sectionID]}):null;
+  // 请生成这篇论文的摘要 / 帮我写一下这篇论文的研究问题: the read or task route.
+  const draftRoute=!planEditing&&U.p.ui.assemblyFlowVersion>=2&&!globalWriting&&!frameworkCapture&&!selectionCapture?assemblyDraftPartRoute(U.p,prompt):null;
+  const writingCapture=planEditing||globalWriting||frameworkCapture||selectionCapture||draftRoute?null:(()=>{try{return captureAssemblyWritingRequest(U.p,prompt);}catch(error){if(error.code==='WRITING_SOURCE_GAP')return {mode:'assemble'};throw error;}})();if(!globalWriting&&!writingCapture&&!selectionCapture)E.aiPolicy?.assertResearchPrompt(prompt);const session=S.get(sessionID);if(!session)throw Error('研究对话已不可用，请重新选择。');
+  U.busy=true;U.activeResearchSessionID=sessionID;U.updateAssemblyTaskState?.('running',sessionID);U.abort=new AbortController();const signal=U.abort.signal;let question=null;
   try{
    mode=mode||session.mode||'auto';modelID=modelID??session.modelID??'';thinkingLevel=thinkingLevel??session.thinkingLevel??'off';
    executionMode=executionMode||session.executionMode||'auto';assemblyContext=JSON.parse(JSON.stringify(assemblyContext||assemblyTaskContext(U.p,prompt)));
-   const selectedPassage=U.selectionAssistant?.getTarget();if(selectedPassage)assemblyContext.editSelection={kind:selectedPassage.kind,sectionID:selectedPassage.sectionID,blockID:selectedPassage.blockID,materialID:selectedPassage.materialID,unitID:selectedPassage.unitID,start:selectedPassage.start,end:selectedPassage.end,text:selectedPassage.text};
+   const selectedPassage=U.selectionAssistant?.getTarget();if(selectedPassage)assemblyContext.editSelection={kind:selectedPassage.kind,sectionID:selectedPassage.sectionID,blockID:selectedPassage.blockID,materialID:selectedPassage.materialID,unitID:selectedPassage.unitID,...(selectedPassage.nodeID?{nodeID:selectedPassage.nodeID}:{}),start:selectedPassage.start,end:selectedPassage.end,text:selectedPassage.text};
    assemblyContext.pageBounds=U.captureAssemblyPageBounds?.(assemblyContext)||assemblyContext.pageBounds;
-   const selectedSource=assemblySelectedSource(U.p,assemblyContext,U.previewMaterialID,U.A.assetLibrary());
+   const selectedSource=assemblySelectedSource(U.p,assemblyContext,U.previewMaterialID,libraryView(U.A));
    const task=assemblyContext?.currentTask||prompt.replace(/\s+/gu,' ').slice(0,50);
    await S.update(sessionID,{projectID:U.p.id,draft:'',mode,modelID,thinkingLevel,executionMode,currentTask:task,...(assemblyContext?{assemblyContext}:{}),...(session.isDraft?{title:task}:{})},{origin:'assembly'});
-   await S.append(sessionID,{role:'user',text:prompt,attachments:session.attachments||[],currentTask:task,...(assemblyContext?{assemblyContext}:{})},{origin:'assembly'});
-   let result;
-   if(globalWriting){
-    if(executionMode!=='auto'&&await (onToolPermission||U.requestToolPermission)?.({toolName:'preview_manuscript_revision',label:'准备整篇修改候选',description:'读取本篇章节与各段关联素材，生成可比较的修改；确认后才应用。',sessionID,signal})!==true)throw Error('本次整篇修改未执行');
-    await persist({flush:true});if(U.saveError)throw U.saveError;const batch=await U.A.prepareDraft(U.p.id,{instruction:prompt,global:true,signal,status:onProgress,modelID,thinkingLevel});assertDraftBatchCurrent(U.p,batch);U.p.draftBatch=batch;U.p.ui.step=2;U.p.ui.rightOpen=true;U.renderEditor();U.workflow?.render();applyPanels();await persist({flush:true});if(U.saveError)throw U.saveError;
-    result={text:'已逐段准备整篇修改候选。请在中间画布比较红色删除和绿色新增，选择各段版本后保留整篇更改，也可以保留原文。',sources:[],steps:[{tool:'preview_manuscript_revision',label:'整篇修改候选已准备',status:'complete'}]};
-   }
+   const retried=retryMessageID?session.messages?.find(row=>row.id===retryMessageID&&row.role==='user'):null;if(retryMessageID&&!retried)throw Error('要重试的问题已不存在，请重新发送');
+   if(retried){question=retried;await S.update(sessionID,{messages:[{id:retried.id,failure:null}]},{origin:'assembly'});}
+   else question=await S.append(sessionID,{role:'user',text:prompt,attachments:session.attachments||[],currentTask:task,...(assemblyContext?{assemblyContext}:{})},{origin:'assembly'});
+   let result;const retired=draftRoute||retiredWritingReply({globalWriting,capture:writingCapture});
+   if(retired)result=retired;
    else if(selectionCapture)result=await U.selectionAssistant.request(selectionCapture,prompt,{sessionID,modelID,thinkingLevel,executionMode,signal,onProgress,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false});
    else if(frameworkCapture){const frame=await requestAssemblyFramework(U,{instruction:prompt,sectionID:frameworkCapture.sectionID,capture:frameworkCapture,fromChat:true,sessionID,modelID,thinkingLevel,executionMode,signal,onProgress,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false});const ids=new Set(frame.nodes.flatMap(row=>row.evidence.map(item=>item.sourceID)));result={text:'已按“'+frame.sectionTitle+'”整理 '+frame.nodes.length+' 个段落任务，保存在写作速读中。按论证单元连贯说明已写内容、拟补素材、结构与文字调整；没有生成或覆盖论文正文。',sources:U.p.materials.filter(row=>ids.has(row.id)).map(row=>({id:row.id,materialID:row.id,title:row.title,sourceText:row.sourceText,anchor:row.anchor})),model:frame.model,steps:[{tool:'prepare_writing_framework',label:'章节框架已保存',status:'complete'}]};}
    else if(writingCapture){result=await runAssemblyWritingRequest(U,{prompt,capture:writingCapture,sessionID,modelID,thinkingLevel,executionMode,signal,onProgress,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false},{persist,status});}
-   else if(E.runWorkbenchTask){result=await E.runWorkbenchTask({prompt,mode:mode==='source'?'auto':mode,projectID:U.p.id,sessionID,assemblyContext,executionMode,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false,onResearchQuestion:request=>(onResearchQuestion||U.requestResearchQuestion)?.({...request,sessionID})??{answer:''},selectedSource,attachments:session.attachments||[],history:S.get(sessionID).messages,modelID,thinkingLevel,signal,onProgress});}
+   else if(E.runWorkbenchTask){result=await E.runWorkbenchTask({prompt,mode:mode==='source'?'auto':mode,projectID:U.p.id,sessionID,assemblyContext,executionMode,onToolPermission:request=>(onToolPermission||U.requestToolPermission)?.({...request,sessionID})??false,onResearchQuestion:request=>(onResearchQuestion||U.requestResearchQuestion)?.({...request,sessionID})??{answer:''},selectedSource,attachments:session.attachments||[],history:S.get(sessionID).messages,modelID,thinkingLevel,signal,onProgress,...(onDraft?{onDraft}:{})});}
    else if(mode==='evaluate'){const version=await E.notebook.evaluate(U.p.id,prompt,onProgress,signal);result={text:E.notebook.planMarkdown(version),sources:version.sources||[],planVersionID:version.id,projectID:U.p.id};}
    else result=await E.notebook.ask(U.p.id,prompt,onProgress,signal);
    if(signal.aborted)throw Error('已停止，研究消息与已有素材保留。');
    if(!result?.text?.trim())throw Error('研究任务没有返回实际内容。');
-   const answer=await S.append(sessionID,{...result,role:'assistant',text:result.text,sources:result.sources||[],currentTask:task,...(assemblyContext?{assemblyContext}:{})},{origin:'assembly'});U.updateAssemblyTaskState?.('complete',sessionID);return answer;
-  }catch(error){U.updateAssemblyTaskState?.('error',sessionID);throw error;}
+   const answer=await S.append(sessionID,{...result,role:'assistant',text:result.text,sources:result.sources||[],currentTask:task,...(assemblyContext?{assemblyContext}:{})},{origin:'assembly'});
+   if(answer.planEditProposal&&U.conversationSession?.id===sessionID){if(U.conversationSurface?.isOpen)U.conversationSurface.setExpanded(true,{detail:true});else if(U.p.ui.aiOpen&&document.body.dataset.writingAssistant!=='true')U.openCoauthor();}
+   U.updateAssemblyTaskState?.('complete',sessionID);return answer;
+  }catch(error){U.updateAssemblyTaskState?.('error',sessionID);
+   if(question?.id){const failure=workbenchFailure(error,{aborted:!!signal?.aborted,model:modelID||'',thinkingLevel:thinkingLevel||'',configuredModel:E.settings?.().model||''});try{await S.update(sessionID,{messages:[{id:question.id,failure}]},{origin:'assembly'});error.messageSaved=true;}catch(saveError){status(saveError.message,true);}}
+   throw error;}
   finally{U.busy=false;U.abort=null;if(U.activeResearchSessionID===sessionID)U.activeResearchSessionID='';}
  };
  U.sendResearchMessage=send;U.saveResearchMessage=saveMessage;
@@ -110,10 +135,10 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
  const surface=installConversationSurface({doc:document,orb:U.aiOrb.button,state:U.p.ui.aiConversation||{},
   dockTargets:()=>[{id:'left',label:'素材 / 结构',element:U.$('left'),ensureOpen(){U.p.ui.leftOpen=true;applyPanels();persist();}},{id:'right',label:'模块详情',element:U.$('right'),ensureOpen(){U.p.ui.rightOpen=true;applyPanels();persist();}}],
   onState(value){if(Object.hasOwn(value,'draft')||Object.hasOwn(value,'mode')){const patch={};for(const key of ['draft','mode','modelID','thinkingLevel','executionMode'])if(Object.hasOwn(value,key))patch[key]=value[key];S.update(value.sessionID||U.conversationSession.id,patch,{origin:'assembly'}).catch(error=>status(error.message,true));return;}U.p.ui.aiConversation=value;persist();},
-  renderContent:(...args)=>E.renderContent(...args),onSend:send,onSave:saveMessage,onSource:openSource,onDragMessage:event=>U.updateMessagePinTargets?.(event),getModels:()=>E.workbenchModels?.()||[],
+  renderContent:(...args)=>E.renderContent(...args),onRenderMessage:(host,message,{sessionID})=>U.renderPlanEditProposal(host,message,sessionID),onSend:send,onSave:saveMessage,onSource:openSource,onDragMessage:event=>U.updateMessagePinTargets?.(event),getModels:()=>E.workbenchModels?.()||[],
   getAttachments:session=>session?.attachments||[],onAttach:(payload,{sessionID,source})=>E.chatAttachments.attach(sessionID,payload,{source}),onRemoveAttachment:(id,{sessionID})=>E.chatAttachments.remove(sessionID,id),onDragAttachment:(item,event)=>E.chatAttachments.setDragData(event,item,U.conversationSession.id),
   onSelectSession:async id=>{if(id==='__new__'){const s=U.conversationSession;await S.create({title:'新研究对话',origin:'assembly',projectID:U.p.id,modelID:s.modelID||'',thinkingLevel:s.thinkingLevel||'off',executionMode:s.executionMode||'auto',mode:s.mode||'auto'});}else if(id==='__inherit__'){const active=S.getActive();if(active)await S.select(active.id,{scope:{projectID:U.p.id},summary:true});}else await S.select(id,{scope:{projectID:U.p.id},summary:true});},
-  onError:error=>status(error.message,true)
+  onError:error=>status(error.message,true),retryable:true
  });
  U.conversationSurface=surface;U.aiOrb.button.setAttribute('aria-controls',surface.root.id);
  const decorateTranscript=()=>{
@@ -134,19 +159,19 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
  collapseRail.addEventListener('focus',revealCollapseRail);collapseRail.addEventListener('blur',hideCollapseRail);
  let attachmentSignature='';
  const renderAttachments=session=>{
-  const host=U.$('ai-attachments');if(!host)return;const items=session.attachments||[],signature=JSON.stringify([session.id,items]);if(signature===attachmentSignature)return;attachmentSignature=signature;const existing=new Map([...host.children].map(node=>[node.dataset.attachmentId,node]));host.hidden=!items.length;
+  const host=U.$('ai-attachments');if(!host)return;host.classList.add('clui-native-attachment-list');const items=session.attachments||[],signature=JSON.stringify([session.id,items]);if(signature===attachmentSignature)return;attachmentSignature=signature;const existing=new Map([...host.children].map(node=>[node.dataset.attachmentId,node]));host.hidden=!items.length;
   for(const item of items){let chip=existing.get(item.id);existing.delete(item.id);
-   if(!chip){chip=document.createElement('span');chip.className='ai-attachment';chip.dataset.attachmentId=item.id;chip.draggable=false;
+   if(!chip){chip=document.createElement('span');chip.className='ai-attachment clui-native-attachment';chip.dataset.attachmentId=item.id;chip.draggable=false;
     const grip=document.createElement('span');grip.className='assembly-file-grip';grip.draggable=true;grip.title='拖到论文当前位置，关联此文件';grip.setAttribute('aria-label',grip.title);grip.append(assemblyChatIcon(document,'grip'));chip.append(grip);grip.ondragstart=event=>U.dragResearchAttachment(event,chip.attachment);
-    const text=document.createElement('span');text.className='ai-attachment-name';text.textContent=item.title;chip.append(text);
-    const remove=document.createElement('button');remove.type='button';remove.className='ai-attachment-remove';remove.append(assemblyChatIcon(document,'close'));remove.title='从对话移除，源文件保留';remove.setAttribute('aria-label',remove.title);remove.onclick=()=>U.removeResearchAttachment(item.id).catch(error=>status(error.message,true));chip.append(remove);
+    const kind=document.createElement('span');kind.className='clui-native-attachment-kind';kind.textContent=cluiAttachmentType(item);chip.append(kind);const text=document.createElement('span');text.className='ai-attachment-name clui-native-attachment-name';text.textContent=item.title;chip.append(text);
+    const remove=document.createElement('button');remove.type='button';remove.className='ai-attachment-remove clui-native-attachment-remove';remove.append(assemblyChatIcon(document,'close'));remove.title='从对话移除，源文件保留';remove.setAttribute('aria-label',remove.title);remove.onclick=()=>U.removeResearchAttachment(item.id).catch(error=>status(error.message,true));chip.append(remove);
    }
-   chip.attachment=item;chip.title=item.title;chip.querySelector('.ai-attachment-name').textContent=item.title;
+   chip.attachment=item;chip.title=item.title;chip.querySelector('.ai-attachment-name').textContent=item.title;chip.querySelector('.ai-attachment-name').title=item.title;const kind=chip.querySelector('.clui-native-attachment-kind');kind.textContent=cluiAttachmentType(item);kind.hidden=!!item.thumbnailURL;
    // Retain the chip while a preview finishes loading or the attachment's
    // metadata changes. The drag uses the current retained identity and values.
    let preview=chip.querySelector(':scope>img,:scope>svg');
    if(item.thumbnailURL){if(preview?.localName!=='img'){preview?.remove();preview=document.createElement('img');chip.prepend(preview);installMediaPreview(preview,{alt:item.title,onError:error=>status(error.message,true)});}if(preview.getAttribute('src')!==item.thumbnailURL)preview.src=item.thumbnailURL;preview.alt=item.title;}
-   else if(preview?.localName!=='svg'){preview?.remove();chip.prepend(assemblyChatIcon(document,'file'));}
+   else preview?.remove();
    host.append(chip);
   }
   for(const node of existing.values()){disposeMediaPreviews(node);node.remove();}

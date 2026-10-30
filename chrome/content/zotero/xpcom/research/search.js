@@ -74,13 +74,18 @@
 		if (!attachment) throw new Error('PDF 下载失败；题录已保留，可点击原址下载');
 		await Zotero.Reader.open(attachment.id);
 	};
+	// Import and the reference pane's full-text check share one duplicate rule.
+	async function findRecord(record, libraryID) {
+		let identity=Screen.paperIdentity(record);if(identity?.startsWith('arxiv:')){let base=identity.slice(6).replace(/v\d+$/,'');let byURL=new Zotero.Search();byURL.libraryID=libraryID;byURL.addCondition('url','contains','arxiv.org/abs/'+base);let matches=await Zotero.Items.getAsync(await byURL.search());let found=matches.find(x=>x.isRegularItem()&&!x.deleted&&Screen.paperIdentity({url:x.getField('url')})?.replace(/v\d+$/,'')==='arxiv:'+base);if(found)return found;}
+		let doi=Screen.doiKey(record.doi);if(!doi&&!record.url)return null;let search=new Zotero.Search();search.libraryID=libraryID;search.addCondition(doi?'DOI':'url','is',doi||record.url);
+		let existing=await Zotero.Items.getAsync(await search.search());return existing.find(item=>item.isRegularItem()&&!item.deleted)||null;
+	}
+	R.findAcademicItem=async function(record,options={}){let target=await R.resolveAcademicTarget(options);return findRecord(record,target.libraryID);};
 	async function importRecord(record, options = {}) {
 		const {select=true}=options,target=await R.resolveAcademicTarget(options);let pane=Zotero.getActiveZoteroPane(),libraryID=target.libraryID;
 		const reuse=async found=>{await R.placeAcademicInCollection(found.id,{libraryID,collectionID:target.collectionID});if(select)await pane.selectItem(found.id,{noTabSwitch:true});return{id:found.id,existing:true,...target};};
-		let search = new Zotero.Search(); search.libraryID = libraryID;
-        const identity=Screen.paperIdentity(record);if(identity?.startsWith('arxiv:')){const base=identity.slice(6).replace(/v\d+$/,'');const byURL=new Zotero.Search();byURL.libraryID=libraryID;byURL.addCondition('url','contains','arxiv.org/abs/'+base);const matches=await Zotero.Items.getAsync(await byURL.search());const found=matches.find(x=>x.isRegularItem()&&!x.deleted&&Screen.paperIdentity({url:x.getField('url')})?.replace(/v\d+$/,'')==='arxiv:'+base);if(found)return reuse(found);}
-		const doi=Screen.doiKey(record.doi);if(!doi&&!record.url)throw Error('缺少 DOI 或可核验来源网址，无法判重入库');search.addCondition(doi ? 'DOI' : 'url', 'is', doi || record.url);
-		let existing=await Zotero.Items.getAsync(await search.search()),found=existing.find(item=>item.isRegularItem()&&!item.deleted);if(found)return reuse(found);
+		let found=await findRecord(record,libraryID);if(found)return reuse(found);
+		if(!Screen.doiKey(record.doi)&&!record.url)throw Error('缺少 DOI 或可核验来源网址，无法判重入库');
 		let item = new Zotero.Item(record.source === 'arXiv' ? 'preprint' : 'journalArticle'); item.libraryID = libraryID;
 		for (let [field, value] of Object.entries({ title: record.title, abstractNote: record.abstract, date: record.date, DOI: record.doi, url: record.url })) if (value) item.setField(field, value);
 		if (record.source !== 'arXiv') { if (record.journal) item.setField('publicationTitle', record.journal); if (record.issn) item.setField('ISSN', record.issn); if(record.source==='PubMed')item.setField('extra', 'PMID: ' + record.id); }

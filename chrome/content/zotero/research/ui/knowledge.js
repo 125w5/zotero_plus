@@ -23,6 +23,7 @@ Object.assign(EasySchUI, {
 			const record = await this.E.ai.run({
 				mode: 'analyze',
 				papers: [paper],
+				signal: this.legacyJobSignal(),
 				onStatus: (s) => this.status(s),
 			});
 			const box = this.$('graph-edges');
@@ -103,7 +104,7 @@ Object.assign(EasySchUI, {
 			return;
 		}
 		const paper = this.current,
-			nodes = (this.E.store.get().knowledge || []).filter(
+			nodes = ((this.E.store.peek?this.E.store.peek('knowledge'):this.E.store.get().knowledge) || []).filter(
 				(n) => n.paperID === paper.id,
 			),
 			root = this.el('h3', paper.title);
@@ -195,7 +196,7 @@ Object.assign(EasySchUI, {
 			grid.append(card);
 		}
 		const refs =
-			this.E.store.get().discovery?.[paper.doi?.toLowerCase() + ':references'];
+			(this.E.store.peek?this.E.store.peek('discovery'):this.E.store.get().discovery)?.[paper.doi?.toLowerCase() + ':references'];
 		if (refs?.records.length) {
 			const list = this.el('details');
 			list.append(

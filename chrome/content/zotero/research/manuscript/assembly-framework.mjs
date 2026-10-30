@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {chapterMaterials,chapterRule,captureFramework,assertFrameworkCurrent,frameworkCurrent,frameworkNodeCurrent,mergeFramework,acceptFrameworkUpdate,captureFrameworkReview,frameworkReviewSignature,frameworkAuthorText} from '../shared/writing-framework.mjs';
 import {writingPreviewDiff} from '../shared/assembly-writing-preview.mjs';
-import {renderPaperWritingWorkflow} from './paper-writing-workflow.mjs';
 export const assemblyFrameworkIntent=prompt=>/(?:整理|生成|准备|装配|梳理|构建|更新|重做|重写)[^。\n]{0,30}(?:写作框架|章节框架|论文框架|段落任务|论证框架|写作速读|装配速读)/u.test(String(prompt||''));
 const selectedChapterSources=(project,sectionID,materials=chapterMaterials(project,sectionID))=>{
  const saved=project.ui.frameworkSources?.[sectionID];if(!Array.isArray(saved))return saved;
@@ -58,11 +57,12 @@ export function renderAssemblyFramework(U,host,b,{el,button,persist,status,isCur
  }
  return {root};
 }
-export function renderWritingDigest(U,canvas,{el,button,persist,status,materialDetails}){
+export function renderWritingDigest(U,canvas,{el,button,persist,status,materialDetails,close}){
  if(!canvas.ownerDocument.getElementById('assembly-writing-result-styles')){const link=el('link');link.id='assembly-writing-result-styles';link.rel='stylesheet';link.href=new URL('./assembly-writing-result.css',import.meta.url).href;canvas.ownerDocument.head.append(link);}
  const project=U.p,root=el('article',undefined,'writing-digest');canvas.append(root);root.append(el('h1',project.title||'论文写作速读'),el('p','写作速读 · 已写内容、拟补素材与论证调整','writing-digest-subtitle'));
+ // The digest is a separate legacy view; this returns to the stage's own canvas.
+ if(close)button('返回当前装配视图',()=>close(),root,'quiet-action').dataset.action='close-writing-digest';
  const isCurrent=()=>U.p===project&&root.isConnected;
- renderPaperWritingWorkflow(U,root,{el,button,persist,status,generate:sectionID=>requestAssemblyFramework(U,{sectionID,instruction:project.ui.frameworkInstruction?.[sectionID]||''})});
  const all=button(Object.keys(project.writingFrameworks||{}).length?'更新整篇速读':'生成整篇速读',async()=>{if(!isCurrent()||U.busy)return;const abort=new canvas.ownerDocument.defaultView.AbortController();U.frameworkAbort=abort;U.busy=true;U.$('cancel-task').hidden=false;try{for(const section of project.sections){if(abort.signal.aborted)throw Error('已停止，已完成的章节保留');if(U.p!==project)throw Error('论文已切换，任务停止');const frame=project.writingFrameworks?.[section.id];if(frame&&frameworkCurrent(project,frame)&&frame.nodes.every(node=>frameworkNodeCurrent(project,frame,node)))continue;if(!chapterMaterials(project,section.id).some(row=>row.sourceText?.trim())&&!project.blocks.some(row=>row.sectionID===section.id&&frameworkAuthorText(row).trim()))continue;await requestAssemblyFramework(U,{sectionID:section.id,fromChat:true,signal:abort.signal,instruction:project.ui.frameworkInstruction?.[section.id]||'',unitIDs:frame?.nodes.filter(row=>!frameworkNodeCurrent(project,frame,row)).map(row=>row.id)});}status('写作速读已保存，未写章节保留为待补内容。');}catch(error){status(error.message,true);}finally{if(U.frameworkAbort===abort)delete U.frameworkAbort;U.busy=false;U.$('cancel-task').hidden=true;U.changed({editor:true});}},root,'framework-generate');all.dataset.action='generate-whole-writing-digest';all.disabled=U.busy;
  const review=button('检查整篇',async()=>{if(!isCurrent()||U.busy)return;const abort=new canvas.ownerDocument.defaultView.AbortController();U.frameworkAbort=abort;review.disabled=true;const stop=button('停止',()=>abort.abort(),root,'quiet-action');try{await requestAssemblyFramework(U,{review:true,signal:abort.signal});status('全文结构检查已保存');}catch(error){status(error.message,true);}finally{if(U.frameworkAbort===abort)delete U.frameworkAbort;review.disabled=false;stop.remove();}},root,'framework-review');review.dataset.action='check-writing-digest';
  for(const section of project.sections){const b=project.blocks.find(row=>row.sectionID===section.id)||{sectionID:section.id};renderAssemblyFramework(U,root,b,{el,button,persist,status,isCurrent,materialDetails,canvas:true});}

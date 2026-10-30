@@ -26,6 +26,33 @@
 	E.openWorkflow = async (page, selection) => {
 		return E.openLibraryWorkspace(Zotero.getMainWindow(),page==='home'?'discovery':page==='research'?'agent':page,{selection});
 	};
+	// The tab-strip plus button creates an independent page. Navigation buttons
+	// continue to reuse the original library workspace and its unsaved state.
+	E.openWorkflowPage = async (page,{win=Zotero.getMainWindow(),createProject=false}={}) => {
+		const titles={search:'文献检索',writing:'论文装配',ppt:'组会 PPT',schedule:'日程'};
+		if(!titles[page])throw Error('不支持的科研页面');
+		const doc=win.document,frame=doc.createElementNS('http://www.w3.org/1999/xhtml','iframe'),controller=new win.AbortController();
+		frame.id='research-page-'+Zotero.Utilities.randomString(12);frame.title=titles[page];frame.style.cssText='width:100%;height:100%;border:0;flex:1;min-width:0';
+		frame.researchPage=page;frame.researchCreateProject=createProject;frame.researchLibraryMode=true;frame.researchLibraryView=page;frame.researchOverlayMode='tab';
+		const {id,container}=win.Zotero_Tabs.add({type:'research',title:titles[page],data:{workflowPage:page},select:true,onClose:()=>{controller.abort();frame.contentWindow?.EasySchUI?.suspendDiscovery?.();}});
+		container.style.display='flex';container.append(frame);frame.src='chrome://zotero/content/research/workspace.html';
+		for(let attempt=0;attempt<500;attempt++){
+			if(controller.signal.aborted||win.closed)return null;
+			const ui=frame.contentWindow?.EasySchUI;
+			if(ui?.ready){
+				if(page==='ppt')await ui.pptAssistantReady;
+				if(controller.signal.aborted)return null;
+				const {prepareReaderPaneStyles}=ChromeUtils.importESModule('chrome://zotero/content/research/shared/reader-pane-styles.mjs');
+				await prepareReaderPaneStyles(frame.contentDocument,{Zotero,name:'workflow-tab',url:'chrome://zotero/content/research/library-workspace.css'});
+				const {readNativeLibraryScope}=ChromeUtils.importESModule('chrome://zotero/content/research/shared/library-scope.mjs');
+				const scope=await readNativeLibraryScope(E,win,{signal:controller.signal});
+				if(!controller.signal.aborted&&scope)await ui.setLibraryScope?.(scope,{signal:controller.signal,preserveActive:true});
+				return controller.signal.aborted?null:ui;
+			}
+			await Zotero.Promise.delay(40);
+		}
+		if(!controller.signal.aborted){win.Zotero_Tabs.close(id);throw Error('新页面加载超时，请重试');}return null;
+	};
 	E.installHomeMenu = (win) => {
 		const doc = win.document,
 			pane = doc.getElementById('zotero-items-pane');
@@ -105,6 +132,11 @@
 		const content=NoteContent.selectionNoteHTML({selection,summary,label,latex,render:E.noteContentHTML,escape:h});
 		const snapshot=!!formula&&!content.math;
 		if(snapshot)position=E.assets.position(formula);
+		let comment=label+(label==='原文摘录'?'':'（请核对）\n'+summary),same=E.selectionNoteLink?.(attachment.id,position,comment);
+		if(same){
+			let liveReader=sourceReader?.itemID===attachment.id&&!sourceReader._isUninitialized&&!sourceReader._isTabClosed?sourceReader:E.readerForAttachment(attachment.id);
+			return {noteID:same.noteID,annotationID:same.annotationID,reused:true,warning:liveReader?await E.openSavedReaderNote(same.noteID,liveReader):''};
+		}
 		let annotation = new Zotero.Item('annotation'),
 			note;
 		annotation.libraryID = attachment.libraryID;
@@ -113,7 +145,7 @@
 		annotation.parentID = attachment.id;
 		annotation.annotationType = snapshot?'image':'highlight';
 		annotation.annotationText = snapshot?'':content.math?'$$\n'+Formula.normalizeFormulaInput(latex)+'\n$$':selection.text;
-		annotation.annotationComment = label + (label==='原文摘录'?'':'（请核对）\n' + summary);
+		annotation.annotationComment = comment;
 		annotation.annotationColor = '#a28ae5';
 		annotation.annotationPageLabel = String(position.pageIndex + 1);
 		annotation.annotationSortIndex =
@@ -144,11 +176,12 @@
 			originalComment = annotation.annotationComment;
 		for(const reader of Zotero.Reader._readers.filter(r=>r.itemID===attachment.id&&r._window&&!r._window.closed&&!r._isTabClosed&&!r._isUninitialized))await reader.setAnnotations([annotation]);
 		await E.rememberNoteLink(annotation,note,{translation:label==='原文摘录'?'':summary,generatedComment:annotation.annotationComment});
-		const reader=E.readerForAttachment(attachment.id);
-		if(reader)await E.openReaderNote(note.id,reader);
+		const reader=sourceReader?.itemID===attachment.id&&!sourceReader._isUninitialized&&!sourceReader._isTabClosed?sourceReader:E.readerForAttachment(attachment.id);
+		let warning=reader?await E.openSavedReaderNote(note.id,reader):'';
 		return {
 			noteID: note.id,
 			annotationID: annotation.id,
+			warning,
 			undo: async () => {
 				const a = await Zotero.Items.getAsync(annotation.id),
 					n = await Zotero.Items.getAsync(note.id);

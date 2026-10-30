@@ -19,6 +19,19 @@ html[data-appearance] .paper .material-description {height:auto;max-height:none;
 html[data-appearance] .paper .material-description :is(p,ul,ol) {margin-block:4px;}
 html[data-appearance] .paper .material-description .katex {font-size:1.05em;}
 html[data-appearance] .paper .material-frame .editable {border-top:1px solid color-mix(in srgb,var(--assembly-border,#d1d6dc) 55%,transparent);padding-top:8px;}
+/* A card without the user's text: its material, a 待写 marker and actions.
+   The same card is used on article pages and under read chapters. */
+#canvas .block-placeholder {margin:0 0 8px;padding:10px 12px;border:1px dashed color-mix(in srgb,var(--assembly-border,#d1d6dc) 90%,var(--muted,#697582));border-radius:9px;background:color-mix(in srgb,var(--assembly-control,#fff) 82%,var(--assembly-bar,#f8f9fa));font:12px/1.65 var(--ui-font,system-ui,"Microsoft YaHei",sans-serif);color:var(--text,#29313a);}
+#canvas .block-placeholder-heading {display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;}
+#canvas .block-placeholder-badge {flex:none;padding:0 7px;border-radius:999px;background:var(--ui-selection,#e9f2ff);color:var(--ui-primary-text,#405e82);font-size:11px;font-weight:600;line-height:20px;}
+#canvas .block-placeholder-title {font-weight:600;overflow-wrap:anywhere;}
+#canvas .block-placeholder-source {color:var(--muted,#697582);}
+#canvas .block-placeholder-summary {margin:6px 0 0;color:var(--muted,#697582);overflow-wrap:anywhere;}
+#canvas .block-placeholder-summary :is(p,ul,ol) {margin-block:3px;}
+#canvas .block-placeholder-actions {display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+#canvas .block-placeholder-actions button {min-height:26px;padding:2px 9px;font-size:12px;}
+#canvas .block-placeholder-card .editable:empty::before {content:'可在此写入正文；素材保持关联';color:var(--muted,#697582);}
+#canvas :is(.block,[data-read-block]).selected .block-placeholder {border-style:solid;border-color:color-mix(in srgb,var(--ui-primary-text,#405e82) 45%,transparent);}
 .canvas-display-changing .paper {animation:canvas-display-reveal .18s ease-out;}
 @keyframes canvas-display-reveal {from{opacity:.72}to{opacity:1}}
 @media(max-width:1100px) {html[data-appearance] #canvas {padding-inline:12px;}html[data-appearance] .paper {padding:34px 30px 48px;}}

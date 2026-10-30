@@ -24,10 +24,10 @@ test('recognition reads actual image pixels through authorized model and creates
 	assert.equal((await recognizeFormulaSource(E,asset)).cacheHit,true);assert.equal(calls.length,1);
 	assert.notEqual(formulaSourceKey(asset),formulaSourceKey({...asset,bbox:[1,2,3,5]}));
 });
-test('no picture, restricted gateway model, cancelled or empty recognition cannot silently import an image as editable math',async()=>{
+test('no picture, cancelled or empty recognition cannot silently import an image as editable math',async()=>{
 	const {E}=fixture();await assert.rejects(recognizeFormulaSource(E,{id:'no-pixels'}),/没有完整/);await assert.rejects(recognizeFormulaSource(E,{path:'full.png'},{signal:{aborted:true}}),/取消/);
-	E.settings=()=>({endpoint:'https://openai.goldgom.top/v1',model:'other-model'});await assert.rejects(recognizeFormulaSource(E,{path:'full.png'}),/GPT-6 Luna/);
-	E.settings=()=>({endpoint:'https://example.invalid',model:'gpt-6-luna'});E.studio.request=async()=>({value:{latex:''}});await assert.rejects(recognizeFormulaSource(E,{path:'full.png'}),/没有返回可编辑/);
+	E.settings=()=>({endpoint:'https://openai.goldgom.top/v1',model:'gpt-6.1-sol'});assert.equal((await recognizeFormulaSource(E,{path:'full.png'})).latex,'x_i^2=1');
+	E.settings=()=>({endpoint:'https://example.invalid',model:'gpt-6-luna'});E.studio.request=async()=>({value:{latex:''}});await assert.rejects(recognizeFormulaSource(E,{path:'full.png'},{fresh:true}),/没有返回可编辑/);
 });
 test('formula recognition and explanation preserve explicitly selected model and reasoning',async()=>{
 	const {E,calls}=fixture(),modelConfig={endpoint:'https://example.invalid/v1',model:'configured-vision',thinkingLevel:'high',reasoningParameter:'reasoning_effort'};

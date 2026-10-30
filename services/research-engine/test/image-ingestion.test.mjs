@@ -48,6 +48,51 @@ test('historical IDs for one PDF region collapse, but a distinct crop remains',a
  const state=await f.E.assets.queueImages(1);assert.equal(state.total,2);assert.equal(new Set(state.assetIDs).size,2);
  assert.equal(Object.keys(f.state.researchMaterials).length,2);assert.equal(f.calls.length,2);
 });
+
+test('evidence material lookup indexes one branch snapshot and returns isolated records',async()=>{
+ const f=setup(1);await f.E.assets.queueImages(1);const asset=f.E.assets.active.get(1).assets[0],original=Object.values(f.state.researchMaterials)[0],library=f.E.manuscripts.assetLibrary;let branch=1,reads=0;
+ f.E.store.branchRevision=name=>{assert.equal(name,'researchMaterials');return branch;};f.E.store.revision=20;
+ f.E.manuscripts.assetLibrary=()=>{reads++;return library();};
+ const first=f.E.assets.materialFor(asset);first.summary='外部修改不得污染缓存';first.imageExplanation.result.sections[0].body='外部嵌套修改';
+ for(let i=0;i<30;i++)assert.equal(f.E.assets.materialFor(asset).summary,original.summary);
+ assert.equal(reads,1,'multiple visible cards reuse the material branch snapshot');
+ assert.notEqual(f.E.assets.materialFor(asset).imageExplanation.result.sections[0].body,'外部嵌套修改');
+ f.E.store.revision++;f.E.assets.materialFor(asset);assert.equal(reads,1,'unrelated store changes do not rebuild this branch');
+ original.summary='新的人工说明';original.revision++;branch++;assert.equal(f.E.assets.materialFor(asset).summary,'新的人工说明');assert.equal(reads,2);
+ delete f.state.researchMaterials[original.id];branch++;assert.equal(f.E.assets.materialFor(asset),undefined);assert.equal(reads,3);
+});
+
+test('material lookup without store revisions continues reading fresh snapshots',async()=>{
+ const f=setup(1);await f.E.assets.queueImages(1);const asset=f.E.assets.active.get(1).assets[0],material=Object.values(f.state.researchMaterials)[0];
+ assert.equal(f.E.assets.materialFor(asset).summary,material.summary);material.summary='未提供版本的运行环境仍返回最新说明';assert.equal(f.E.assets.materialFor(asset).summary,material.summary);
+});
+
+test('concurrent paper consumers share PDF indexing and one cancellation leaves the other live',async()=>{
+ const f=setup(1),engine=f.E.runArtifactEngine,a=new AbortController(),b=new AbortController();let enter,release,engineSignal,requests=0;
+ const entered=new Promise(resolve=>{enter=resolve;});f.E.runArtifactEngine=(request,status,signal)=>{if(request.operation!=='assets-index')return engine(request,status,signal);requests++;engineSignal=signal;enter();return new Promise(resolve=>{release=()=>resolve(engine(request,status,signal));});};
+ const first=f.E.assets.index(1,()=>{},a.signal),second=f.E.assets.index(1,()=>{},b.signal);await entered;await new Promise(resolve=>setTimeout(resolve,0));a.abort();await assert.rejects(first,{name:'AbortError'});assert.equal(engineSignal.aborted,false);release();const result=await second;assert.equal(requests,1);assert.equal(result.assets.length,1);assert.equal(f.E.assets.active.get(1).assets[0].attachmentID,1);
+});
+
+test('shared image preparation reports to each consumer and cancels only when all release',async()=>{
+ const f=setup(1),request=f.E.studio.request,a=new AbortController(),b=new AbortController(),messages=[];let ready,release,modelSignal;
+ const started=new Promise(resolve=>{ready=resolve;});f.E.studio.request=(...args)=>{modelSignal=args[3];args[2]('已读取中文说明依据');ready();return new Promise(resolve=>{release=()=>resolve(request(...args));});};
+ const first=f.E.assets.queueImages(1,()=>{},{signal:a.signal}),second=f.E.assets.queueImages(1,text=>messages.push(text),{signal:b.signal,changed:true});await started;a.abort();await assert.rejects(first,{name:'AbortError'});assert.equal(modelSignal.aborted,false);assert.ok(messages.includes('已读取中文说明依据'));release();assert.equal((await second).status,'complete');assert.equal(f.calls.length,1);assert.equal(f.indexCalls,1);
+});
+
+test('closing the last image preparation consumer aborts its model work and keeps partial state',async()=>{
+ const f=setup(1),abort=new AbortController();let ready,modelSignal;const started=new Promise(resolve=>{ready=resolve;});
+ f.E.studio.request=(_system,_input,_status,signal)=>{modelSignal=signal;ready();return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('cancelled')),{once:true}));};
+ const work=f.E.assets.queueImages(1,()=>{},{signal:abort.signal});await started;abort.abort();await assert.rejects(work,{name:'AbortError'});assert.equal(modelSignal.aborted,true);await new Promise(resolve=>setTimeout(resolve,0));assert.equal(f.E.assets.imageState(1).status,'partial');assert.equal(Object.keys(f.state.researchMaterials).length,1,'the complete original image material survives cancellation');
+});
+
+test('reopening an unchanged PDF preserves finished images across extractor, prompt and model upgrades',async()=>{
+ const f=setup(1);await f.E.assets.queueImages(1);f.state.imageIngestion[1].parseVersion='mupdf-assets-16';f.E.assets.active.delete(1);const engine=f.E.runArtifactEngine;
+ f.E.runArtifactEngine=async request=>{const value=await engine(request);return request.operation==='assets-index'?{...value,version:f.E.assets.extractorVersion}:value;};
+ f.E.settings=()=>({endpoint:'https://new-model.example',model:'new-model'});f.state.imageIngestion[1].analysisVersion='old-prompt';Object.values(f.state.researchMaterials)[0].analysisVersion='old-prompt';
+ await f.E.assets.queueImages(1,()=>{},{changed:true});assert.equal(f.indexCalls,1);assert.equal(f.calls.length,1);assert.equal(f.E.assets.imageState(1).parseVersion,'mupdf-assets-16');
+ const asset={...Object.values(f.state.researchMaterials)[0],pdfHash:'same-file',pageIndex:0,bbox:[20,30,150,200]};await f.E.assets.saveMaterial(asset);assert.equal(f.calls.length,1,'completed descriptions do not depend on the selected model');
+ await f.E.assets.queueImages(1,()=>{},{force:true});assert.equal(f.indexCalls,2,'explicit crop refresh can still reindex');assert.equal(f.calls.length,1,'reindex keeps completed source explanations');
+});
 test('background asset indexing loads paper metadata before reading its title and DOI',async()=>{
  const f=setup(1);let paperLoaded=false,attachmentLoaded=false;
  const paper={id:11,loadDataType:async type=>{assert.equal(type,'itemData');paperLoaded=true;},getField:field=>{assert.equal(paperLoaded,true);return {title:'Loaded source paper',DOI:'10.fixture/source',firstCreator:'Actual author'}[field]||'';}};
@@ -94,13 +139,13 @@ test('unchanged PDF metadata notifications reuse image work; a changed file rech
 test('a newer crop index refreshes completed ingestion without replacing a confirmed old crop',async()=>{
  const f=setup(1);await f.E.assets.queueImages(1);const old=Object.values(f.state.researchMaterials)[0];old.userEdited=true;old.summary='用户保存的原裁切说明';const original=f.E.runArtifactEngine;
  f.E.runArtifactEngine=async request=>{const result=await original(request);return request.operation==='assets-index'?{...result,version:'parse-v7',assets:result.assets.map(a=>({...a,bbox:[20,10,150,300],path:'full-figure.png',assetHash:'corrected-image-hash',extractorVersion:'parse-v7'}))}:result;};
- await f.E.assets.index(1);const refreshed=await f.E.assets.queueImages(1,()=>{},{changed:true});
+ await f.E.assets.index(1);const refreshed=await f.E.assets.queueImages(1,()=>{},{force:true});
  assert.equal(refreshed.parseVersion,'parse-v7');assert.equal(Object.keys(f.state.researchMaterials).length,2);assert.equal(old.summary,'用户保存的原裁切说明');assert.equal(old.imagePath,'figure0.png');assert.ok(Object.values(f.state.researchMaterials).some(m=>m.imagePath==='full-figure.png'));assert.equal(f.calls.length,2);
 });
 
-test('old completed selection migrates once and reuses confirmed explanations without new AI requests',async()=>{
+test('a selection algorithm update does not rewrite completed evidence when the PDF is unchanged',async()=>{
  const f=setup(1);await f.E.assets.queueImages(1);const old=Object.values(f.state.researchMaterials)[0];old.userEdited=true;old.summary='人工校对的说明';f.state.imageIngestion[1].selectionVersion='research-visuals-3';
- await f.E.assets.queueImages(1);assert.equal(f.indexCalls,2);assert.equal(f.calls.length,1);assert.equal(old.summary,'人工校对的说明');assert.equal(f.state.imageIngestion[1].selectionVersion,'research-visuals-5');await f.E.assets.queueImages(1);assert.equal(f.indexCalls,2);
+ await f.E.assets.queueImages(1);assert.equal(f.indexCalls,1);assert.equal(f.calls.length,1);assert.equal(old.summary,'人工校对的说明');assert.equal(f.state.imageIngestion[1].selectionVersion,'research-visuals-3');await f.E.assets.queueImages(1);assert.equal(f.indexCalls,1);
 });
 test('import notifier automatically starts images, without opening readers or requiring text AI success',async()=>{
  const f=setup(1);vm.runInContext(pipeline,f.ctx);f.E.manuscripts.indexArticle=async()=>{throw Error('text offline');};

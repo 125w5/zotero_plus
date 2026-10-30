@@ -31,7 +31,7 @@ describe('Actual source-paper offline parsing',function(){
   report.worldModelReferences={total:result.records.length,ids:result.records.map(ref=>ref.id),lengths:result.records.map(ref=>ref.quote.length),source:'真实PDFWorker；只导入隔离验收库副本，未写日常文库'};
  });
  it('runs the real PDF asset engine and retains all thirty figure captions and five tables',async()=>{
-  assets=await E.runArtifactEngine({operation:'assets-index',pdf:source,force:true});assert.equal(assets.pages,74);assert.equal(assets.version,'mupdf-assets-16');
+  assets=await E.runArtifactEngine({operation:'assets-index',pdf:source,force:true});assert.equal(assets.pages,74);assert.equal(assets.version,E.assets.extractorVersion);
   const figures=assets.assets.filter(asset=>asset.kind==='figure'),tables=assets.assets.filter(asset=>asset.kind==='table');assert.lengthOf(figures,30);assert.lengthOf(tables,5);assert.deepEqual(figures.map(asset=>asset.label),Array.from({length:30},(_,i)=>'Fig. '+(i+1)));
   for(const label of ['Fig. 1','Fig. 2','Fig. 3','Fig. 30']){
    const asset=figures.find(value=>value.label===label);assert.isTrue(await IOUtils.exists(asset.path));const bytes=await IOUtils.read(asset.path,{maxBytes:24}),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);assert.isAbove(view.getUint32(16),100);assert.isAbove(view.getUint32(20),100);assert.isAbove(asset.bbox[2]-asset.bbox[0],50);assert.isAbove(asset.bbox[3]-asset.bbox[1],50);

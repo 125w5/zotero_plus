@@ -47,6 +47,7 @@
   try{const result=await translateAcademicModel(text,signal);if(signal?.aborted)throw Error('已取消');return persist?keepTranslation(gptKey,result):{...result,cacheHit:false};}
   catch(error){if(signal?.aborted)throw error;throw Error(machineError?`选区机翻失败：${machineError.message}；学术翻译失败：${error.message}`:error.message);}
  };
+ E.readerNoteSavedText=(result,saved='已保存笔记')=>result?.warning||(result?.reused?'已打开已保存的笔记':saved);
  E.selectionTranslationRecord=(selection,translation)=>({id:'translation-'+Date.now(),at:new Date().toISOString(),model:translation?(translation.provider||'机器翻译'):'原文摘录',mode:'translate',warnings:[],sources:[{id:'S1',...selection,label:'选段原文',uri:E.library.uri(Zotero.Items.get(selection.attachmentID),selection.pageIndex)}],result:{sections:[{heading:translation?'':'原文摘录',body:translation?.text||selection.text,sources:['S1'],claim_type:'observation'}],keywords:[],questions:[]}});
  E.saveSelectionTranslation=async(selection,translation,options)=>E.saveReaderNote(selection,E.selectionTranslationRecord(selection,translation),options);
  // The PDF remains the source of truth. The second, continuous page stack only
@@ -245,7 +246,7 @@
    const action=(text,fn,disabled=false)=>{const button=create('button',text);button.type='button';button.setAttribute('role','menuitem');button.disabled=disabled;button.onclick=async e=>{e.stopPropagation();closeMenu();try{await fn();}catch(error){status.textContent=error.message;}};menu.append(button);};
    action('定位原文',()=>navigateEntry(entry));
    if(!entry.visual){if(entry.block.translatable!==false)action('编辑译文',()=>startEdit(entry),!entry.translatedText);
-    action('保存为笔记',async()=>{await E.saveSelectionTranslation(selectionFor(entry),{text:plainMathText(entry.translatedText,entry.block),provider:entry.block.translatable===false?'原文题录':'中文译文'},{reader});status.textContent='已保存笔记与来源高亮';},!entry.translatedText);
+    action('保存为笔记',async()=>{let saved=await E.saveSelectionTranslation(selectionFor(entry),{text:plainMathText(entry.translatedText,entry.block),provider:entry.block.translatable===false?'原文题录':'中文译文'},{reader});status.textContent=E.readerNoteSavedText(saved,'已保存笔记与来源高亮');},!entry.translatedText);
     action('保存为批注',async()=>{const annotations=E.annotateSelection(reader,selectionFor(entry),'highlight');
      reader._internalReader._annotationManager.updateAnnotations(Cu.cloneInto(annotations.map(a=>({id:a.id,comment:(entry.block.translatable===false?'原文摘录':'译文（请核对）')+'\n'+plainMathText(entry.translatedText,entry.block)})),reader._iframeWindow));status.textContent='已保存到原文位置';},!entry.translatedText);}
    panel.append(menu);const bounds=panel.getBoundingClientRect();menu.style.left=Math.max(bounds.left,Math.min(event.clientX,doc.defaultView.innerWidth-menu.offsetWidth-8))+'px';menu.style.top=Math.max(42,Math.min(event.clientY,doc.defaultView.innerHeight-menu.offsetHeight-8))+'px';menu.querySelector('button:not(:disabled)')?.focus();
@@ -371,7 +372,13 @@
  E.installReaderTranslation=()=>{E.readerTranslationToolbar=({reader,doc,append})=>{if(reader.type!=='pdf')return;
   // Opening the document starts the same deduplicated preparation used by import;
   // the translation button only shows its already prepared local results.
-  void prepareReaderTranslation(reader).catch(()=>{});
+  // The toolbar is constructed before the PDF's first interactive paint.
+  // Background layout/text preparation must not compete with that paint,
+  // or eagerly extract every restored but hidden Reader tab.
+  void Promise.resolve(reader._initPromise).then(()=>new Promise(resolve=>E.setTimeout?E.setTimeout(resolve,180):resolve())).then(()=>{
+   if(reader._isTabClosed||reader.tabID&&reader._window?.Zotero_Tabs&&reader._window.Zotero_Tabs.selectedID!==reader.tabID)return;
+   return prepareReaderTranslation(reader);
+  }).catch(()=>{});
   const button=doc.createElement('button');button.className='toolbar-button easysch-translation-open';button.type='button';button.textContent='译文';button.title='查看整篇中文译文，与原 PDF 同步滚动';button.setAttribute('aria-label','查看译文');button.setAttribute('aria-pressed',pageTranslationPanels.get(reader)?.panel.isConnected?'true':'false');button.style.cssText='width:auto;padding:4px 9px;font:inherit;color:inherit;border-radius:6px;-moz-window-dragging:no-drag';button.onclick=()=>E.openReaderTranslation(reader);append(button);};Zotero.Reader.registerEventListener('renderToolbar',E.readerTranslationToolbar,E.id);};
  E.renderQuickTranslation=({reader,doc,selection,append})=>{
   quickJobs.get(reader)?.close();if(!selection?.text?.trim())return;
@@ -382,7 +389,7 @@
   const selectionStatus=doc.createElement('div');selectionStatus.className='selection-action-status';selectionStatus.setAttribute('role','status');selectionStatus.style.cssText='display:none;font:12px/1.6 system-ui;color:var(--fill-secondary,#576675);overflow-wrap:anywhere;margin-bottom:8px';
   let completedTranslation;
   const selectionAction=(label,className,run)=>{const button=doc.createElement('button');button.type='button';button.textContent=label;button.className='toolbar-button wide-button '+className;button.setAttribute('data-tabstop','1');button.style.cssText='display:inline-flex;align-items:center;justify-content:center;flex:1;min-height:30px;padding:4px 10px;border:1px solid var(--fill-senary,#8b929833);border-radius:6px;background:var(--material-button,transparent);color:inherit;font:inherit;cursor:pointer';button.onclick=async()=>{button.disabled=true;selectionStatus.style.display='none';try{await run();}catch(error){selectionStatus.textContent=error.message;selectionStatus.style.display='block';}finally{button.disabled=false;}};selectionActions.append(button);return button;};
-  const saveNote=selectionAction('保存为笔记','easysch-reader-note',async()=>{await E.saveSelectionTranslation(selection,completedTranslation,{reader});selectionStatus.textContent='已保存笔记';selectionStatus.style.display='block';});saveNote.title='保存当前选区、已完成的机翻和原文位置，在右侧打开笔记';
+  const saveNote=selectionAction('保存为笔记','easysch-reader-note',async()=>{let saved=await E.saveSelectionTranslation(selection,completedTranslation,{reader});selectionStatus.textContent=E.readerNoteSavedText(saved);selectionStatus.style.display='block';});saveNote.title='保存当前选区、已完成的机翻和原文位置，在右侧打开笔记';
   const strike=selectionAction('划掉文字','easysch-reader-strikeout',()=>E.annotateSelection(reader,selection,'strikeout'));strike.title='在原 PDF 的选中文字上添加红色删除线';
   const readOnly=!!reader._internalReader?._state?.readOnly;if(readOnly){saveNote.disabled=true;strike.disabled=true;saveNote.title=strike.title='当前文库只读';}
   const output=doc.createElement('div');output.className='quick-translation-output';output.setAttribute('role','status');output.setAttribute('aria-live','polite');output.lang='zh-CN';output.style.cssText='display:block;min-height:22px;max-height:220px;overflow:auto;overflow-wrap:anywhere;white-space:pre-wrap;visibility:visible;opacity:1;color:var(--fill-secondary,#576675);font:13px/1.65 system-ui,"Microsoft YaHei",sans-serif';output.textContent='正在翻译…';
@@ -429,14 +436,29 @@
   }catch(error){card.error(error,run);}finally{jobs.delete(reader);}};
   await run();
  };
+ // Native Reader menus call onCommand without handling its result, so every
+ // menu action reports its own outcome inside the reader.
+ E.readerNotice=(reader,text,{error=false}={})=>{
+  let doc=reader?._iframeWindow?.document;if(!doc?.body)return null;doc.getElementById('easysch-reader-notice')?.remove();
+  let notice=doc.createElement('section');notice.id='easysch-reader-notice';notice.setAttribute('role',error?'alert':'status');
+  notice.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:10001;display:flex;align-items:flex-start;gap:10px;max-width:min(430px,calc(100vw - 36px));box-sizing:border-box;padding:10px 12px;border:1px solid var(--color-border,#bbb);border-radius:10px;background:var(--color-background,Canvas);color:var(--color-foreground,CanvasText);box-shadow:0 5px 24px #0003;font:menu;font-size:13px;line-height:1.6;user-select:text;overflow-wrap:anywhere;';
+  let message=doc.createElement('span');message.textContent=text;message.style.flex='1';
+  let close=doc.createElement('button');close.type='button';close.textContent='关闭';close.style.cssText='font:inherit;color:inherit;background:transparent;border:1px solid #8886;border-radius:5px;padding:2px 8px;cursor:pointer';close.onclick=()=>notice.remove();
+  notice.append(message,close);doc.body.append(notice);
+  if(!error)E.setTimeout?.(()=>notice.remove(),6000);return notice;
+ };
+ E.readerCommand=(reader,title,run,success)=>async()=>{
+  try{let result=await run();let text=typeof success==='function'?success(result):success;if(text)E.readerNotice(reader,text);return result;}
+  catch(error){Zotero.logError(error);E.readerNotice(reader,title+'未完成：'+error.message,{error:true});return null;}
+ };
  E.installReaderContext=()=>{E.readerContextHandler=({reader,append})=>{
   const selection=E.readerSelection(reader);if(!selection)return;
   const disabled=!!E.readerWriteIssue(reader,Zotero.Items.get(selection.attachmentID));
-  for(const [type,label]of [['highlight','高亮选区'],['underline','下划线'],['strikeout','划掉文字（红色删除线）']])append({label,disabled,onCommand:()=>E.annotateSelection(reader,selection,type)});
-  append({label:'图片区域保存为笔记',disabled,onCommand:()=>E.selectionImageNote(reader,selection).catch(e=>Zotero.logError(e))});
-  append({label:'保存高亮与笔记',disabled,onCommand:()=>E.saveSelectionTranslation(selection,undefined,{reader}).catch(e=>Zotero.logError(e))});
-  append({label:'关联其他文献语句…',disabled,onCommand:()=>E.openSentenceLinker(reader,selection)});
-  if(E.pendingSentence&&E.pendingSentence.attachmentID!==selection.attachmentID)append({label:'关联到已标记的起点语句',disabled,onCommand:async()=>{await E.linkSentences(E.pendingSentence,selection);E.pendingSentence=null;E.readerResultCard(reader,reader._iframeWindow.document,selection,'语句关联').status('已保存两篇文献的语句关联；可在侧栏“关联证据与论文图表”查看。');}});
+  for(const [type,label]of [['highlight','高亮选区'],['underline','下划线'],['strikeout','划掉文字（红色删除线）']])append({label,disabled,onCommand:E.readerCommand(reader,label,()=>E.annotateSelection(reader,selection,type))});
+  append({label:'图片区域保存为笔记',disabled,onCommand:E.readerCommand(reader,'图片区域保存为笔记',()=>E.selectionImageNote(reader,selection),result=>E.readerNoteSavedText(result,'已保存图片区域笔记'))});
+  append({label:'保存高亮与笔记',disabled,onCommand:E.readerCommand(reader,'保存高亮与笔记',()=>E.saveSelectionTranslation(selection,undefined,{reader}),result=>E.readerNoteSavedText(result,'已保存高亮与笔记'))});
+  append({label:'关联其他文献语句…',disabled,onCommand:E.readerCommand(reader,'关联其他文献语句',()=>E.openSentenceLinker(reader,selection))});
+  if(E.pendingSentence&&E.pendingSentence.attachmentID!==selection.attachmentID)append({label:'关联到已标记的起点语句',disabled,onCommand:E.readerCommand(reader,'关联到已标记的起点语句',async()=>{await E.linkSentences(E.pendingSentence,selection);E.pendingSentence=null;E.readerResultCard(reader,reader._iframeWindow.document,selection,'语句关联').status('已保存两篇文献的语句关联；可在侧栏“关联证据与论文图表”查看。');})});
  };Zotero.Reader.registerEventListener('createViewContextMenu',E.readerContextHandler,E.id);};
  E.readerResultCard=(reader,doc,selection,title)=>{
   doc.getElementById('easysch-reader-result')?.remove();
@@ -465,7 +487,7 @@
     if(record.result.keywords?.length)output.append(el('p','术语：'+record.result.keywords.join(' · ')));
     if(selection.position?.rects?.length){
      output.append(el('p','以上为 AI 笔记预览。确认保存后，将同时创建论文高亮和 Zotero 笔记。'));
-     const save=button('确认保存笔记与高亮',async()=>{save.disabled=true;try{const saved=await E.saveReaderNote(selection,record);save.textContent='已保存笔记与高亮';button('撤销这次保存',async()=>{try{await saved.undo();save.textContent='已撤销';}catch(e){output.append(el('p',e.message));}},output);}catch(e){save.disabled=false;output.append(el('p',e.message));}},output);save.id='research-save-annotation-note';
+     const save=button('确认保存笔记与高亮',async()=>{save.disabled=true;try{const saved=await E.saveReaderNote(selection,record,{reader});save.textContent=saved.reused?'已打开已保存的笔记':'已保存笔记与高亮';if(saved.warning)output.append(el('p',saved.warning));if(saved.undo)button('撤销这次保存',async()=>{try{await saved.undo();save.textContent='已撤销';}catch(e){output.append(el('p',e.message));}},output);}catch(e){save.disabled=false;output.append(el('p',e.message));}},output);save.id='research-save-annotation-note';
     }
     output.append(el('small','AI 解释与翻译 · 请结合原文核对。选区消失后此结果仍会保留。'));
    }

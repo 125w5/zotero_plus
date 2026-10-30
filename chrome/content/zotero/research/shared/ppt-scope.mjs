@@ -17,6 +17,7 @@ export function scopedPages(scope,pages,paperID){
   const allowed=parsePageRange(scope.ranges?.[paperID]||scope.range,pages.length);
   return pages.filter(p=>allowed.has(p.pageIndex));
  }
- if(['selection','annotations'].includes(scope.mode))return [];
+ // A weekly report is built from saved records kept on the draft; it reads no PDF pages.
+ if(['selection','annotations','weekly'].includes(scope.mode))return [];
  throw Error('未知取材范围，请重新选择');
 }

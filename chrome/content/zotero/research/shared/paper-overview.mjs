@@ -7,6 +7,7 @@ export function preparePaperOverviewStyles(doc,{Zotero}){
  return prepareReaderPaneStyles(doc,{Zotero,name:'overview',url:'chrome://zotero/content/research/shared/paper-overview.css'});
 }
 
+let overviewBranches=new Set(['journalMetricSnapshots','manuscriptIndex']);
 export function installPaperOverview(E,{Zotero,IOUtils}){
  const abstractTasks=new Map(),translations=new Map();E._overviewPages=new Map();
  const documentKey=id=>E.store.get('manuscriptIndex',id)?.documentKey;
@@ -73,9 +74,11 @@ export function installPaperOverview(E,{Zotero,IOUtils}){
    const rows=el('dl',undefined,'overview-native-fields');
    const row=(key,label,value)=>{
     const term=el('dt',label),description=el('dd');description.dataset.field=key;
+    const compact=value.length>(key==='url'?64:key.startsWith('creator:')?110:180),full=compact?el('div',undefined,'overview-field-full'):description;
     let href='';if(key==='DOI')href='https://doi.org/'+encodeURIComponent(value);
     if(key==='url'){try{const url=new URL(value);if(['https:','http:'].includes(url.protocol))href=url.href;}catch{}}
-    if(href){const link=el('a',value,key==='DOI'?'overview-doi':'overview-url');link.href=href;link.onclick=event=>{event.preventDefault();Zotero.launchURL(link.href);};description.append(link);}else description.textContent=value;
+    if(href){const link=el('a',value,key==='DOI'?'overview-doi':'overview-url');link.href=href;link.onclick=event=>{event.preventDefault();Zotero.launchURL(link.href);};full.append(link);}else full.textContent=value;
+    if(compact){const expandable=el('details',undefined,'overview-field-details'),summary=el('summary',value.replace(/\s+/gu,' ').slice(0,116)+'…');summary.title='展开完整'+label;expandable.append(summary,full);const copyText=Zotero.Utilities?.Internal?.copyTextToClipboard;if(copyText){const copy=el('button','复制','overview-field-copy');copy.type='button';copy.title='复制完整'+label;copy.onclick=()=>{copyText(value);copy.textContent='已复制';};expandable.append(copy);}description.append(expandable);}
     rows.append(term,description);
    };
    for(const group of value.creators)row('creator:'+group.role,group.role,group.names.join('；'));
@@ -123,7 +126,9 @@ export function installPaperOverview(E,{Zotero,IOUtils}){
   };
   // Chat streaming updates compare only small metadata/index branches, keeping
   // the cover and hover DOM stable and avoiding full-store document clones.
-  host._overviewOff=E.store.subscribe?.(refreshMetadata);
+  // refreshMetadata reads the item, the journal metric cache and the index's
+  // document key. Other branches (chat, search caches, drafts) cannot change it.
+  host._overviewOff=E.store.subscribe?.(change=>{if(change?.changedBranches&&!change.changedBranches.some(key=>overviewBranches.has(key)))return;refreshMetadata();});
   void Promise.resolve().then(()=>E.completePaperMetadata?.(parent)).then(completed=>{if(completed?.isRegularItem?.())parent=completed;return E.ensurePaperMetrics?.(parent);}).then(refreshMetadata).catch(error=>Zotero.debug(error.message));
   const renderCover=async()=>{if(!attachment){status.hidden=true;coverSlot.hidden=true;return;}try{const cover=await E.firstPage(attachment);if(!valid())return;const position=Array.isArray(cover.bbox)&&Number.isFinite(cover.pageHeight)?E.assets.position(cover):undefined,open=()=>E.library.openSource({attachmentID:attachment.id,pageIndex:cover.pageIndex,position}),image=el('img',undefined,'paper-cover');image.src=cover.src;image.alt=cover.pageIndex?'论文正文首页，PDF 第 '+(cover.pageIndex+1)+' 页':'论文 PDF 首页';image.dataset.pageIndex=cover.pageIndex;image.tabIndex=0;image.title='悬停放大首页；单击查看大图；双击定位原文';const aspect=cover.width>0&&cover.height>0?cover.width/cover.height:cover.bbox?(cover.bbox[2]-cover.bbox[0])/(cover.bbox[3]-cover.bbox[1]):cover.pageWidth/cover.pageHeight||1;image.style.cssText='display:block;width:min(100%, '+(360*aspect)+'px);max-width:100%;height:auto;max-height:360px;object-fit:contain;margin-inline:auto';coverSlot.prepend(image);status.hidden=true;
     let fullSource;

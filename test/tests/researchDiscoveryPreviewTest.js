@@ -1,11 +1,14 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 // Offline positive coverage: a PDF imported into the isolated native test
-// database goes through the production cover engine and recommendation DOM.
+// database goes through the production first-page engine, and its image
+// preview releases its hover listeners. The discovery entry opens the unified
+// search page, whose result cards show no page image; the old home
+// recommendation list that rendered one is no longer shown.
 describe('Native discovery real local PDF preview',function(){
  this.timeout(120000);
  const E=Zotero.Research;
- let win,workspace,ui,frame,paper,pdf,folder,prior,stored,provider,firstPage,localPDF,cover,networkRequests=0,modelRequests=0;
- const report={type:'隔离原生测试库中的真实test.pdf→生产首页引擎→推荐卡片；不访问日常文库、不调用外网或模型',tests:[]};
+ let win,workspace,ui,frame,paper,pdf,record,folder,prior,stored,provider,firstPage,localPDF,cover,networkRequests=0,modelRequests=0;
+ const report={type:'隔离原生测试库中的真实test.pdf→生产首页引擎（E.discoveryPreview）→测试挂载图片上的media-preview悬停与注销；统一search页卡片不显示首页图，产品卡片的预览注销没有原生覆盖；不访问日常文库、不调用外网或模型',tests:[]};
  const wait=async(fn,label)=>{for(let n=0;n<1500;n++){if(fn())return;await Zotero.Promise.delay(40);}throw Error('等待'+label+'超时');};
  const snapshot=async name=>{const image=await win.browsingContext.currentWindowGlobal.drawSnapshot(null,1,'white');try{const canvas=win.document.createElementNS('http://www.w3.org/1999/xhtml','canvas');canvas.width=image.width;canvas.height=image.height;canvas.getContext('2d').drawImage(image,0,0);const blob=await new Promise(resolve=>canvas.toBlob(resolve));await IOUtils.write(PathUtils.join(folder,name+'.png'),new Uint8Array(await blob.arrayBuffer()));}finally{image.close();}};
  before(async()=>{
@@ -17,7 +20,7 @@ describe('Native discovery real local PDF preview',function(){
   E.manuscripts.prepareTranslation=async()=>null;E.completePaperMetadata=async()=>{};E.ensurePaperMetrics=async()=>null;E.manuscripts.ensureLibraryItem=async()=>{};E.manuscripts.ensureChineseSummaries=async()=>{};E.assets.queueImages=async()=>{};E.queueReaderRapidReading=()=>{};E.manuscripts.indexArticle=async()=>null;
   E.studio.request=async()=>{(report.modelCallers||=[]).push(new Error().stack);modelRequests++;throw Error('首页验收禁止模型请求');};provider=sinon.stub(E,'requestProvider').callsFake(async url=>{(report.networkCallers||=[]).push({path:new URL(url).pathname,stack:new Error().stack});networkRequests++;throw Error('首页验收禁止外网请求');});
   paper=await createDataObject('item',{itemType:'journalArticle',title:'隔离验收PDF首页 · 真实文件预览'});pdf=await importPDFAttachment(paper,{title:'原生预览夹具 test.pdf'});assert.isTrue(await pdf.fileExists());
-  const record={...E.library.describe(paper),kind:'paper',source:'我的文库',paperItemID:paper.id,attachmentID:pdf.id,abstract:'此卡片使用隔离测试库中的真实PDF文件，首页由本地引擎渲染。'};
+  record={...E.library.describe(paper),kind:'paper',source:'我的文库',paperItemID:paper.id,attachmentID:pdf.id,abstract:'此卡片使用隔离测试库中的真实PDF文件，首页由本地引擎渲染。'};
   E.recommendationFeed=async options=>({records:[record],mode:options.mode,page:1,hasMore:false});E.discoveryBrief=async row=>({text:row.abstract,language:'zh',translated:false});
   // Spies retain the real implementations: no SVG, data URL or cover stub.
   firstPage=sinon.spy(E,'firstPage');localPDF=sinon.spy(E.library,'localPDF');cover=sinon.spy(E.assets,'cover');
@@ -31,20 +34,27 @@ describe('Native discovery real local PDF preview',function(){
   if(stored)await E.store.update(state=>{if(stored.workbench===undefined)delete state.researchWorkbench;else state.researchWorkbench=stored.workbench;if(stored.discovery===undefined)delete state.settings.libraryDiscovery;else state.settings.libraryDiscovery=stored.discovery;});
   if(paper)await Zotero.Items.trashTx([paper.id]);await E.store.flush();
  });
- it('renders an actual local PDF first page and a localized hover preview through the production pipeline',async()=>{
-  const doc=frame.contentDocument;await wait(()=>ui.agentHomeList.querySelector('.discovery-paper-preview img')?.naturalWidth>0,'真实PDF首页图片加载');const image=ui.agentHomeList.querySelector('.discovery-paper-preview img');
-  assert.equal(image.parentElement.dataset.preview,'local-pdf');assert.isAbove(image.naturalHeight,0);const localCall=localPDF.getCalls().find(call=>call.args[0]?.id===paper.id),pageCall=firstPage.getCalls().find(call=>call.args[0]?.id===pdf.id),coverCall=cover.getCalls().find(call=>call.args[0]===pdf.id);assert.exists(localCall);assert.exists(pageCall);assert.exists(coverCall);
-  const result=await pageCall.returnValue;assert.isTrue(await IOUtils.exists(result.thumbnail||result.path),'图片来自真实引擎输出文件');assert.equal(image.src,result.src,'卡片加载的是本地真实首页结果');assert.include(image.alt,'PDF 首页');assert.isFalse(ui.agentHomeList.textContent.includes('暂无本地首页'));assert.lengthOf(ui.agentDiscoveryPreviewOffs,1);
+ let image,dispose,media;
+ // The unified search card shows no page image, so these tests mount their own
+ // image to drive media-preview.mjs. Product card preview disposal has no
+ // native coverage while the home recommendation list is unreachable.
+ const mount=src=>{const doc=frame.contentDocument,node=doc.createElement('img');node.alt=paper.getField('title')+' · PDF 首页';node.src=src;node.style.cssText='width:120px;height:160px';ui.$('search-results').prepend(node);return node;};
+ it('renders a real local PDF first page through E.discoveryPreview and shows its media-preview hover on a mounted image',async()=>{
+  const doc=frame.contentDocument;assert.equal(ui.activeView,'search','文献入口是统一search页');const preview=await E.discoveryPreview(record);assert.exists(preview,'本地PDF得到真实首页');assert.equal(preview.attachmentID,pdf.id);assert.equal(preview.paperItemID,paper.id);
+  const localCall=localPDF.getCalls().find(call=>call.args[0]?.id===paper.id),pageCall=firstPage.getCalls().find(call=>call.args[0]?.id===pdf.id),coverCall=cover.getCalls().find(call=>call.args[0]===pdf.id);assert.exists(localCall);assert.exists(pageCall);assert.exists(coverCall);
+  const result=await pageCall.returnValue;assert.isTrue(await IOUtils.exists(result.thumbnail||result.path),'图片来自真实引擎输出文件');assert.equal(preview.src,result.src,'预览使用本地真实首页结果');
+  media=await frame.contentWindow.eval("import('chrome://zotero/content/research/shared/media-preview.mjs')");image=mount(preview.src);await wait(()=>image.naturalWidth>0,'真实PDF首页图片加载');assert.isAbove(image.naturalHeight,0);
+  dispose=media.installMediaPreview(image,{src:()=>preview.path?E.previewImage(preview.path):preview.src,alt:image.alt,hoverDelay:260,onError:()=>{}});
   report.preview={naturalWidth:image.naturalWidth,naturalHeight:image.naturalHeight,pageIndex:result.pageIndex,engineFileExists:true};await snapshot('native-discovery-real-local-first-page');
   image.dispatchEvent(new frame.contentWindow.PointerEvent('pointerenter',{pointerId:71,pointerType:'mouse'}));await wait(()=>doc.querySelector('.research-media-hover img')?.naturalWidth>0,'真实局部放大图片加载');assert.notExists(doc.querySelector('.research-media-backdrop'),'悬停不是全屏预览');report.hover={loaded:true,width:doc.querySelector('.research-media-hover').getBoundingClientRect().width};await snapshot('native-discovery-real-local-hover');assert.equal(networkRequests,0);assert.equal(modelRequests,0);
  });
- it('disposes existing hover listeners and pending hover timers when the real recommendation cards are rebuilt',async()=>{
-  const doc=frame.contentDocument,oldImage=ui.agentHomeList.querySelector('.discovery-paper-preview img');assert.exists(doc.querySelector('.research-media-hover'));
-  ui.renderAgentHome();assert.notExists(doc.querySelector('.research-media-hover'),'重绘关闭旧局部预览');assert.isFalse(oldImage.isConnected);
-  const holder=doc.createElement('div');holder.hidden=true;holder.append(oldImage);doc.body.append(holder);
+ it('media-preview dispose removes hover listeners and cancels a pending hover timer on a real first-page image',async()=>{
+  const doc=frame.contentDocument;assert.exists(doc.querySelector('.research-media-hover'));
+  dispose();image.remove();assert.notExists(doc.querySelector('.research-media-hover'),'注销关闭旧局部预览');
+  const holder=doc.createElement('div');holder.hidden=true;holder.append(image);doc.body.append(holder);
   // A connected old target would create a hover if its preview stayed active.
-  oldImage.dispatchEvent(new frame.contentWindow.PointerEvent('pointerenter',{pointerId:72,pointerType:'mouse'}));await Zotero.Promise.delay(360);assert.notExists(doc.querySelector('.research-media-hover'),'旧卡片预览已经注销');holder.remove();
-  await wait(()=>ui.agentHomeList.querySelector('.discovery-paper-preview img')?.naturalWidth>0,'重绘后的真实首页');const next=ui.agentHomeList.querySelector('.discovery-paper-preview img');assert.notStrictEqual(next,oldImage);assert.lengthOf(ui.agentDiscoveryPreviewOffs,1,'只有当前卡片的媒体预览注册');
-  next.dispatchEvent(new frame.contentWindow.PointerEvent('pointerenter',{pointerId:73,pointerType:'mouse'}));ui.renderAgentHome();await Zotero.Promise.delay(360);assert.notExists(doc.querySelector('.research-media-hover'),'重绘取消尚未触发的悬停计时器');assert.equal(networkRequests,0);assert.equal(modelRequests,0);report.previewDisposal={oldConnectedTargetInactive:true,pendingHoverCancelled:true};
+  image.dispatchEvent(new frame.contentWindow.PointerEvent('pointerenter',{pointerId:72,pointerType:'mouse'}));await Zotero.Promise.delay(360);assert.notExists(doc.querySelector('.research-media-hover'),'旧预览已经注销');holder.remove();
+  const next=mount(image.src),host=next.parentElement;await wait(()=>next.naturalWidth>0,'重建后的真实首页');media.installMediaPreview(next,{src:()=>next.src,alt:next.alt,hoverDelay:260,onError:()=>{}});
+  next.dispatchEvent(new frame.contentWindow.PointerEvent('pointerenter',{pointerId:73,pointerType:'mouse'}));media.disposeMediaPreviews(host);next.remove();await Zotero.Promise.delay(360);assert.notExists(doc.querySelector('.research-media-hover'),'重建取消尚未触发的悬停计时器');assert.equal(networkRequests,0);assert.equal(modelRequests,0);report.previewDisposal={oldConnectedTargetInactive:true,pendingHoverCancelled:true};
  });
 });

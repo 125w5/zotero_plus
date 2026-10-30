@@ -23,7 +23,7 @@ function spokenUnits(value){
 
 // Match the data shape consumed by research-engine/src/plan.mjs without loading
 // the artifact engine or its filesystem/image dependencies into this local check.
-function datasetProblem(data){
+export function datasetProblem(data){
  const bounded=(value,max)=>typeof value==='string'&&!!value.trim()&&value.length<=max;
  if(!bounded(data.id,80)||!bounded(data.provenance,1000))return '数据集缺少有效编号或来源说明';
  if(!Array.isArray(data.labels)||!data.labels.length||data.labels.length>30||data.labels.some(label=>!bounded(label,40)))return '数据分类为空、过多或名称无效';
@@ -61,6 +61,7 @@ export function presentationReadiness(draft={}){
  if(!text(d.title).trim())add('presentation-title','error','补充汇报名称','导出前请填写这次汇报的名称。','materials');
  if(!slides.length)add('empty-deck','error','还没有汇报页面','先确认大纲并编排页面，也可以加入自己的研究内容页。','outline');
  if(slides.length>50)add('too-many-pages','error','汇报超过 50 页','当前导出支持 1–50 页，请整理大纲并减少页面。','outline');
+ if(slides.length&&d.materialsReady===false)add('materials-stale','error','重新读取材料','取材范围或资料已经更改，页面仍基于上次读取的材料；请在“选择材料”中重新读取，已编辑的页面保留。','materials');
  const frequencies=new Map(),sourceIDs=new Set(sources.map(row=>row.id)),byAsset=new Map(assets.map(row=>[row.id,row])),byDataset=new Map(datasets.map(row=>[row.id,row]));
  for(const slide of slides)if(slide?.id)frequencies.set(slide.id,(frequencies.get(slide.id)||0)+1);
  let seconds=0;
@@ -78,6 +79,10 @@ export function presentationReadiness(draft={}){
   const missingAssets=assetIDs.filter(id=>!byAsset.has(id));
   if(missingAssets.length)page('missing-asset','error','配图已失效','本页找不到图片 '+missingAssets.map(String).join('、')+'，请重新选择配图。','materials');
   if(assetIDs.some(id=>byAsset.has(id)&&!text(byAsset.get(id).path).trim()))page('asset-path','error','配图缺少文件位置','已选图片没有可供导出的文件位置，请重新导入图片。','materials');
+  // Export embeds PNG/JPEG and converts WebP; any other image file cannot be exported.
+  // The same files E.pptImagePath accepts: PNG and JPEG are embedded, WebP, GIF and BMP converted to PNG.
+  const unsupported=assetIDs.map(id=>byAsset.get(id)).filter(asset=>asset&&/\.[a-z0-9]{2,5}$/i.test(text(asset.path))&&!/\.(png|jpe?g|jpe|jfif|pjpeg|pjp|webp|gif|bmp|dib)$/i.test(text(asset.path)));
+  if(unsupported.length)page('asset-format','error','配图格式无法导出','“'+unsupported.map(asset=>text(asset.label)||'图片').join('”、“')+'”不是 PNG、JPG 或 WebP 图片，导出会失败；请换用这三种格式的图片。');
   const dataset=byDataset.get(slide.datasetID);
   if(slide.datasetID){
    if(!dataset)page('missing-dataset','error','图表数据已失效','本页引用的数据集“'+String(slide.datasetID)+'”已不存在，请重新导入数据或移除图表引用。','materials');
@@ -102,5 +107,11 @@ export function presentationReadiness(draft={}){
  const blockedPages=new Set(issues.filter(issue=>issue.severity==='error'&&issue.pageIndex!==undefined).map(issue=>issue.pageIndex));
  counts.errors=issues.filter(issue=>issue.severity==='error').length;counts.warnings=issues.length-counts.errors;
  issues.sort((a,b)=>(a.severity==='error'?0:1)-(b.severity==='error'?0:1));
- return {totalPages:slides.length,readyPages:slides.filter((slide,index)=>!blockedPages.has(index)&&rows(slide?.blocks).some(block=>text(block?.text).trim())).length,estimatedMinutes,targetMinutes,issues,counts};
+ const overTime=issues.some(issue=>issue.id==='over-time');
+ // Export validity and suitability for a timed talk are separate decisions.
+ // Warnings never prevent a user from saving a valid deck.
+ const suitability={exportable:counts.errors===0,overTime,needsReview:counts.warnings>0,
+  title:counts.errors?'先完善这些页面':overTime?'超出目标时长，建议先精简':counts.warnings?'有待检查项，可继续导出':'汇报检查通过',
+  detail:overTime?`目标 ${targetMinutes} 分钟，预计 ${estimatedMinutes} 分钟。文件可以导出，建议精简后试讲。`:counts.errors?'修正下列内容后即可导出。':counts.warnings?'文件结构可导出，请逐项核对内容提醒。':'内容与来源检查通过，讲述时长以试讲为准。'};
+ return {totalPages:slides.length,readyPages:slides.filter((slide,index)=>!blockedPages.has(index)&&rows(slide?.blocks).some(block=>text(block?.text).trim())).length,estimatedMinutes,targetMinutes,issues,counts,suitability};
 }

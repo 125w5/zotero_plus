@@ -1,1 +1,21 @@
-.prompt-templates{flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;padding:8px 2px;background:var(--bg,#fff);color:var(--fg,var(--text,#252a31));border-top:1px solid var(--line,#d4d8dd);font:12px/1.6 system-ui,'Microsoft YaHei',sans-serif}.prompt-templates[hidden]{display:none!important}.prompt-templates button{font:inherit;border:1px solid var(--line,#d4d8dd);border-radius:6px;background:var(--bg,#fff);color:var(--fg,var(--text,#252a31));padding:4px 9px;cursor:pointer}.prompt-templates button:hover,.prompt-templates button:focus-visible{outline:2px solid #607d98;background:var(--selected,#e9eef2);color:var(--fg,var(--text,#252a31))}.prompt-templates small{width:100%;color:var(--muted,#59616d)}.prompt-template-editor{background:var(--bg,#fff);color:var(--fg,var(--text,#252a31));border:1px solid var(--line,#d4d8dd);border-radius:10px;max-width:580px;width:80%;padding:20px}.prompt-template-editor input,.prompt-template-editor textarea,.prompt-template-editor select{display:block;width:100%;margin:8px 0;font:inherit;color:inherit;background:inherit;border:1px solid var(--line,#d4d8dd);padding:8px}.prompt-template-editor textarea{min-height:140px}.prompt-template-editor button{margin:8px}#ai-form{flex-wrap:wrap}#ai-form .prompt-templates{order:10}
+.prompt-templates{box-sizing:border-box;flex-basis:100%;display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0 0;padding:8px;color:var(--ui-text,var(--fg,var(--text,#283240)));border:1px solid var(--ui-soft-border,var(--ui-border,#dfe4eb));border-radius:var(--ui-radius-card,10px);background:var(--ui-glass,#fffffff0);backdrop-filter:blur(12px);box-shadow:var(--ui-card-shadow,0 3px 12px #25364a0c);font:13px/1.5 var(--ui-font,inherit)}
+.prompt-templates[hidden]{display:none!important}
+.prompt-templates>button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-height:32px;margin:0;padding:6px 10px;border:1px solid transparent;border-radius:var(--ui-radius-control,8px);background:transparent;box-shadow:none;color:inherit;font:inherit;white-space:nowrap;cursor:pointer}
+.prompt-templates>button:hover{background:var(--selected,#e8f1fc);color:var(--accent,#315f89)}
+.prompt-templates>button:focus-visible{outline:2px solid var(--accent,#315f89);outline-offset:2px}
+.prompt-templates>button:disabled{cursor:wait;opacity:.55}
+.prompt-templates>.prompt-template-edit{margin-inline-start:auto;background:transparent;color:var(--muted,#657383)}
+.prompt-templates>small{display:block;flex-basis:100%;min-height:18px;color:var(--muted,#657383);font-size:11px}
+.prompt-templates>small:empty{display:none}
+.prompt-templates[aria-busy=true]>small:before{content:'';display:inline-block;width:9px;height:9px;margin-inline-end:6px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:prompt-action-spin .8s linear infinite}
+@keyframes prompt-action-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.prompt-templates[aria-busy=true]>small:before{animation:none}}
+.prompt-template-editor{box-sizing:border-box;background:var(--bg,#fff);color:var(--fg,var(--text,#283240));border:1px solid var(--line,#d9e0e8);border-radius:12px;box-shadow:0 18px 50px #1d304026;max-width:580px;width:80%;padding:22px;font:inherit}
+.prompt-template-editor::backdrop{background:#24344830;backdrop-filter:blur(4px)}
+.prompt-template-editor h3{margin:0 0 14px;font-size:16px}
+.prompt-template-editor input,.prompt-template-editor textarea,.prompt-template-editor select{box-sizing:border-box;display:block;width:100%;margin:8px 0;padding:9px 10px;border:1px solid var(--line,#d9e0e8);border-radius:7px;background:var(--bg,#fff);color:inherit;font:inherit}
+.prompt-template-editor textarea{min-height:140px;resize:vertical}
+.prompt-template-editor small{display:block;color:var(--muted,#657383);font-size:12px}
+.prompt-template-editor button{min-height:30px;margin:12px 7px 0 0;padding:5px 12px;border:1px solid var(--line,#d9e0e8);border-radius:7px;background:var(--bg,#fff);color:inherit;font:inherit;cursor:pointer}
+#ai-form{flex-wrap:wrap}
+#ai-form .prompt-templates{order:10}

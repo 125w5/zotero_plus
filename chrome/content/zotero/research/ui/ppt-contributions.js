@@ -1,5 +1,28 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 Object.assign(EasySchUI,{
+ // Each save rewrites workspace.json, so typing saves after a pause. A change or
+ // blur saves at once, and every PPT action, re-render and page close saves first.
+ pptWatchContributionForm(draftID,form,visibility){
+  const read=()=>Object.fromEntries(Object.entries(form).map(([key,field])=>[key,field.value]));
+  const session={draftID,read,savedKey:JSON.stringify(read()),timer:null,pending:null};this.pptContributionSession=session;
+  const flush=()=>{if(this.pptContributionSession===session)this.pptFlushContributionForm().catch(error=>this.status(error.message,true));};
+  for(const field of Object.values(form)){field.oninput=()=>{visibility();clearTimeout(session.timer);session.timer=setTimeout(flush,700);};field.onchange=()=>{visibility();flush();};}
+ },
+ pptFlushContributionForm(){
+  const session=this.pptContributionSession;if(!session)return Promise.resolve(false);
+  clearTimeout(session.timer);session.timer=null;
+  const value=session.read(),key=JSON.stringify(value);if(key===session.savedKey)return session.pending||Promise.resolve(false);
+  const previousKey=session.savedKey;session.savedKey=key;
+  // A re-render reads the shown draft synchronously, before this save completes.
+  if(this.pptDraft?.id===session.draftID)this.pptDraft.contributionForm=value;
+  // A failed save leaves the form marked unsaved, so the next flush tries again.
+  const run=async()=>{try{const next=await this.E.studio.patch(session.draftID,draft=>{draft.contributionForm=value;});if(this.pptDraft?.id===session.draftID)this.pptDraft=next;return true;}catch(error){if(session.savedKey===key)session.savedKey=previousKey;throw error;}};
+  const pending=(session.pending||Promise.resolve()).then(run,run);session.pending=pending.catch(()=>false);return pending;
+ },
+ pptReleaseContributionForm(){
+  if(!this.pptContributionSession)return Promise.resolve(false);
+  const pending=this.pptFlushContributionForm();this.pptContributionSession=null;pending.catch(error=>this.status('“我的内容”未保存：'+error.message+'；请回到这一步重新填写',true));return pending;
+ },
  pptContributions(body){
   const d=this.pptDraft,heading=this.el('div',undefined,'ppt-stage-heading ppt-contribution-width');
   heading.append(this.el('small','我的内容 · 可跳过'),this.el('h2','补充自己的理解与实验'),this.el('p','把发现、数据与讨论问题组织成一页，论文证据与自己的观点分别保留。','muted'));body.append(heading);
@@ -25,14 +48,18 @@ Object.assign(EasySchUI,{
   const paste=this.el('section',undefined,'ppt-paste-data');const table=this.pptField('粘贴表格数据','',paste,{tag:'textarea',rows:3});table.placeholder='从 Excel 复制，首行为列名，首列为类别';
   this.pptButton('使用这份数据',async()=>{
    const rows=table.value.trim().split(/\r?\n/).map(row=>row.split('\t'));if(rows.length<2||rows.length>31||rows[0].length<2||rows[0].length>6)throw Error('需要表头和 1–30 行数据、2–6 列');const width=rows[0].length;if(rows.some(r=>r.length!==width)||rows.slice(1).some(r=>r.slice(1).some(v=>!v.trim()||!Number.isFinite(Number(v)))))throw Error('表格有空值或非数值，请核对');
-   const value={id:'pasted-'+Date.now(),provenance:'粘贴的实验数据',labels:rows.slice(1).map(r=>r[0]),series:rows[0].slice(1).map((name,i)=>({name,values:rows.slice(1).map(r=>Number(r[i+1]))}))};await this.pptPatch(x=>{x.datasets.push(value);x.contributionForm||={};x.contributionForm.data=value.id;});this.renderPPT();
+   const value={id:'pasted-'+Date.now(),provenance:'粘贴的实验数据',labels:rows.slice(1).map(r=>r[0].trim()),series:rows[0].slice(1).map((name,i)=>({name:name.trim(),values:rows.slice(1).map(r=>Number(r[i+1]))}))};
+   // The same check that 检查汇报 applies, so a pasted table cannot block export later.
+   const problem=(await(this.pptReadinessModule||=import('../shared/ppt-readiness.mjs'))).datasetProblem(value);if(problem)throw Error(problem+'：类别不能为空且不超过 40 字，列名不超过 50 字；数据未加入，请修改后重新粘贴');
+   await this.pptPatch(x=>{x.datasets.push(value);x.contributionForm||={};x.contributionForm.data=value.id;});this.renderPPT();
   },paste);mediaBody.append(paste);
-  const notes=this.pptField('讲者备注','',writing,{tag:'textarea'});notes.placeholder='补充讲述思路、运行记录或待讨论的问题';
+  const notes=this.pptField('讲者备注','',writing,{tag:'textarea'});notes.placeholder='补充讲述思路、运行记录或待讨论的问题';notes.maxLength=3000;
   const options=this.el('section',undefined,'ppt-setting-section');options.append(this.el('h3','放入汇报'));resources.append(options);const settings=this.el('div',undefined,'ppt-field-pair');options.append(settings);
   const kind=this.pptField('内容类型','',settings,{tag:'select'});for(const [v,label] of [['my_interpretation','我的理解与质疑'],['my_experiment','实验与复现'],['unverified','计划与待验证观点']]){const o=this.el('option',label);o.value=v;kind.append(o);}
   const after=this.pptField('插入位置','',settings,{tag:'select'}),end=this.el('option','汇报末尾');end.value='';after.append(end);for(const s of d.slides){const o=this.el('option','在“'+s.title+'”之后');o.value=s.id;after.append(o);}
   const form={kind,title,text,notes,after,data,image,chartType},visibility=()=>{chartType.parentElement.hidden=!data.value;};
-  for(const [key,field] of Object.entries(form)){if(d.contributionForm?.[key]!==undefined)field.value=d.contributionForm[key];field.oninput=field.onchange=()=>{visibility();return this.pptPatch(x=>x.contributionForm=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,v.value])));};}visibility();
+  for(const [key,field] of Object.entries(form))if(d.contributionForm?.[key]!==undefined)field.value=d.contributionForm[key];
+  this.pptWatchContributionForm(d.id,form,visibility);visibility();
   const footer=this.el('div',undefined,'ppt-contribution-footer');panel.append(footer);footer.append(this.el('small','作为“我的内容”保留，与论文原文区分。','muted'));
   const add=this.pptButton('加入汇报',async()=>{if(!text.value.trim()){text.focus();throw Error('先写下要讨论的内容');}this.pptDraft=await this.E.studio.addContribution(d.id,{title:title.value,text:text.value,kind:kind.value,notes:notes.value,datasetID:data.value||undefined,assetID:image.value||undefined,chartType:chartType.value},after.value);await this.pptPatch(x=>x.contributionForm={});this.status('已加入汇报');this.renderPPT();},footer,'primary');add.id='ppt-add-contribution';
   if(d.contributions.length){const added=this.el('div',undefined,'ppt-contribution-added ppt-contribution-width');added.append(this.el('small','已加入 '+d.contributions.length+' 项'));for(const c of d.contributions)added.append(this.el('span',c.title||'我的理解与实验'));body.append(added);}

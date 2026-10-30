@@ -47,7 +47,7 @@ test('request diagnostics contain only whitelisted parameters and numeric struct
 });
 test('Pi preserves sanitized parameter diagnostics without retrying or exposing provider details',async()=>{
  const h=harness([providerHTTPError(400,{error:{code:'unsupported_parameter',param:'max_tokens',message:'Echo controlled-key and private prompt'}})]),{result}=await collect(h.streamFn(model,context));
- assert.equal(result.stopReason,'error');assert.equal(result.errorMessage,'服务返回 HTTP 400：接口不支持参数 max_tokens，请调整模型兼容设置');assert.doesNotMatch(result.errorMessage,/controlled-key|private/);assert.equal(h.requests.length,1);
+ assert.equal(result.stopReason,'error');assert.equal(result.errorMessage,'服务返回 HTTP 400：接口不支持参数 max_tokens，请换用兼容的模型或接口');assert.doesNotMatch(result.errorMessage,/controlled-key|private/);assert.equal(h.requests.length,1);
 });
 
 test('Pi keeps a connected response parse failure distinct from a network failure', async () => {

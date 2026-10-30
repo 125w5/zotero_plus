@@ -6,7 +6,7 @@ describe('EasySch usability repairs 2026-09-18',function(){
  before(async()=>{
   win=await loadZoteroPane();await E.attachWindow(win);win.resizeTo(1060,760);folder=PathUtils.join(Zotero.DataDirectory.dir,'usability-2026-09-18');await IOUtils.makeDirectory(folder,{ignoreExisting:true});
   paper=await createDataObject('item',{title:'真实 PDF 阅读验收 · World Model · '+Date.now()});
-  const path=Zotero.Prefs.get('extensions.easysch.testPDF',true);if(!path)throw Error('本轮验收需要 --PDF 实际文件');
+  const given=Zotero.Prefs.get('extensions.easysch.testPDF',true),path=given||PathUtils.join(getTestDataDirectory().path,'test.pdf');if(!given)report.limitations.push('未提供 -PDF：使用测试数据中的 test.pdf');
   pdf=await Zotero.Attachments.importFromFile({file:Zotero.File.pathToFile(path),parentItemID:paper.id});
   ui=await E.openWorkflow('research');
  });

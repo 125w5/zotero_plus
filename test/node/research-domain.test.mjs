@@ -18,6 +18,10 @@ test('fuzzy search preserves short acronyms and the user supplied meaning',()=>{
  assert.equal(matchesResearchScope('robust channel estimators',{primaryKeyword:'estimator',fuzzy:true}),true);
  assert.equal(matchesResearchScope('robust channel estimators',{primaryKeyword:'estimator',fuzzy:false}),false);
 });
+test('broad science and social-science presets accept their actual alternative field terms',()=>{
+ for(const [domain,title] of [['mathematics','Statistical estimators for sparse data'],['chemistry','Chemical reaction mechanisms'],['engineering','Civil engineering structures'],['earth-environment','Climate sensitivity measurements'],['economics','Financial risk estimates'],['social-sciences','Political participation study'],['psychology','Cognitive task performance'],['humanities','Historical literature analysis']])assert.equal(matchesResearchScope({title},{domain}),true,domain+' uses alternative terms rather than requiring every preset word');
+ assert.equal(matchesResearchScope({title:'An unrelated clinical intervention'},{domain:'economics'}),false);
+});
 test('query construction keeps primary and secondary task constraints without guessed acronym expansion',()=>{
  const scope=normalizeResearchScope({fieldID:'physics',primaryKeyword:'CNN',secondaryKeywords:['spin'],excludedKeywords:['medical']});
  const query=buildResearchQuery(scope,'quantum model');assert.match(query,/CNN/);assert.match(query,/spin/);assert.match(query,/physics/);assert.doesNotMatch(query,/convolution/i);

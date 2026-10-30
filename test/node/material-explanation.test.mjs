@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {explicitFormula, normalizeMaterialContents, materialExplanationPatch, formulaEvidenceRows, assertExplanationNumbers} from '../../chrome/content/zotero/research/shared/material-content.mjs';
 import {refineMaterialExplanation} from '../../chrome/content/zotero/research/manuscript/material-content-editor.mjs';
+import {filterMaterialExclusions,materialAttachmentIDs} from '../../chrome/content/zotero/research/shared/material-exclusions.mjs';
 
 test('explanation whitelist cannot overwrite original source, geometry, original image or revisions', () => {
 	const patch = materialExplanationPatch({summary: '中文说明', contents: [{type: 'formula', latex: 'x_i^2'}], sourceText: 'fake', anchor: {pageIndex: 3}, imagePath: 'fake', revision: 99});
@@ -28,6 +29,14 @@ test('AI explanation is a draft, uses source, excludes manuscript body and prese
 	const E = {studio: {request: async (system, input) => {assert.match(system, /不写、续写或改写论文正文/); assert.equal(input.sourceText, material.sourceText); assert.equal(input.blocks, undefined); return {value: {summary: '仅解释原文报告的观察。'}};}}};
 	assert.equal(await refineMaterialExplanation(E, material, material.summary), '仅解释原文报告的观察。'); assert.deepEqual(material, before);
 	await assert.rejects(refineMaterialExplanation(E, {sourceText: ''}, ''), /没有原文/);
+});
+test('AI explanation obeys native material exclusions and refuses fully excluded or changed evidence', async () => {
+	const material={id:'m1',sourceText:'Before OMITTED after.',anchor:{attachmentID:7,pageIndex:0,sourceText:'Before OMITTED after.'}},before=structuredClone(material),inputs=[];
+	let quote='OMITTED',revision=0,changeDuringRequest=false;
+	const E={manuscripts:{materialAttachmentIDs,prepareMaterialExclusions:async()=>{},materialExclusionSignature:()=>revision,filterAutomaticMaterials:(cards,options)=>filterMaterialExclusions(cards,{...options,exclusionsFor:()=>[{annotationKey:'MARK',attachmentID:7,quote,position:{pageIndex:0}}]})},studio:{request:async(_system,input)=>{inputs.push(input);if(changeDuringRequest)revision++;return {value:{summary:'依据保留的原文整理说明。'}};}}};
+	await refineMaterialExplanation(E,material,'');assert.equal(inputs[0].sourceText,'Before \n\n after.');assert.deepEqual(material,before);
+	quote=material.sourceText;await assert.rejects(refineMaterialExplanation(E,material,''),/已排除/);assert.equal(inputs.length,1,'a fully excluded excerpt never invokes AI');
+	quote='OMITTED';changeDuringRequest=true;await assert.rejects(refineMaterialExplanation(E,material,''),/排除标记已改变/);assert.deepEqual(material,before);
 });
 test('number fidelity accepts equivalent scientific notation and unicode minus without inventing values', () => {
 	assert.equal(assertExplanationNumbers('误差为 0.0012，系数为 −0.5，准确率为95%。', '1.2 × 10^{−3}, -0.500, 95 %'), '误差为 0.0012，系数为 −0.5，准确率为95%。');

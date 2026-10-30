@@ -254,6 +254,7 @@ describe('Reader interaction repairs 2026-09-19',function(){
  it('opens the newly saved note and keeps one editor per reader tab',async()=>{
   noteSave=await E.saveSelectionTranslation(selection,{text:'中文交互验收笔记。'});const context=win.ZoteroContextPane.context._getNotesContext(pdf.libraryID);await wait(()=>context._getCurrentEditor()?.item?.id===noteSave.noteID);
   const second=await E.saveSelectionTranslation(selection,{text:'第二条笔记应成为当前笔记。'});await wait(()=>context._getCurrentEditor()?.item?.id===second.noteID);
+  const repeated=await E.saveSelectionTranslation(selection,{text:'第二条笔记应成为当前笔记。'});assert.isTrue(repeated.reused,'同一选区同一译文再次保存复用原笔记');assert.equal(repeated.noteID,second.noteID);
   assert.lengthOf(context.tabNotesDeck.querySelectorAll(`[data-tab-id="${reader.tabID}"]`),1);context.switchToTab(reader.tabID);assert.equal(context._getCurrentEditor().item.id,second.noteID);
   const editor=context._getCurrentEditor();await editor._initPromise;const noteDoc=editor.getCurrentInstance()._iframeWindow.document;assert.exists(noteDoc.querySelector('.toolbar .easysch-note-insert button'));assert.notExists(editor.querySelector('.custom-head .easysch-note-insert'));
   await E.prepareNoteStyles(editor);const quote=noteDoc.querySelector('.primary-editor.ProseMirror blockquote');assert.exists(quote,'保存的来源引用实际存在');const noteStyle=noteDoc.defaultView.getComputedStyle(quote);assert.equal(noteStyle.getPropertyValue('--es-read-surface').trim(),noteStyle.getPropertyValue('--color-background').trim(),'来源引用沿用当前原生编辑器背景，避免浅底和深色文字 token 混用');assert.equal(noteStyle.getPropertyValue('--es-read-ink').trim(),noteStyle.getPropertyValue('--fill-primary').trim(),'正文与公式沿用原生编辑器文字颜色');
@@ -315,7 +316,7 @@ describe('Reader interaction repairs 2026-09-19',function(){
   const refs=await E.referencesFromPDF({id:pdf.id});assert.isAbove(refs.records.length,0);const host=win.document.createElementNS('http://www.w3.org/1999/xhtml','div');win.document.documentElement.append(host);
   const collectReferences=E.collectReferences;E.collectReferences=async(paper,{onProgress})=>{const result={references:refs.records,records:[],skipped:[]};onProgress?.({...result,done:refs.records.length,total:refs.records.length,complete:true});return result;};
   try{await E.renderReferencePane(host,pdf);assert.lengthOf(host.querySelectorAll('.reference-row'),refs.records.length);}finally{host._referenceDispose?.();host.remove();E.collectReferences=collectReferences;}
-  const position=await E.locateReference(pdf.id,refs.records[0]);assert.isNumber(position.pageIndex);report.native.push('侧栏图标实际处理路径展开图片证据；参考文献全部保留且定位本篇 PDF');
+  win.Zotero_Tabs.select('zotero-pane');const position=await E.locateReference(pdf.id,refs.records[0]);assert.isNumber(position.pageIndex);assert.equal(Zotero.Reader.getByTabID(win.Zotero_Tabs.selectedID)?.itemID,pdf.id,'从文库侧栏定位本文引用时切到该 PDF 的阅读标签');report.native.push('侧栏图标实际处理路径展开图片证据；参考文献全部保留且定位本篇 PDF');
  });
  it('saves a complete extracted image and its explanation into a linked native note',async()=>{
   const indexed=await E.assets.index(pdf.id,()=>{}),asset=indexed.assets.find(a=>a.kind==='figure'&&a.thumbnail);assert.exists(asset);
@@ -330,6 +331,14 @@ describe('Reader interaction repairs 2026-09-19',function(){
  it('keeps the calendar open and shows inline daily tasks with persisted colors',async()=>{
   win.Zotero_Tabs.select('zotero-pane');const M=ChromeUtils.importESModule('chrome://zotero/content/research/shared/compact-ui.mjs'),day=M.dateKey(new Date());
   const id='reader-calendar-'+Date.now();await E.store.update(s=>{s.tasks||=[];s.tasks.push({id,title:id,due:day+'T18:00',done:false});});const root=win.document.querySelector('#easysch-library-bottom .calendar-inline');assert.exists(root);const date=root.querySelector(`[data-date="${day}"]`);assert.equal(date.dataset.tone,'pending');const tab=win.Zotero_Tabs.selectedID;date.click();assert.equal(win.Zotero_Tabs.selectedID,tab);const row=[...root.querySelectorAll('.calendar-tasks label')].find(n=>n.textContent.includes(id));assert.exists(row);row.querySelector('input').click();await wait(()=>E.store.get('tasks').find(t=>t.id===id).done);assert.isFalse(root.querySelector('.calendar-drawer').hidden);report.native.push('月历默认展开，点击在原位显示待办，勾选保存不跳页');
+ });
+ it('reports a failed locate inside the reader it had to open',async()=>{
+  for(const open of Zotero.Reader._readers.filter(value=>value.itemID===pdf.id&&value.tabID&&!value._isTabClosed))win.Zotero_Tabs.close(open.tabID);
+  await wait(()=>!E.readerForAttachment(pdf.id),'关闭本篇 PDF 阅读标签');win.Zotero_Tabs.select('zotero-pane');
+  let missing;try{await E.locateReference(pdf.id,{id:'9999',title:'zzqx unmatched controlled reference title'});}catch(error){missing=error;}
+  assert.match(missing?.message||'',/未定位到引用位置/);reader=Zotero.Reader.getByTabID(win.Zotero_Tabs.selectedID);assert.equal(reader?.itemID,pdf.id,'未打开的 PDF 定位时会切到新阅读标签');
+  const notice=reader._iframeWindow.document.getElementById('easysch-reader-notice');assert.exists(notice,'失败原因显示在切出的阅读器内');assert.include(notice.textContent,'定位本文引用未完成：未定位到引用位置');assert.equal(notice.getAttribute('role'),'alert');
+  report.native.push('未打开的 PDF 定位失败时，原因显示在切出的阅读器内');
  });
  it('uses a real translation endpoint only when enabled',async function(){
   if(!Zotero.Prefs.get('extensions.easysch.liveProviderTest',true)){report.limitations.push('本轮未调用真实模型或机翻 API');this.skip();}

@@ -25,6 +25,12 @@ function fixture(){
  const errors=[],view=mountConversationFileDetail({host,E,getSessionID:()=>sessionID,onError:error=>errors.push(error.message)});
  return {doc,host,E,file,view,errors,setSession(id){sessionID=id;for(const fn of [...listeners])fn();}};
 }
+
+test('saved output loading stays outside chat rendering and a stale folder cannot replace the current files',async()=>{
+ const f=fixture();f.view.destroy();let scope='old',requests=0,releaseOld,releaseNew;const opened=[];f.E.workspaceOutputs={open:async row=>opened.push(row.id)};
+ const outputs={title:'已下载 PDF',getKey:()=>scope,load:({signal})=>{requests++;return new Promise(resolve=>{if(scope==='old')releaseOld={resolve,signal};else releaseNew={resolve,signal};});}};
+ const rail=mountConversationFiles({host:f.host,E:f.E,getSessionID:()=> 's1',outputs});await flush();assert.equal(requests,1);for(let index=0;index<10;index++)rail.render();assert.equal(requests,1,'typing or message renders never relaunch local-file reads');scope='new';rail.render();await flush();assert.equal(releaseOld.signal.aborted,true);releaseNew.resolve({rows:[{id:'new-pdf',kind:'pdf',title:'当前文件夹论文',subtitle:'心理学',attachmentID:9}]});await flush();releaseOld.resolve({rows:[{id:'old-pdf',title:'旧文件夹论文'}]});await flush();assert.match(rail.root.textContent,/当前文件夹论文/);assert.doesNotMatch(rail.root.textContent,/旧文件夹论文/);await rail.root.querySelector('.workspace-output-open').onclick();assert.deepEqual(opened,['new-pdf']);assert.ok(rail.root.querySelector('.conversation-files-import'));rail.destroy();
+});
 const flush=async()=>{for(let index=0;index<15;index++)await Promise.resolve();};
 
 test('unchanged source rails retain their DOM and custom file adapters keep selection scope',async()=>{

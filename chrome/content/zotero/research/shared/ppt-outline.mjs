@@ -12,6 +12,18 @@ export function normalizeOutline(rows,{previous=[],sources=[],newID=i=>'outline-
   return {id,title,purpose,diagram:!!row.diagram,sourceIDs:[...new Set((Array.isArray(row.sourceIDs)?row.sourceIDs:[]).filter(id=>known.has(id)))]};
  });
 }
+// A template section that matches an existing one (same or contained title) keeps
+// that section's ID, wording and sources, so its page and speaker notes stay attached.
+export function templateOutlineProposal(outline=[],slides=[],sections=[],{name='',newID=i=>'outline-template-'+i}={}){
+ const key=value=>String(value||'').normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase(),used=new Set();
+ const free=row=>!used.has(row.id);
+ const match=title=>outline.find(row=>free(row)&&key(row.title)===title)||outline.find(row=>{const own=key(row.title);return free(row)&&title.length>=2&&own.length>=2&&(own.includes(title)||title.includes(own));});
+ const proposal=sections.map((row,i)=>{const prior=match(key(row.title));if(!prior)return {...row,id:newID(i),sourceIDs:[]};used.add(prior.id);return {...prior,sourceIDs:[...(prior.sourceIDs||[])]};});
+ const paged=new Set(slides.filter(page=>page.outlineID).map(page=>page.outlineID)),archived=outline.filter(row=>free(row)&&paged.has(row.id)),kept=proposal.filter(row=>paged.has(row.id)).length;
+ const names=archived.slice(0,3).map(row=>'“'+row.title+'”').join('、')+(archived.length>3?' 等':'');
+ const summary='使用“'+name+'”调整内容结构。'+(kept?'保留 '+kept+' 个对应板块及其页面和讲稿。':'')+(archived.length?names+' '+archived.length+' 个板块不在新模板中，确认编排后这些页面移入“已归档页面”，可在逐页编辑中恢复。':'')+'手工新增的页面保留。';
+ return {sections:proposal,summary,archived:archived.map(row=>row.id)};
+}
 export function outlineDiff(before=[],after=[]){
  const old=new Map(before.map((row,index)=>[row.id,{row,index}])),next=new Set(after.map(row=>row.id)),changes=[];
  for(const [index,row]of after.entries()){

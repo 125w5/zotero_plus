@@ -6,7 +6,7 @@ Object.assign(EasySchUI, {
 		let taskText=this.el('p','正在整理素材与页面…'),cancelTask=this.el('button','取消当前任务'),retryTask=this.el('button','重新执行');
 		taskBox.append(taskText,cancelTask,retryTask); document.body.append(taskBox);
 		let hideTask=this.el('button','收起提示');hideTask.onclick=()=>taskBox.hidden=true;taskBox.append(hideTask);
-		cancelTask.onclick=()=>{this.meetingAbort?.abort();this.E.ai.cancel();taskText.textContent='正在取消；原图与已保存的页面不会被覆盖';};
+		cancelTask.onclick=()=>{this.meetingAbort?.abort();taskText.textContent='正在取消；原图与已保存的页面不会被覆盖';};
 		retryTask.onclick=()=>this.lastMeetingAction&&this.runMeeting(this.lastMeetingAction).catch(e=>this.status(e.message,true));
 		this.meetingTaskUI={taskBox,taskText,cancelTask,retryTask};
 		let nav = this.el('button', '组会与导师模式'); nav.dataset.tab = 'meetings';
@@ -43,9 +43,9 @@ Object.assign(EasySchUI, {
 			if (previous?.date?.length === 10 && data.date === previous.date + 'T00:00') data.date = previous.date;
 			this.meetingID = await this.E.meetings.save(data); this.refreshMeetingList(); this.status('组会已保存');
 		});
-		this.bind('meeting-outline', () => this.runMeeting(async () => { await this.E.meetings.outline(this.requireMeeting(), text => this.status(text)); }));
-		this.bind('meeting-ask', () => this.runMeeting(async () => {
-			await this.E.meetings.ask(this.requireMeeting(), this.$('meeting-answer').value, text => this.status(text));
+		this.bind('meeting-outline', () => this.runMeeting(async signal => { await this.E.meetings.outline(this.requireMeeting(), text => this.status(text), signal); }));
+		this.bind('meeting-ask', () => this.runMeeting(async signal => {
+			await this.E.meetings.ask(this.requireMeeting(), this.$('meeting-answer').value, text => this.status(text), signal);
 			this.$('meeting-answer').value = '';
 		}));
 		this.bind('meeting-layout', () => this.runMeeting(async () => {

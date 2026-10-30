@@ -7,6 +7,8 @@ import {fontSizeCommand,setParagraphLayout} from '../shared/writing-format.mjs';
 import {installAssemblyMessageDrop} from './message-drop.mjs';
 import {installAssemblyFileDrop} from './assembly-file-drop.mjs';
 import {sectionInsertionIndex} from './section-insertion.mjs';
+import {placedBlock} from './assembly-placement.mjs';
+import {libraryAsset} from '../shared/material-access.mjs';
 
 export function formatSelection(command,value,range){
  const selection=window.getSelection();if(range){selection.removeAllRanges();selection.addRange(range);}
@@ -45,7 +47,9 @@ export function paperPosition(page,y){
 }
 export function placeOnPaper(page,e){
  const mid=e.dataTransfer?.getData('application/x-manuscript-material'),bid=e.dataTransfer?.getData('application/x-manuscript-block');
- if(e.type==='drop'&&!mid&&!bid)return;e.preventDefault();e.stopPropagation();const pos=paperPosition(page,e.clientY);snapshot();
+ if(e.type==='drop'&&!mid&&!bid)return;e.preventDefault();e.stopPropagation();
+ if(mid&&!bid){const existing=placedBlock(U.p,page.dataset.section,{material:U.p.materials.find(row=>row.id===mid)||libraryAsset(U.A,mid),materialID:mid});if(existing){U.p.ui.blockID=existing.id;changed({editor:true});document.querySelector('[data-id="'+existing.id+'"]')?.scrollIntoView({block:'nearest'});status('这份素材已在本章，已定位到原卡片；未重复插入');return;}}
+ const pos=paperPosition(page,e.clientY);snapshot();
  let b;if(bid){const i=U.p.blocks.findIndex(b=>b.id===bid);if(i<0){U.undo.pop();return;}b=U.p.blocks.splice(i,1)[0];if(i<pos.index)pos.index--;}
  else{b=U.M.block('paragraph',page.dataset.section,{assembly:!!mid,emptyStarter:!mid});if(mid)attachMaterial(b,mid);}
  b.sectionID=page.dataset.section;b.spaceBefore=pos.spaceBefore;U.p.blocks.splice(pos.index,0,b);U.p.ui.blockID=b.id;U.p.ui.caret=0;changed({editor:true});focusBlock(b);status(mid?'已在此处插入素材，保留来源；Ctrl+Z 撤销':'已插入正文段落；Ctrl+Z 撤销');
