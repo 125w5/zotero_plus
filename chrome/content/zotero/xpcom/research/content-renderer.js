@@ -26,7 +26,21 @@
   for(const path of ['vendor/marked.js','vendor/purify.js','vendor/katex.js','vendor/auto-render.js','shared/content-renderer.js'])Services.scriptloader.loadSubScript(base+path,scope,'UTF-8');
   if(!scope.EasySchContent)throw Error('内容渲染器未能初始化');renderers.set(doc,scope.EasySchContent);
  }E.prepareContentStyles(doc).catch(Zotero.logError);return renderers.get(doc);};
- E.renderContent=(target,text,options)=>{const Evidence=ChromeUtils.importESModule(base+'shared/chat-evidence.mjs');return E.contentRenderer(target.ownerDocument).render(target,Evidence.evidenceCitationText(text,options?.sources),options);};
+ // Without options (no sources, citation handler or bilingual original) the
+ // rendered nodes depend only on the text: no citation buttons, no handlers and
+ // no state from earlier renders. Material cards repeat the same descriptions on
+ // every canvas render, so those renders are kept per document and cloned.
+ const renderedContent=new WeakMap(),RENDER_CACHE_SIZE=500,RENDER_CACHE_TEXT=20000;
+ E.renderContent=(target,text,options)=>{
+  const Evidence=ChromeUtils.importESModule(base+'shared/chat-evidence.mjs'),value=Evidence.evidenceCitationText(text,options?.sources),doc=target.ownerDocument,renderer=E.contentRenderer(doc);
+  if(options!==undefined||value.length>RENDER_CACHE_TEXT)return renderer.render(target,value,options);
+  let cache=renderedContent.get(doc);if(!cache){cache=new Map();renderedContent.set(doc,cache);}
+  let rendered=cache.get(value);
+  if(rendered)cache.delete(value);
+  else{rendered=renderer.render(doc.createElementNS('http://www.w3.org/1999/xhtml','div'),value);if(cache.size>=RENDER_CACHE_SIZE)cache.delete(cache.keys().next().value);}
+  cache.set(value,rendered);
+  target.replaceChildren(...rendered.cloneNode(true).childNodes);target.classList.add('easysch-content');target.style.whiteSpace='normal';return target;
+ };
  E.noteContentHTML=text=>{const doc=Zotero.getMainWindow().document,node=doc.createElementNS('http://www.w3.org/1999/xhtml','div');E.renderContent(node,text);
   // The native note editor stores TeX, not KaTeX's presentation spans.
   for(const math of [...node.querySelectorAll('.katex')]){const tex=math.querySelector('annotation[encoding="application/x-tex"]')?.textContent;if(!tex)continue;const display=math.closest('.katex-display'),out=doc.createElementNS('http://www.w3.org/1999/xhtml',display?'pre':'span');out.className='math';out.textContent=(display?'$$':'$')+tex+(display?'$$':'$');(display||math).replaceWith(out);}

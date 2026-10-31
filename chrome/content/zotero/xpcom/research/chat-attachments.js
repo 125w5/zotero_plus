@@ -183,7 +183,7 @@
   async readSession(sessionID,options={}){return A.read(A.get(sessionID),{...options,sessionID});},
   async read(references,{signal,query='',images=true,sessionID}={}){
    const session=sessionID&&E.workbenchConversations.get(sessionID);if(sessionID&&!session)throw Error('研究对话已不存在。');
-   const expected=session&&JSON.stringify(H.selectedChatAttachments(H.conversationFileReferences(session)).map(row=>[row.id,row.stateVersion||0]));
+   const expected=session&&H.chatSelectionSignature(session);
    if(sessionID){const allowed=new Map(H.selectedChatAttachments(H.conversationFileReferences(session)).map(row=>[row.id,row]));references=H.normalizeChatAttachments(references).filter(row=>allowed.has(row.id)).map(row=>allowed.get(row.id));}
    const rows=[],visuals=[],warnings=[],coverage=[],selected=H.selectedChatAttachments(references);let textBudget=45000,fileBudget=0,currentCoverage;
    const push=(reference,value,index=0)=>{const raw=String(value.text||value.sourceText||''),text=raw.slice(0,Math.min(6500,textBudget,fileBudget));if(!text.trim())return;textBudget-=text.length;fileBudget-=text.length;currentCoverage.excerptCount++;currentCoverage.truncated ||= text.length<raw.length||value.contextTruncated===true;rows.push({...value,id:'evidence:chat:'+reference.id+':'+index,stableID:'evidence:chat:'+reference.id+':'+index,referenceID:reference.id,paperItemID:value.paperItemID||value.anchor?.paperItemID||reference.paperItemID,attachmentID:value.attachmentID||value.anchor?.attachmentID||reference.attachmentID,paperTitle:value.paperTitle||reference.paperTitle||reference.title,title:value.label||reference.title,...H.sourcePageMetadata(value),sourceText:text,text,kind:'material',coverage:value.coverage||'用户附加资料中的实际内容'});};
@@ -215,7 +215,7 @@
     const supplied=rows.filter(row=>row.referenceID===current.id);currentCoverage.physicalPages=[...new Set(supplied.map(row=>row.pageNumber).filter(Number.isInteger))].sort((a,b)=>a-b);currentCoverage.status=currentCoverage.excerptCount?currentCoverage.status||'excerpts':'empty';
     if(!currentCoverage.excerptCount)warnings.push(currentCoverage.title+'：本轮没有可用正文证据，不能视为已读全文。');
    }
-   stopped(signal);if(sessionID){const latest=E.workbenchConversations.get(sessionID);if(!latest||JSON.stringify(H.selectedChatAttachments(H.conversationFileReferences(latest)).map(row=>[row.id,row.stateVersion||0]))!==expected)throw Error('读取时当前对话的资料选择已变化，请重新发送问题。');}
+   stopped(signal);if(sessionID){const latest=E.workbenchConversations.get(sessionID);if(!latest||H.chatSelectionSignature(latest)!==expected)throw Error('读取时当前对话的资料选择已变化，请重新发送问题。');}
    return {rows,images:visuals,warnings,coverage};
   }
  };

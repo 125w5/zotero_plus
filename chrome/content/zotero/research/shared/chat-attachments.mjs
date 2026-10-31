@@ -18,6 +18,11 @@ export function selectedChatAttachments(value=[],{featuredOnly=false}={}) {
 export function chatFileScopeSignature(session={}){
  return JSON.stringify([conversationFileReferences(session).map(row=>[row.id,row.selected,row.sheet||'',row.ranges||[]]).sort((a,b)=>a[0].localeCompare(b[0])),[...(session.detachedAttachments||[])].sort()]);
 }
+// The selected files and the state version of each. A folder rescan rebuilds
+// libraryFiles in its own order; the same files in another order are the same choice.
+export function chatSelectionSignature(session={}){
+ return JSON.stringify(selectedChatAttachments(conversationFileReferences(session)).map(row=>[row.id,row.stateVersion||0]).sort((a,b)=>a[0].localeCompare(b[0])));
+}
 function sourceReferenceMatch(reference,source={}){
  const stable=String(source.stableID||source.sourceID||''),materialID=source.materialID||source.id;
  if(reference.materialID){

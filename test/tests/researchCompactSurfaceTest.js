@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 describe('Compact research surfaces', function () {
  this.timeout(180000);const E=Zotero.Research;let win,ui,project,paper,pdf,folder,original;const results=[];
- const wait=async fn=>{for(let i=0;i<900;i++){if(await fn())return;await Zotero.Promise.delay(100);}throw Error('等待界面超时');};
+ const wait=async(fn,label='界面')=>{for(let i=0;i<900;i++){if(await fn())return;await Zotero.Promise.delay(100);}throw Error('等待'+label+'超时');};
  before(async()=>{
   // The suite imports its own PDF. The shared test library can hold only
   // trashed PDFs from earlier suites, which have no overview or cover.
@@ -17,8 +17,10 @@ describe('Compact research surfaces', function () {
   finally{Object.assign(E.manuscripts,{prepareTranslation:original.prepare,indexArticle:original.index,queueArticle:original.queue});E.assets.queueImages=original.images;E.queueReaderPreparation=original.preparation;}
  });
  it('shows first-page preview above abstract and keeps image evidence directly reachable',async function(){
-  win.Zotero_Tabs.select('zotero-pane');await win.ZoteroPane.selectItem(pdf.parentID||pdf.id);
-  await wait(()=>win.document.querySelector('item-details:not([hidden]) .paper-cover')?.complete);
+  // before() opened 研究对话, which hides the native item list and item pane, so a
+  // paper selected there renders no overview. Return to the library as 文献阅读 does.
+  await E.openLibraryReading(win);assert.isFalse(win.document.getElementById('zotero-item-pane').hidden,'回到文库后原生条目面板可见');await win.ZoteroPane.selectItem(pdf.parentID||pdf.id);
+  await wait(()=>win.document.querySelector('item-details:not([hidden]) .paper-cover')?.complete,'首页预览');
   const image=win.document.querySelector('item-details:not([hidden]) .paper-cover');assert.isAbove(image.naturalWidth,0);
   const details=image.closest('item-details'),panes=details.getPanes();assert.include(panes[0].dataset.pane,'research-overview');assert.equal(details.getPane('abstract').dataset.easyschMetadata,'hidden');
   const overview=image.closest('.paper-overview');assert.exists(overview.querySelector('.paper-overview-info .overview-edit'));

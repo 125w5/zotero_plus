@@ -35,10 +35,15 @@ function showTextTools(node,b){U.textSelection=null;const selection=window.getSe
 function restoreCaret(node,count){const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);let text;while((text=walker.nextNode())){if(count<=text.length){const r=document.createRange();r.setStart(text,count);r.collapse(true);const s=window.getSelection();s.removeAllRanges();s.addRange(r);return;}count-=text.length;}}
 export function renderEditor(){
  syncCanvasDisplay();const canvas=$('canvas'),scroll=U.p.ui.scrollTop;for(const dispose of U.imageResizeTools||[])dispose();U.imageResizeTools=[];for(const dispose of U.inlineMaterialDisposers||[])dispose();U.inlineMaterialDisposers=[];disposeInlineFormulas(canvas);disposeCanvasMedia(canvas);disposeMediaPreviews(canvas);canvas.replaceChildren();let pageNumber=0;
+ pendingPapers=null;U.paginateCanvas=paginatePendingCanvas;observeCanvas(canvas);
  if(canvasDisplayMode(U.p)==='digest'){renderWritingDigest(U,canvas,{el,button,persist,status,materialDetails,close:closeWritingDigest});canvas.scrollTop=scroll;return;}
  // The read canvas renderer returns false when it cannot render; the user's text is shown then.
  if(canvasDisplayMode(U.p)==='read'&&U.renderChapterReads?.(canvas,{el,button,persist,status,materialDetails})!==false){canvas.scrollTop=scroll;return;}
- for(const section of U.p.sections){let page,sectionPage=0;const newPage=()=>{page=el('article',undefined,'paper');page.dataset.page=String(++pageNumber);page.dataset.section=section.id;page.dataset.continued=String(sectionPage++>0);page.append(el('h2',section.title));canvas.append(page);page.style.zoom=U.p.ui.paperZoom||1;page.ondragover=e=>{if(e.dataTransfer.types.some(t=>t.startsWith('application/x-manuscript-')))e.preventDefault();};page.ondrop=e=>placeOnPaper(e.currentTarget,e);};newPage();
+ // Blocks are written first: each chapter, and each manual page break inside it,
+ // starts a page that receives all of its blocks. paginatePapers then reads the
+ // layout once and splits overflowing pages, instead of reading after every block.
+ const layout={canvas,scroll,sections:[]},materials=materialIndex(U.p.materials),order=new Map();U.p.blocks.forEach((b,index)=>{if(!order.has(b))order.set(b,index);});
+ for(const section of U.p.sections){let page,sectionPage=0;const row={section,pages:[],entries:[]};layout.sections.push(row);const newPage=()=>{page=paperPage(section,++pageNumber,sectionPage++>0);canvas.append(page);row.pages.push(page);};newPage();
   const blocks=U.p.blocks.filter(b=>b.sectionID===section.id);
   for(const b of blocks){const node=el('section',undefined,`block block-${b.type}${b.id===U.p.ui.blockID?' selected':''}`);node.dataset.id=b.id;node.dataset.review=b.review;node.tabIndex=0;node.onclick=()=>{if(U.previewMaterialID||U.p.ui.blockID!==b.id){U.selectedCells=[];selectBlock(b.id);}};
    node.ondragover=e=>{if(!e.dataTransfer.types.some(t=>t.startsWith('application/x-manuscript-')))return;e.preventDefault();const rect=node.getBoundingClientRect(),after=e.clientY>rect.top+rect.height/2;node.classList.toggle('block-drop-after',after);node.classList.toggle('block-drop-before',!after);};node.ondragleave=()=>node.classList.remove('block-drop-after','block-drop-before');node.ondrop=e=>placeOnPaper(node.closest('.paper'),e);
@@ -49,22 +54,117 @@ export function renderEditor(){
    else if(b.type==='citation')node.append(el('span','〔Zotero 引用〕'+b.text));
    else if(b.type==='formula'){const view=el('div',undefined,'manuscript-formula-preview');node.append(view);renderInlineFormula(view,{text:b.text,E:U.E,locked:!!b.locked,onSelect:()=>{if(U.previewMaterialID||U.p.ui.blockID!==b.id)selectBlock(b.id);},onChange:value=>saveFormulaText(b,value,{inline:true}),onError:error=>status(error.message,true)});}
    else if(b.type==='crossref')node.append(el('span','↗ '+b.text));
-   else {if(['paragraph','heading','list'].includes(b.type))renderAssembly(node,b,U.p.blocks.indexOf(b));editable(node,b,b.type==='placeholder'?'待补：实验设置、数值或引用…':'直接写正文 · Ctrl+Tab 查找相关证据');}
+   else {if(['paragraph','heading','list'].includes(b.type))renderAssembly(node,b,order.get(b),materials);editable(node,b,b.type==='placeholder'?'待补：实验设置、数值或引用…':'直接写正文 · Ctrl+Tab 查找相关证据');}
    installCanvasMedia(node,b,{E:U.E,materials:U.p.materials,onSelect:block=>{if(U.previewMaterialID||U.p.ui.blockID!==block.id)selectBlock(block.id);},onEdit:block=>{U.p.ui.rightOpen=true;U.applyPanels?.();selectBlock(block.id);const control=block.type==='table'?node.querySelector('.cell-editor'):$('details').querySelector('textarea,input');control?.focus({preventScroll:true});},onOpenAnchor:anchor=>U.E.library.openSource(anchor),onError:error=>status(error.message,true)});
-   applyCanvasBlockDisplay(node,b);node.style.marginTop=(b.spaceBefore||0)+'pt';node.dataset.pageBreak=String(!!b.pageBreakBefore);if(b.pageBreakBefore&&(!node.hidden||b.explicitPage))newPage();page.append(node);if(!node.hidden&&paperOverflows(page,node)&&page.querySelectorAll('.block:not([hidden])').length>1){node.remove();newPage();page.append(node);}
+   applyCanvasBlockDisplay(node,b);node.style.marginTop=(b.spaceBefore||0)+'pt';node.dataset.pageBreak=String(!!b.pageBreakBefore);const pageBreak=!!b.pageBreakBefore&&(!node.hidden||!!b.explicitPage);if(pageBreak)newPage();page.append(node);row.entries.push({node,hidden:node.hidden,pageBreak,bottoms:new Map()});
   }
  }
+ // A hidden canvas has no layout to measure; it is split when it is shown.
+ if(!paginatePapers(layout))pendingPapers=layout;
  // Restoring the caret focuses the paragraph in Gecko: an open material title
  // editor would lose focus and save a half-typed title (U.materialRenaming).
  canvas.scrollTop=scroll;const active=canvas.querySelector(`[data-id="${U.p.ui.blockID}"] .editable`);if(active&&U.p.ui.caret&&!U.materialRenaming?.input?.isConnected){active.editableMath?.source();if(active.contentEditable==='true')restoreCaret(active,U.p.ui.caret);}renderDetails();
 }
-function paperOverflows(page,node){
- const style=getComputedStyle(page),zoom=U.p.ui.paperZoom||1,paddingTop=parseFloat(style.paddingTop)||0,paddingBottom=parseFloat(style.paddingBottom)||0;
- const pageHeight=parseFloat(style.getPropertyValue('--canvas-page-height'))||parseFloat(style.minHeight)||1050;
- const limit=pageHeight+(style.boxSizing==='content-box'?paddingTop+paddingBottom:0);
- const bottom=(node.getBoundingClientRect().bottom-page.getBoundingClientRect().top)/zoom+(parseFloat(getComputedStyle(node).marginBottom)||0)+paddingBottom;
- return bottom>limit+1;
+function materialIndex(materials){const index=new Map();for(const m of materials||[])if(!index.has(m.id))index.set(m.id,m);return index;}
+// A canvas rendered while hidden keeps one page per chapter and manual page
+// until it is shown: setStep and the direction workspace call U.paginateCanvas,
+// and the resize observer covers any other way the canvas appears.
+let pendingPapers=null,canvasObserver=null,observedCanvas=null;
+function paperPage(section,number,continued){const page=el('article',undefined,'paper');page.dataset.page=String(number);page.dataset.section=section.id;page.dataset.continued=String(continued);page.append(el('h2',section.title));page.style.zoom=U.p.ui.paperZoom||1;page.ondragover=e=>{if(e.dataTransfer.types.some(t=>t.startsWith('application/x-manuscript-')))e.preventDefault();};page.ondrop=e=>placeOnPaper(e.currentTarget,e);return page;}
+function observeCanvas(canvas){if(observedCanvas===canvas||typeof ResizeObserver==='undefined')return;canvasObserver?.disconnect();observedCanvas=canvas;canvasObserver=new ResizeObserver(()=>{if(pendingPapers)paginatePendingCanvas();});canvasObserver.observe(canvas);}
+function paginatePendingCanvas(){
+ const layout=pendingPapers;if(!layout||layout.canvas.hidden)return false;if(!layout.sections.every(row=>row.pages.every(page=>page.isConnected))){pendingPapers=null;return false;}
+ const active=layout.canvas.querySelector(`[data-id="${U.p.ui.blockID}"] .editable`),selection=window.getSelection(),held=!!active&&!!selection?.rangeCount&&active.contains(selection.anchorNode);
+ if(!paginatePapers(layout))return false;pendingPapers=null;layout.canvas.scrollTop=layout.scroll;
+ // Moving the paragraph that holds the caret drops the selection; put it back.
+ if(held&&active.isConnected&&!active.contains(selection.anchorNode)&&U.p.ui.caret&&active.contentEditable==='true'&&!U.materialRenaming?.input?.isConnected)restoreCaret(active,U.p.ui.caret);
+ return true;
 }
+// At most three rounds of one layout read for all pages, a plan computed in
+// JavaScript and the block moves. The second read checks the moved pages; the
+// third runs only when that check changed the plan. The number of layout reads
+// does not grow with the number of blocks.
+function paginatePapers(layout){
+ if(layout.canvas.hidden)return false;
+ for(let round=0;round<3;round++){const measured=measurePapers(layout);if(measured===false)return false;if(measured===null)break;if(!placePapers(layout,planPaperPages(layout.sections)))break;}
+ numberPapers(layout);return true;
+}
+// One read pass. The first read lays the canvas out once; the others only read.
+// Lengths are unzoomed CSS px taken the way the overflow test always took them:
+// a box bottom relative to its page top, divided by the zoom. Returns false when
+// the canvas is not displayed and null when its pages no longer hold the blocks.
+function measurePapers(layout){
+ const zoom=U.p.ui.paperZoom||1,rows=layout.sections.filter(row=>row.entries.some(entry=>!entry.hidden)),tops=new Map();if(!rows.length)return true;
+ const first=rows[0].pages[0],box=first.getBoundingClientRect();if(!box.height)return false;tops.set(first,box.top);
+ const top=page=>{if(!tops.has(page))tops.set(page,page.getBoundingClientRect().top);return tops.get(page);};
+ for(const row of rows){
+  const pageStyle=getComputedStyle(row.pages[0]),paddingTop=parseFloat(pageStyle.paddingTop)||0,pageHeight=parseFloat(pageStyle.getPropertyValue('--canvas-page-height'))||parseFloat(pageStyle.minHeight)||1050,heading=row.pages[0].firstElementChild;
+  row.paddingBottom=parseFloat(pageStyle.paddingBottom)||0;row.limit=pageHeight+(pageStyle.boxSizing==='content-box'?paddingTop+row.paddingBottom:0);row.headingMargin=heading?parseFloat(getComputedStyle(heading).marginBottom)||0:0;row.continuedBase=undefined;
+  let previous=null,anchor=-1;
+  for(let index=0;index<row.entries.length;index++){const entry=row.entries[index];if(entry.hidden)continue;
+   const page=entry.node.parentElement;if(!row.pages.includes(page))return null;
+   const rect=entry.node.getBoundingClientRect(),blockStyle=getComputedStyle(entry.node);
+   // The first visible block of a page anchors it; a later block records its gap to the block before it.
+   if(previous?.page!==page)anchor=index;else entry.gap=(rect.top-previous.rect.bottom)/zoom;
+   entry.height=(rect.bottom-rect.top)/zoom;entry.marginTop=parseFloat(blockStyle.marginTop)||0;entry.marginBottom=parseFloat(blockStyle.marginBottom)||0;entry.bottoms.set(anchor,(rect.bottom-top(page))/zoom);
+   // Where the heading leaves the first block of a continued page, measured once one exists.
+   if(anchor===index&&row.continuedBase===undefined&&page.dataset.continued==='true')row.continuedBase=entry.bottoms.get(index)-entry.height-collapsedMargin(row.headingMargin,entry.marginTop);
+   previous={page,rect};
+  }
+  // The first visible block of a chapter always starts a page, so its bottom is measured.
+  const lead=row.entries.findIndex(entry=>!entry.hidden),leader=row.entries[lead];row.base=leader.bottoms.get(lead)-leader.height-collapsedMargin(row.headingMargin,leader.marginTop);
+ }
+ return true;
+}
+// Moves blocks to their planned pages. A page is kept when its first block
+// already sits on a later page of the chapter, so a correct page is left as it
+// is; other pages are created after the previous one, and pages left without
+// blocks are removed. Returns whether anything moved.
+function placePapers(layout,plan){
+ let moved=false;
+ layout.sections.forEach((row,index)=>{
+  const existing=row.pages,pages=[];let at=0;
+  for(const planned of plan[index]){
+   let target=existing[0];
+   if(pages.length){const holder=row.entries[planned.entries[0]]?.node.parentElement,position=existing.indexOf(holder);if(position>at){target=holder;at=position;}else{target=paperPage(row.section,0,true);pages.at(-1).after(target);moved=true;}}
+   pages.push(target);const want=planned.entries.map(k=>row.entries[k].node),have=[...target.children].filter(node=>node.classList.contains('block'));
+   // Pages hold consecutive blocks in chapter order, so one pass fills the page in order.
+   for(let i=0,j=0;i<want.length;i++){if(have[j]===want[i]){j++;continue;}target.insertBefore(want[i],have[j]||null);moved=true;}
+  }
+  for(const page of existing)if(!pages.includes(page)){page.remove();moved=true;}
+  row.pages=pages;
+ });
+ return moved;
+}
+function numberPapers(layout){layout.sections.flatMap(row=>row.pages.map((page,index)=>[page,String(index>0)])).forEach(([page,continued],index)=>{const value=String(index+1);if(page.dataset.page!==value)page.dataset.page=value;if(page.dataset.continued!==continued)page.dataset.continued=continued;});}
+// Adjoining vertical margins collapse to the largest positive plus the most negative one.
+function collapsedMargin(a,b){return Math.max(0,a,b)+Math.min(0,a,b);}
+// The page plan, from measured lengths, under the rule renderEditor has always
+// applied: a chapter and a manual page break start a page; a block moves to a
+// new page when it overflows the page (paperOverflows) and is not the only
+// visible block there, so a block taller than a page keeps a page of its own;
+// hidden blocks stay with the block before them and never overflow. A length not
+// measured in the current arrangement (a block first on a page it was not first
+// on, a gap across two pages) comes from the collapsed CSS margins.
+// sections: [{entries:[{hidden,pageBreak,height,marginTop,marginBottom,gap,bottoms:Map}],limit,paddingBottom,headingMargin,base,continuedBase}]
+// Returns, per chapter, its pages as [{entries:[entry index]}].
+export function planPaperPages(sections){
+ return sections.map(row=>{
+  const pages=[{entries:[]}];let page=pages[0],count=0,anchor=-1,previous=null,bottom=0;
+  const fresh=index=>{const entry=row.entries[index],base=page===pages[0]?row.base:row.continuedBase??row.base;return entry.bottoms.get(index)??base+collapsedMargin(row.headingMargin,entry.marginTop)+entry.height;};
+  row.entries.forEach((entry,index)=>{
+   if(entry.pageBreak){page={entries:[]};pages.push(page);count=0;}
+   page.entries.push(index);if(entry.hidden)return;
+   if(count){bottom=entry.bottoms.get(anchor)??bottom+(entry.gap??collapsedMargin(previous.marginBottom,entry.marginTop))+entry.height;
+    if(paperOverflows(row,bottom,entry)){page.entries.pop();page={entries:[index]};pages.push(page);count=0;}}
+   if(!count){anchor=index;bottom=fresh(index);}
+   count++;previous=entry;
+  });
+  return pages;
+ });
+}
+// The overflow test: the bottom margin of the block passes the page bottom by more than 1px.
+function paperOverflows(row,bottom,entry){return bottom+entry.marginBottom+row.paddingBottom>row.limit+1;}
 function editable(host,b,placeholder){const n=el(b.type==='list'?(b.listStyle==='number'?'ol':'ul'):'div',undefined,'editable');n.contentEditable=b.locked?'false':'true';n.style.textAlign=paragraphAlignment(b);n.style.lineHeight=b.lineSpacing||'';n.style.marginLeft=(b.indent||0)+'mm';n.dataset.placeholder=placeholder;n.setAttribute('role','textbox');n.setAttribute('aria-label',b.type==='heading'?'编辑标题':'编辑模块正文');renderEditableContent(n,b);
  n.onfocus=()=>{U.lastTyping=0;if(U.previewMaterialID||U.p.ui.blockID!==b.id)selectBlock(b.id);};
  n.onkeydown=e=>{if(e.key==='Enter'&&b.type!=='list'&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&!e.isComposing&&!U.composing){if(b.locked)return;e.preventDefault();

@@ -35,6 +35,28 @@ describe('Research native interaction performance in a large workspace', functio
 			throttleRule: '窗口心跳 p50 > max(30 ms, 4 × 对照 p50)，或窗口超过 100 ms 的间隔比对照多 3 次以上且超过两倍，记为 throttleSuspected：这时窗口数字反映节流，应看 heartbeat.control。',
 			assertion: '卡死判定用 effectiveMaxGapMs = min(窗口最大间隔, 对照最大间隔)，覆盖 main 与 tail。真正的主线程阻塞会让两者都变大，只有窗口被节流时不会误报。'
 		},
+		profileMethod: {
+			scope: '只在 07-11 五项装配操作里启用（各项的 profile 字段）：触发前安装，心跳停止后全部还原。探针只包函数：参数、返回值、this 与异常原样转发，不改产品行为。',
+			wrapped: [
+				'装配页 ManuscriptUI（U）自身的函数属性，以及控制器对象 workflow、directionWorkspace、chapterReads、chapterReadView、selectionAssistant、writingRibbon、journalFormatPicker、aiOrb 等的函数属性。07 在 window.ManuscriptUI 赋值时接管 U，init 期间再补扫后来挂上的属性（wrapped.uiScans 为扫描次数）。',
+				'Zotero.Research 白名单函数（见测试文件 PROFILE_SERVICES）：manuscripts、notebook、store、workbenchConversations、assets、corpus 下装配页经属性查找调用的成员，以及 renderContent、previewImage、materialSourceInfo 等。manuscripts.all/readings/taskPlan/assetLibrary 与 notebook.state/materials 不包：别的成员靠引用比较它们来决定是否返回冻结的共享视图，包了会让它们改为克隆。',
+				'装配框架 realm 的布局读取：Element/Range 的 getBoundingClientRect、getClientRects，scrollIntoView、focus，client*/scroll*/offset*/innerText getter 与 scrollTop setter，window.getComputedStyle、CSSStyleDeclaration.getPropertyValue 与 paperOverflows 读取的 style.* getter。另计 JSON.stringify/parse、replaceChildren 的耗时与 createElement/createElementNS 的次数。',
+				'框架与主窗口 docShell 的 nsIReflowObserver：每次重排的耗时，并在重排时取 JS 调用栈。'
+			],
+			reading: {
+				totalMs: '含嵌套调用的总耗时：外层包含内层，递归只算最外层。不同函数的 totalMs 不能相加。',
+				selfMs: '扣除被包装的子调用、布局读取与探针开销后的自身耗时。未经包装的直接调用（见 blindSpots）算在调用方的 selfMs 里。比较谁花了时间看 selfMs，看从哪里进来看 totalMs 与 calledFrom。',
+				calledFrom: '直接调用方：最近一层被包装的函数、测试的点击区段，或“(未包装的调用方)”（init 等模块内代码、事件与定时器回调、其他窗口），以及经由它的次数与耗时。sampledCallers（第 1、8、64… 次调用）与 slowestCalls（单次 ≥ 4 ms 的最慢三次）给出调用栈。',
+				layoutCalls: '该函数执行期间（含嵌套）的布局与样式读取次数和耗时；syncReflows 为期间发生的重排次数和耗时。',
+				tailMs: '测试判定就绪之后发生的部分，例如防抖保存。',
+				async: '异步函数只计第一个 await 之前的同步部分；await 之后的续体在微任务里运行，算作独立的顶层时间。',
+				layout: 'layout.reads 按 API 给次数与耗时，耗时包含它触发的样式与布局刷新。layout.callers 按调用栈汇总（“函数 文件:行:列”是调用该 API 的代码，← 后是它的调用方），指出哪一行在强制布局；style.* 读取不取调用栈，只计次数与耗时。getComputedStyle 本身不刷新，刷新发生在读 style.* 的时候。',
+				reflows: 'reflows.frame/window：sync 为脚本读取强制的同步重排，interruptible 为刷新驱动的重排。reflows.callers 按重排发生时的调用栈汇总。重排耗时也包含在触发它的布局读取耗时里，两者不要相加。',
+				coverage: '心跳最长的几个间隔：coveredMs 为最外层被包装调用占用的时间；spanSelfMs 为测试点击区段里未被包装的同步代码；outsideMs 为两者之外的时间（init 等模块内的直接调用、await 后的续体、GC、其他窗口）；marks 为落在该间隔里的时间点。',
+				overheadMs: '取调用栈等探针自身的开销，已从 selfMs 与 totalMs 扣除，但仍包含在心跳间隔里。'
+			},
+			blindSpots: '模块内部的直接调用不经过属性查找，无法包装：main.mjs 的 init 直接调用 applyPanels、renderNavigation、renderEditor、renderChat、renderAssessment；装配阶段按钮直接调用 assembly-workflow.mjs 内部的 setStep（不经过 U.workflow.setStep，所以 08-11 没有 setStep 这一行，它的自身耗时在点击区段的 selfMs 里），setStep 又直接调用 applyPanels、renderNavigation 与内部 refresh；editor.mjs 的 paperOverflows、editable 与 assembly-tools.mjs 的 renderAssembly；material-library.mjs 的 renderResults、allMaterials；以及 shared 下的纯函数（assessmentSignature、threadContext、catalogFor 等）。它们的耗时计入调用方或点击区段的 selfMs，或 coverage.outsideMs；它们引起的布局读取与重排仍会在 layout.callers、reflows.callers 里带文件与行号出现。'
+		},
 		environment: {},
 		calibration: [],
 		operations: [],
@@ -48,7 +70,8 @@ describe('Research native interaction performance in a large workspace', functio
 		'输入用 beforeinput + execCommand(insertText) 或 input 事件逐字模拟，不是真实输入法组合；Services.prompt 的 alert/confirm 被替换，防止模态框挂住套件。',
 		'心跳可能在隐藏或未激活的窗口里被节流：同时运行不受窗口节流的 Timer.sys.mjs 对照心跳并记录 rAF 帧数、document.hidden 与 hasFocus，判定方法见 heartbeatMethod。',
 		'素材列表的分批加载由 IntersectionObserver 驱动；窗口不绘制时可能不加载下一批，此时 extras.appended 为 false 只说明这一点，不判失败。',
-		'耗时受本机负载、磁盘与杀毒扫描影响。只有主线程间隔超过 1000 ms 或总耗时超过宽松上限才判失败，其余数字只记录。'
+		'耗时受本机负载、磁盘与杀毒扫描影响。只有主线程间隔超过 1000 ms 或总耗时超过宽松上限才判失败，其余数字只记录。',
+		'07-11 的 profile 字段来自函数包装与重排观察（见 profileMethod）。探针本身有开销（profile.overheadMs），这几项的心跳间隔会略大于不带探针时；模块内部的直接调用无法包装，只能从调用栈与 coverage 推断。'
 	);
 	let sleep = ms => new Promise(resolve => timerSetTimeout(resolve, ms));
 	let nextFrame = () => new Promise((resolve) => {
@@ -369,7 +392,7 @@ describe('Research native interaction performance in a large workspace', functio
 	let writeReport = async () => {
 		if (!folder) return;
 		let rows = report.operations;
-		report.summary = rows.map(row => ({ id: row.id, label: row.label, totalMs: row.totalMs, settledMs: row.settledMs, maxGapMs: row.maxGapMs, effectiveMaxGapMs: row.effectiveMaxGapMs, p95GapMs: row.p95GapMs, over100: row.over100, over300: row.over300, throttleSuspected: row.throttleSuspected, error: row.error || null }));
+		report.summary = rows.map(row => ({ id: row.id, label: row.label, totalMs: row.totalMs, settledMs: row.settledMs, maxGapMs: row.maxGapMs, effectiveMaxGapMs: row.effectiveMaxGapMs, p95GapMs: row.p95GapMs, over100: row.over100, over300: row.over300, throttleSuspected: row.throttleSuspected, error: row.error || null, profileTop: row.profile?.topBySelf?.slice(0, 5).map(fn => fn.name + ' self ' + fn.selfMs + ' / total ' + fn.totalMs + ' ms') }));
 		report.worstByMaxGap = ranked(rows, 'effectiveMaxGapMs').slice(0, 5).map(row => row.id + ' · ' + row.effectiveMaxGapMs + ' ms');
 		report.slowest = ranked(rows, 'totalMs').slice(0, 5).map(row => row.id + ' · ' + row.totalMs + ' ms');
 		report.freezes = rows.filter(row => row.effectiveMaxGapMs > FREEZE_MS).map(row => row.id);
@@ -390,18 +413,711 @@ describe('Research native interaction performance in a large workspace', functio
 		}
 		return false;
 	};
+	// Call profiler for the assembly operations (07-11). It replaces functions
+	// in place with pass-through wrappers that time each call and restores them
+	// afterwards. Arguments, this, return values and exceptions are forwarded.
+	const PROFILE_TOP = 20;
+	const PROFILE_TIMED_CALLS = 20000;
+	const PROFILE_LAYOUT_STACKS = 4000;
+	const PROFILE_REFLOW_STACKS = 2000;
+	const PROFILE_SLOW_MS = 4;
+	const PROFILE_INTERVALS = 60000;
+	const PROFILE_RESCAN_MS = 15;
+	const PROFILE_RESCANS = 40;
+	let PROFILE_SAMPLE_AT = [1, 8, 64, 512, 4096];
+	// Zotero.Research members the assembly page reaches by property lookup.
+	// Not wrapped: manuscripts.all/readings/taskPlan/assetLibrary and
+	// notebook.state/materials. Their *View siblings compare them by identity to
+	// choose the frozen shared view, so a wrapper would turn those views into clones.
+	let PROFILE_SERVICES = [
+		['', ['renderContent', 'previewImage', 'materialSourceInfo', 'appendMaterialProvenance', 'findPaperPassages', 'materializePassage']],
+		['manuscripts', ['get', 'allView', 'open', 'save', 'check', 'titleFor', 'summaryFor', 'summaryReader', 'paperReference', 'asset', 'assetLibraryView', 'materialLibraryView', 'filterAutomaticMaterials', 'materialAttachmentIDs', 'materialExclusions', 'materialExclusionSignature', 'syncAssets', 'applyMaterialAnnotationUpdates', 'chapterReadStates', 'readingsView', 'taskPlanView', 'assessment', 'ensureChineseSummaries', 'ensureLibraryItem', 'notifyAssetsChanged']],
+		['notebook', ['openProject', 'resumeAssembly', 'enterAssembly', 'project', 'projectView', 'stateView', 'materialsView', 'update', 'select', 'catalogChanged', 'open']],
+		['store', ['get', 'peek', 'freezeIdle', 'replaceBranch', 'updateBranch']],
+		['workbenchConversations', ['open', 'getForScope', 'getActive', 'get', 'list', 'importLegacy']],
+		['assets', ['key', 'position']],
+		['corpus', ['projectRows', 'manualCopyIDs']]
+	];
+	let PROFILE_LAYOUT_METHODS = [
+		['Element', 'getBoundingClientRect', ''],
+		['Element', 'getClientRects', ''],
+		['Element', 'scrollIntoView', ''],
+		['HTMLElement', 'focus', ''],
+		['Range', 'getBoundingClientRect', 'Range.'],
+		['Range', 'getClientRects', 'Range.']
+	];
+	let PROFILE_LAYOUT_GETTERS = [
+		['Element', ['clientWidth', 'clientHeight', 'clientTop', 'clientLeft', 'scrollWidth', 'scrollHeight', 'scrollTop', 'scrollLeft']],
+		['HTMLElement', ['offsetWidth', 'offsetHeight', 'offsetTop', 'offsetLeft', 'offsetParent', 'innerText']]
+	];
+	// The computed style properties paperOverflows reads (editor.mjs:62-65).
+	let PROFILE_STYLE_GETTERS = ['paddingTop', 'paddingBottom', 'marginBottom', 'minHeight', 'boxSizing'];
+	let PROFILE_UI_SKIP = new Set(['$', 'el']);
+	let PROFILE_UI_CONTROLLERS = ['workflow', 'directionWorkspace', 'chapterReads', 'chapterReadView', 'selectionAssistant', 'writingRibbon', 'journalFormatPicker', 'aiOrb', 'conversationSurface', 'assemblyCLUI', 'assemblyComposer', 'conversationFileWorkspace', 'manualWritingToolbar'];
+	let profileWrappers = new WeakSet(), activeProfiler = null;
+	let stopProfiler = () => activeProfiler?.stop();
+	let profileShortURL = (url) => {
+		let value = String(url || '');
+		if (value.includes(' -> ')) value = value.slice(value.lastIndexOf(' -> ') + 4);
+		for (let [pattern, short] of [[/^chrome:\/\/zotero\/content\/research\//, 'R/'], [/^chrome:\/\/zotero\/content\/xpcom\//, 'xpcom/'], [/^chrome:\/\/zotero\/content\//, 'zotero/'], [/^resource:\/\/zotero-unit-tests\//, 'tests/']]) {
+			if (pattern.test(value)) return value.replace(pattern, short);
+		}
+		return value;
+	};
+	// SpiderMonkey stack lines: "name@url:line:column", async frames as "cause*name@...".
+	let profileFrames = (stackText) => {
+		let frames = [];
+		for (let line of String(stackText || '').split('\n')) {
+			let at = line.lastIndexOf('@');
+			if (at < 0) continue;
+			let name = line.slice(0, at), location = line.slice(at + 1), match = /^(.*):(\d+):(\d+)$/.exec(location);
+			if (name.includes('*')) name = name.slice(name.lastIndexOf('*') + 1);
+			frames.push({ name: name || '(匿名)', url: match ? match[1] : location, line: match ? Number(match[2]) : 0, column: match ? Number(match[3]) : 0 });
+		}
+		return frames;
+	};
+	// Test, harness and platform frames are dropped; the first product frame is the caller.
+	let profileChain = (stackText) => {
+		let product = profileFrames(stackText).filter(frame => !/zotero-unit|^resource:\/\/gre\//.test(frame.url));
+		if (!product.length) return { key: '(测试代码或无 JS 调用栈)', chain: '' };
+		let label = (frame, column) => frame.name + ' ' + profileShortURL(frame.url) + ':' + frame.line + (column ? ':' + frame.column : '');
+		let key = [label(product[0], true), ...product.slice(1, 3).map(frame => label(frame, false))].join(' ← ');
+		return { key, chain: product.slice(0, 8).map(frame => label(frame, false)).join(' ← ') };
+	};
+	// Strict, so a wrapper called without a receiver forwards this === undefined.
+	let createProfiler = (options) => {
+		'use strict';
+
+		let { view = null, watch = null } = options || {};
+		let session = { ui: null, view: null, hooked: false, initializing: false, lastScan: 0, scans: 0, controllers: {} };
+		let stats = new Map(), stack = [], restorers = [], keepAlive = [], marks = [], intervals = [], spans = [];
+		let layoutSamples = [], reflowSamples = [], observers = {}, faults = [];
+		let wrapped = { research: 0, ui: 0, frameHooks: 0, missing: [], skipped: [], replaced: [], unavailable: [] };
+		let counts = { droppedIntervals: 0, uncapturedLayout: 0, uncapturedReflow: 0 };
+		let domCounters = {}, active = false, startedAt = 0, stoppedAt = 0, readyAt = Infinity, overhead = 0, layoutSerial = 0, api;
+		let note = (list, value) => {
+			if (list.length < 40) list.push(value);
+		};
+		let fault = (where, error) => {
+			if (faults.length < 20) faults.push(where + '：' + String(error?.message || error));
+		};
+		// Probe time (stack capture, rescans) is charged to the innermost open frame
+		// so that frame's self time excludes it.
+		let charge = (ms) => {
+			if (!active) return;
+			overhead += ms;
+			if (stack.length) stack[stack.length - 1].overhead += ms;
+		};
+		let capture = () => {
+			let t = now(), error = new Error();
+			charge(now() - t);
+			return error;
+		};
+		let stat = (name, kind) => {
+			let row = stats.get(name);
+			if (!row) {
+				row = { name, kind, calls: 0, timed: 0, open: 0, total: 0, self: 0, max: 0, tail: 0, first: null, async: false, layoutCalls: 0, layoutMs: 0, reflowCount: 0, reflowMs: 0, stamp: 0, parents: new Map(), slow: [], samples: [], nextSample: 0, capture: false };
+				stats.set(name, row);
+			}
+			return row;
+		};
+		let keepSlow = (row, ms) => {
+			if (ms < PROFILE_SLOW_MS) return;
+			if (row.slow.length >= 3) {
+				let fastest = row.slow.reduce((low, item) => (item.ms < low.ms ? item : low));
+				if (fastest.ms >= ms) return;
+				row.slow.splice(row.slow.indexOf(fastest), 1);
+			}
+			row.slow.push({ ms, at: now(), error: capture() });
+		};
+		// While 07 initializes, new U properties are picked up at top-level calls.
+		let rescan = () => {
+			if (now() - session.lastScan < PROFILE_RESCAN_MS || session.scans >= PROFILE_RESCANS) return;
+			scanNow();
+		};
+		let enter = (row) => {
+			try {
+				row.calls++;
+				if (!stack.length && session.initializing) rescan();
+				if (row.kind === 'fn' && row.nextSample < PROFILE_SAMPLE_AT.length && row.calls === PROFILE_SAMPLE_AT[row.nextSample]) {
+					row.nextSample++;
+					row.samples.push(capture());
+				}
+				if (row.calls > PROFILE_TIMED_CALLS) return null;
+				let frame = { row, parent: stack.length ? stack[stack.length - 1] : null, start: now(), child: 0, overhead: 0, nested: row.open > 0 };
+				row.open++;
+				if (row.first === null) row.first = frame.start;
+				stack.push(frame);
+				return frame;
+			}
+			catch (error) {
+				fault('enter', error);
+				return null;
+			}
+		};
+		let leave = (frame) => {
+			if (!frame) return;
+			try {
+				let end = now(), index = stack.lastIndexOf(frame);
+				if (index < 0) return;
+				stack.length = index;
+				let row = frame.row, own = end - frame.start - frame.overhead;
+				row.open--;
+				row.timed++;
+				row.self += own - frame.child;
+				if (!frame.nested) row.total += own;
+				if (own > row.max) row.max = own;
+				if (frame.start >= readyAt) row.tail += own;
+				let parent = frame.parent;
+				if (parent) {
+					parent.child += own;
+					parent.overhead += frame.overhead;
+				}
+				let caller = parent ? parent.row.name : '(未包装的调用方)', via = row.parents.get(caller);
+				if (!via) row.parents.set(caller, via = { calls: 0, ms: 0 });
+				via.calls++;
+				via.ms += own;
+				if (row.kind === 'span') {
+					if (!parent) spans.push({ from: frame.start, to: end });
+				}
+				else if (!parent || parent.row.kind === 'span') {
+					if (intervals.length < PROFILE_INTERVALS) intervals.push({ from: frame.start, to: end, name: row.name, inSpan: !!parent });
+					else counts.droppedIntervals++;
+				}
+				if (row.kind === 'layout') {
+					let serial = ++layoutSerial;
+					for (let open of stack) {
+						if (open.row.stamp === serial) continue;
+						open.row.stamp = serial;
+						open.row.layoutCalls++;
+						open.row.layoutMs += own - frame.child;
+					}
+					if (row.capture) {
+						if (layoutSamples.length < PROFILE_LAYOUT_STACKS) layoutSamples.push({ api: row.name, ms: own - frame.child, error: capture() });
+						else counts.uncapturedLayout++;
+					}
+				}
+				else if (row.kind !== 'span') keepSlow(row, own);
+			}
+			catch (error) {
+				fault('leave', error);
+			}
+		};
+		// Only ordinary functions: a class, or a function carrying its own
+		// properties (fn.update, fn.cancel), is left alone.
+		let plainFunction = (fn) => {
+			let keys = Reflect.ownKeys(fn).filter(key => !['length', 'name', 'prototype', 'arguments', 'caller'].includes(key)), prototype = Object.getOwnPropertyDescriptor(fn, 'prototype');
+			return !keys.length && (!prototype || prototype.writable);
+		};
+		let wrapSlot = (owner, key, name, group) => {
+			try {
+				let desc = Object.getOwnPropertyDescriptor(owner, key);
+				if (!desc || !('value' in desc) || typeof desc.value !== 'function' || profileWrappers.has(desc.value)) return false;
+				if (!desc.writable || !plainFunction(desc.value)) {
+					note(wrapped.skipped, name);
+					return false;
+				}
+				let original = desc.value, row = stat(name, 'fn');
+				row.async ||= Object.prototype.toString.call(original) === '[object AsyncFunction]';
+				let wrapper = function (...args) {
+					if (!active) return new.target ? Reflect.construct(original, args, new.target === wrapper ? original : new.target) : Reflect.apply(original, this, args);
+					let frame = enter(row);
+					try {
+						return new.target ? Reflect.construct(original, args, new.target === wrapper ? original : new.target) : Reflect.apply(original, this, args);
+					}
+					finally {
+						leave(frame);
+					}
+				};
+				Object.defineProperty(wrapper, 'name', { value: original.name, configurable: true });
+				Object.defineProperty(wrapper, 'length', { value: original.length, configurable: true });
+				profileWrappers.add(wrapper);
+				owner[key] = wrapper;
+				if (owner[key] !== wrapper) return false;
+				wrapped[group]++;
+				restorers.push(() => {
+					if (owner[key] === wrapper) owner[key] = original;
+					else note(wrapped.replaced, name);
+				});
+				return true;
+			}
+			catch (error) {
+				fault('wrap ' + name, error);
+				return false;
+			}
+		};
+		let wrapOwn = (owner, label, skip) => {
+			let added = 0;
+			for (let key of Object.keys(owner)) {
+				if (!skip?.has(key) && wrapSlot(owner, key, label + '.' + key, 'ui')) added++;
+			}
+			return added;
+		};
+		let plainObject = value => !!value && typeof value === 'object' && !Array.isArray(value) && (Object.getPrototypeOf(value) === null || Object.getPrototypeOf(Object.getPrototypeOf(value)) === null);
+		let scanUI = () => {
+			let ui = session.ui;
+			if (!ui) return;
+			session.lastScan = now();
+			session.scans++;
+			try {
+				wrapOwn(ui, 'U', PROFILE_UI_SKIP);
+				for (let key of PROFILE_UI_CONTROLLERS) {
+					let desc = Object.getOwnPropertyDescriptor(ui, key);
+					if (!desc || !plainObject(desc.value)) continue;
+					let added = wrapOwn(desc.value, 'U.' + key);
+					if (added) session.controllers[key] = (session.controllers[key] || 0) + added;
+				}
+				if (session.initializing && ui.ready === true) {
+					session.initializing = false;
+					mark('init 完成（U.ready 为真，扫描时观察到）');
+				}
+			}
+			catch (error) {
+				fault('scan', error);
+			}
+		};
+		let scanNow = () => {
+			let t = now();
+			scanUI();
+			charge(now() - t);
+		};
+		let adoptUI = (ui, initializing) => {
+			if (!ui || typeof ui !== 'object' || session.ui === ui) return;
+			session.ui = ui;
+			session.initializing = initializing && ui.ready !== true;
+			scanNow();
+			if (session.initializing) {
+				Promise.resolve().then(() => {
+					mark('main.mjs 同步部分结束（第一个 await 之后）');
+					scanNow();
+				});
+			}
+		};
+		// main.mjs assigns window.ManuscriptUI = U before it installs the controllers.
+		let trapUI = (frameView) => {
+			let value = frameView.ManuscriptUI, setter = (next) => {
+				value = next;
+				try {
+					mark('window.ManuscriptUI 赋值（init 开始）');
+					adoptUI(next, true);
+				}
+				catch (error) {
+					fault('trap', error);
+				}
+			};
+			try {
+				Object.defineProperty(frameView, 'ManuscriptUI', { get: () => value, set: setter, configurable: true, enumerable: true });
+				restorers.push(() => {
+					let desc = Object.getOwnPropertyDescriptor(frameView, 'ManuscriptUI');
+					if (desc?.set !== setter) return;
+					if (value === undefined) delete frameView.ManuscriptUI;
+					else Object.defineProperty(frameView, 'ManuscriptUI', { value, writable: true, configurable: true, enumerable: true });
+				});
+			}
+			catch (error) {
+				fault('trap ManuscriptUI', error);
+			}
+		};
+		let listen = (frameView) => {
+			try {
+				let handlers = [
+					['DOMContentLoaded', () => {
+						mark('装配页 DOMContentLoaded');
+						scanNow();
+					}],
+					['load', () => mark('装配页 load')],
+					['research-workspace-settled', () => {
+						mark('init 结束（research-workspace-settled）');
+						scanNow();
+						session.initializing = false;
+					}]
+				];
+				for (let [type, handler] of handlers) frameView.addEventListener(type, handler, { once: true });
+				restorers.push(() => {
+					for (let [type, handler] of handlers) frameView.removeEventListener(type, handler);
+				});
+			}
+			catch (error) {
+				fault('listen', error);
+			}
+		};
+		// nsIReflowObserver on a docShell: reflow() is a reflow forced by a script
+		// read, reflowInterruptible() one run by the refresh driver.
+		let observeReflows = (target, label) => {
+			let bucket = observers[label] = { attached: false, sync: 0, syncMs: 0, maxSyncMs: 0, interruptible: 0, interruptibleMs: 0, error: null };
+			let record = (start, end, interruptible) => {
+				if (!active) return;
+				let ms = end - start;
+				if (interruptible) {
+					bucket.interruptible++;
+					bucket.interruptibleMs += ms;
+					return;
+				}
+				bucket.sync++;
+				bucket.syncMs += ms;
+				if (ms > bucket.maxSyncMs) bucket.maxSyncMs = ms;
+				let serial = ++layoutSerial;
+				for (let open of stack) {
+					if (open.row.stamp === serial) continue;
+					open.row.stamp = serial;
+					open.row.reflowCount++;
+					open.row.reflowMs += ms;
+				}
+				if (reflowSamples.length < PROFILE_REFLOW_STACKS) reflowSamples.push({ bucket: label, ms, error: capture() });
+				else counts.uncapturedReflow++;
+			};
+			try {
+				let observer = {
+					QueryInterface: ChromeUtils.generateQI(['nsIReflowObserver', 'nsISupportsWeakReference']),
+					reflow: (start, end) => record(start, end, false),
+					reflowInterruptible: (start, end) => record(start, end, true)
+				};
+				let docShell = target.docShell;
+				docShell.addWeakReflowObserver(observer);
+				keepAlive.push(observer);
+				bucket.attached = true;
+				restorers.push(() => {
+					try {
+						docShell.removeWeakReflowObserver(observer);
+					}
+					catch {}
+				});
+			}
+			catch (error) {
+				bucket.error = String(error?.message || error);
+			}
+		};
+		let readCounters = (target) => {
+			let out = {};
+			for (let key of ['framesConstructed', 'framesReflowed']) {
+				try {
+					let value = target?.windowUtils?.[key];
+					if (typeof value === 'number') out[key] = value;
+				}
+				catch {}
+			}
+			return out;
+		};
+		let delta = (from = {}, to = {}) => Object.fromEntries(Object.keys(to).map(key => [key, to[key] - (from[key] || 0)]));
+		// Layout, JSON and DOM entry points in the assembly frame's realm.
+		let wrapMethod = (owner, key, name, kind, { thisValue, capture: captureStack = false } = {}) => {
+			try {
+				let desc = owner && Object.getOwnPropertyDescriptor(owner, key);
+				if (!desc || typeof desc.value !== 'function' || !desc.writable) {
+					note(wrapped.unavailable, name);
+					return;
+				}
+				let original = desc.value, row = stat(name, kind);
+				row.capture = captureStack;
+				let wrapper = function (...args) {
+					let receiver = this === undefined ? thisValue : this;
+					if (!active) return Reflect.apply(original, receiver, args);
+					if (kind === 'count') {
+						row.calls++;
+						return Reflect.apply(original, receiver, args);
+					}
+					let frame = enter(row);
+					try {
+						return Reflect.apply(original, receiver, args);
+					}
+					finally {
+						leave(frame);
+					}
+				};
+				owner[key] = wrapper;
+				if (owner[key] !== wrapper) {
+					note(wrapped.unavailable, name);
+					return;
+				}
+				wrapped.frameHooks++;
+				restorers.push(() => {
+					if (owner[key] === wrapper) owner[key] = original;
+					else note(wrapped.replaced, name);
+				});
+			}
+			catch (error) {
+				fault('hook ' + name, error);
+			}
+		};
+		let wrapAccessor = (proto, key, name, { setter = false, capture: captureStack = true } = {}) => {
+			try {
+				let original = proto && Object.getOwnPropertyDescriptor(proto, key);
+				if (!original?.get || !original.configurable) {
+					note(wrapped.unavailable, name);
+					return;
+				}
+				let getRow = stat(name, 'layout'), setRow = setter && original.set ? stat(name + '=', 'layout') : null;
+				getRow.capture = captureStack;
+				if (setRow) setRow.capture = captureStack;
+				let get = function () {
+					if (!active) return original.get.call(this);
+					let frame = enter(getRow);
+					try {
+						return original.get.call(this);
+					}
+					finally {
+						leave(frame);
+					}
+				};
+				let set = original.set && function (value) {
+					if (!active || !setRow) {
+						original.set.call(this, value);
+						return;
+					}
+					let frame = enter(setRow);
+					try {
+						original.set.call(this, value);
+					}
+					finally {
+						leave(frame);
+					}
+				};
+				Object.defineProperty(proto, key, { get, set: set || undefined, enumerable: original.enumerable, configurable: true });
+				wrapped.frameHooks++;
+				restorers.push(() => {
+					if (Object.getOwnPropertyDescriptor(proto, key)?.get === get) Object.defineProperty(proto, key, original);
+					else note(wrapped.replaced, name);
+				});
+			}
+			catch (error) {
+				fault('hook ' + name, error);
+			}
+		};
+		let hookFrame = (frameView) => {
+			if (session.hooked) return;
+			session.hooked = true;
+			session.view = frameView;
+			let t = now();
+			for (let [type, key, prefix] of PROFILE_LAYOUT_METHODS) wrapMethod(frameView[type]?.prototype, key, prefix + key, 'layout', { capture: true });
+			for (let [type, keys] of PROFILE_LAYOUT_GETTERS) {
+				for (let key of keys) wrapAccessor(frameView[type]?.prototype, key, key, { setter: key === 'scrollTop' });
+			}
+			// [Global] puts Window operations on the instance; fall back to the prototype.
+			let styleOwner = Object.getOwnPropertyDescriptor(frameView, 'getComputedStyle') ? frameView : frameView.Window?.prototype;
+			wrapMethod(styleOwner, 'getComputedStyle', 'getComputedStyle', 'layout', { thisValue: frameView, capture: true });
+			let styleProto = frameView.CSS2Properties?.prototype || Object.getPrototypeOf(frameView.document.documentElement.style);
+			for (let key of PROFILE_STYLE_GETTERS) wrapAccessor(styleProto, key, 'style.' + key, { capture: false });
+			wrapMethod(frameView.CSSStyleDeclaration?.prototype, 'getPropertyValue', 'style.getPropertyValue', 'layout');
+			wrapMethod(frameView.JSON, 'stringify', 'JSON.stringify', 'json');
+			wrapMethod(frameView.JSON, 'parse', 'JSON.parse', 'json');
+			wrapMethod(frameView.Element?.prototype, 'replaceChildren', 'Element.replaceChildren', 'dom');
+			wrapMethod(frameView.Document?.prototype, 'createElement', 'document.createElement', 'count');
+			wrapMethod(frameView.Document?.prototype, 'createElementNS', 'document.createElementNS', 'count');
+			observeReflows(frameView, 'frame');
+			domCounters.frameStart = readCounters(frameView);
+			charge(now() - t);
+		};
+		// document-element-inserted fires as the parser inserts the root element,
+		// before the page's scripts run.
+		let watchFrame = (match) => {
+			let observer = {
+				observe(subject) {
+					try {
+						let frameView = subject?.defaultView;
+						if (session.hooked || !frameView || !match(frameView, subject)) return;
+						mark('装配页文档创建（脚本运行前）');
+						hookFrame(frameView);
+						trapUI(frameView);
+						listen(frameView);
+					}
+					catch (error) {
+						fault('watch', error);
+					}
+				}
+			};
+			Services.obs.addObserver(observer, 'document-element-inserted');
+			keepAlive.push(observer);
+			restorers.push(() => Services.obs.removeObserver(observer, 'document-element-inserted'));
+		};
+		let wrapServices = () => {
+			for (let [path, keys] of PROFILE_SERVICES) {
+				let owner = path ? E[path] : E;
+				for (let key of keys) {
+					let label = 'Research.' + (path ? path + '.' : '') + key;
+					if (!owner || typeof owner[key] !== 'function') note(wrapped.missing, label);
+					else if (!Object.hasOwn(owner, key)) note(wrapped.skipped, label);
+					else wrapSlot(owner, key, label, 'research');
+				}
+			}
+		};
+		let install = () => {
+			wrapServices();
+			observeReflows(win, 'window');
+			domCounters.windowStart = readCounters(win);
+			if (view) {
+				hookFrame(view);
+				adoptUI(view.ManuscriptUI, false);
+			}
+			if (watch) watchFrame(watch);
+		};
+		let stop = () => {
+			if (!active && !restorers.length) return;
+			active = false;
+			stoppedAt = now();
+			domCounters.windowEnd = readCounters(win);
+			if (session.view) domCounters.frameEnd = readCounters(session.view);
+			while (restorers.length) {
+				try {
+					restorers.pop()();
+				}
+				catch (error) {
+					fault('restore', error);
+				}
+			}
+			keepAlive.length = 0;
+			if (activeProfiler === api) activeProfiler = null;
+		};
+		let span = (name, fn) => {
+			let frame = active ? enter(stat(name, 'span')) : null;
+			try {
+				return fn();
+			}
+			finally {
+				leave(frame);
+			}
+		};
+		let mark = (name, t = now()) => {
+			if (marks.length < 60) marks.push({ name, t });
+		};
+		// Built after the heartbeat stopped. Times are relative to the operation's
+		// trigger (origin); gaps are heartbeat rows ({ t, gap }).
+		let summarize = (origin, gaps = []) => {
+			let round = value => Math.round(value * 10) / 10, at = t => round(t - origin), chains = new Map();
+			let chainOf = (error) => {
+				let text = String(error?.stack || '');
+				if (!chains.has(text)) chains.set(text, profileChain(text));
+				return chains.get(text);
+			};
+			let stackOf = (error) => {
+				let { key, chain } = chainOf(error);
+				return chain || key;
+			};
+			let describe = (row) => {
+				let callers = [...row.parents.entries()].sort((x, y) => y[1].ms - x[1].ms);
+				let out = { name: row.name, calls: row.calls, totalMs: round(row.total), selfMs: round(row.self), maxMs: round(row.max) };
+				if (row.first !== null) out.firstAtMs = at(row.first);
+				if (row.calls > row.timed) out.untimedCalls = row.calls - row.timed;
+				if (row.async) out.async = true;
+				if (row.tail) out.tailMs = round(row.tail);
+				if (row.layoutCalls) Object.assign(out, { layoutCalls: row.layoutCalls, layoutMs: round(row.layoutMs) });
+				if (row.reflowCount) Object.assign(out, { syncReflows: row.reflowCount, syncReflowMs: round(row.reflowMs) });
+				out.calledFrom = callers.slice(0, 3).map(([name, via]) => ({ name, calls: via.calls, ms: round(via.ms) }));
+				if (row.slow.length) out.slowestCalls = [...row.slow].sort((x, y) => y.ms - x.ms).map(item => ({ ms: round(item.ms), atMs: at(item.at), stack: stackOf(item.error) }));
+				if (row.samples.length) out.sampledCallers = [...new Set(row.samples.map(stackOf))].slice(0, 4);
+				return out;
+			};
+			let compact = row => ({ name: row.name, calls: row.calls, selfMs: round(row.self), totalMs: round(row.total), ...(row.layoutMs ? { layoutMs: round(row.layoutMs) } : {}), ...(row.reflowMs ? { syncReflowMs: round(row.reflowMs) } : {}) });
+			// Samples grouped by the calling code; field splits each group by API or by docShell.
+			let group = (samples, field) => {
+				let rows = new Map();
+				for (let sample of samples) {
+					let { key, chain } = chainOf(sample.error), row = rows.get(key);
+					if (!row) rows.set(key, row = { caller: key, calls: 0, ms: 0, maxMs: 0, split: {}, stack: chain });
+					row.calls++;
+					row.ms += sample.ms;
+					if (sample.ms > row.maxMs) row.maxMs = sample.ms;
+					row.split[sample[field]] = (row.split[sample[field]] || 0) + 1;
+				}
+				return [...rows.values()].sort((x, y) => y.ms - x.ms).slice(0, 15).map(row => ({ caller: row.caller, calls: row.calls, ms: round(row.ms), maxMs: round(row.maxMs), [field]: row.split, stack: row.stack }));
+			};
+			let overlap = (from, to, a, b) => Math.max(0, Math.min(to, b) - Math.max(from, a));
+			// How much of one heartbeat gap the wrapped calls and the test's click spans account for.
+			let gapReport = (row) => {
+				let to = row.t, from = row.t - row.gap, covered = 0, coveredInSpan = 0, inSpan = 0, names = new Map();
+				for (let item of intervals) {
+					let part = overlap(item.from, item.to, from, to);
+					if (!part) continue;
+					covered += part;
+					if (item.inSpan) coveredInSpan += part;
+					names.set(item.name, (names.get(item.name) || 0) + part);
+				}
+				for (let item of spans) inSpan += overlap(item.from, item.to, from, to);
+				let spanSelf = Math.max(0, inSpan - coveredInSpan);
+				return {
+					gapMs: round(row.gap), fromMs: at(from), toMs: at(to),
+					coveredMs: round(covered), spanSelfMs: round(spanSelf), outsideMs: round(Math.max(0, row.gap - covered - spanSelf)),
+					topLevel: [...names.entries()].sort((x, y) => y[1] - x[1]).slice(0, 12).map(([name, ms]) => ({ name, ms: round(ms) })),
+					marks: marks.filter(item => item.t >= from && item.t <= to).map(item => item.name + ' @' + at(item.t))
+				};
+			};
+			let measured = [...stats.values()].filter(row => ['fn', 'json', 'dom'].includes(row.kind) && row.calls);
+			let reads = {};
+			for (let row of [...stats.values()].filter(item => item.kind === 'layout' && item.calls)) {
+				reads[row.name] = { calls: row.calls, ms: round(row.self), maxMs: round(row.max) };
+				if (row.reflowCount) Object.assign(reads[row.name], { syncReflows: row.reflowCount, syncReflowMs: round(row.reflowMs) });
+				if (row.calls > row.timed) reads[row.name].untimedCalls = row.calls - row.timed;
+			}
+			let created = {};
+			for (let row of stats.values()) {
+				if (row.kind === 'count' && row.calls) created[row.name] = row.calls;
+			}
+			let longest = gaps.filter(row => row.gap > 100).sort((x, y) => y.gap - x.gap).slice(0, 3);
+			let observerReport = bucket => ({ attached: bucket.attached, sync: bucket.sync, syncMs: round(bucket.syncMs), maxSyncMs: round(bucket.maxSyncMs), interruptible: bucket.interruptible, interruptibleMs: round(bucket.interruptibleMs), ...(bucket.error ? { error: bucket.error } : {}) });
+			return {
+				windowMs: round(stoppedAt - startedAt),
+				readyAtMs: Number.isFinite(readyAt) ? at(readyAt) : null,
+				overheadMs: round(overhead),
+				coverage: longest.map(gapReport),
+				topByTotal: [...measured].sort((x, y) => y.total - x.total).slice(0, PROFILE_TOP).map(describe),
+				topBySelf: [...measured].sort((x, y) => y.self - x.self).slice(0, 10).map(compact),
+				spans: [...stats.values()].filter(row => row.kind === 'span' && row.calls).map(row => ({ ...compact(row), layoutCalls: row.layoutCalls })),
+				layout: { reads, callers: group(layoutSamples, 'api'), capturedStacks: layoutSamples.length, uncapturedStacks: counts.uncapturedLayout },
+				reflows: { frame: observers.frame ? observerReport(observers.frame) : null, window: observers.window ? observerReport(observers.window) : null, callers: group(reflowSamples, 'bucket'), uncapturedStacks: counts.uncapturedReflow },
+				dom: { created, frameCounters: delta(domCounters.frameStart, domCounters.frameEnd), windowCounters: delta(domCounters.windowStart, domCounters.windowEnd) },
+				marks: marks.map(item => ({ name: item.name, atMs: at(item.t) })),
+				wrapped: { research: wrapped.research, ui: wrapped.ui, uiControllers: session.controllers, uiScans: session.scans, frameHooks: wrapped.frameHooks, missing: wrapped.missing, skipped: wrapped.skipped, replacedDuringRun: wrapped.replaced, unavailable: wrapped.unavailable },
+				droppedIntervals: counts.droppedIntervals,
+				faults
+			};
+		};
+		api = {
+			start() {
+				active = true;
+				startedAt = now();
+			},
+			markReady(t) {
+				if (Number.isFinite(readyAt)) return;
+				readyAt = t;
+				mark('测试判定就绪', t);
+			},
+			span,
+			mark,
+			stop,
+			report: summarize
+		};
+		stopProfiler();
+		activeProfiler = api;
+		try {
+			install();
+		}
+		catch (error) {
+			fault('install', error);
+		}
+		return api;
+	};
 	// One measured operation: heartbeat from the trigger until the UI is ready
 	// (main) and until its debounced saves have been written (tail).
-	let measure = async (id, label, limitMs, run, { verify } = {}) => {
+	let measure = async (id, label, limitMs, run, { verify, profile } = {}) => {
 		await settle(150);
 		win.focus();
-		let entry = { id, label, limitMs, viewportBefore: viewport() }, extras = {}, failure = null, readyAt = null;
+		let entry = { id, label, limitMs, viewportBefore: viewport() }, extras = {}, failure = null, readyAt = null, profiler = null;
 		let models = counters.model, network = counters.network, saves = counters.saveDone;
+		// The probe is installed before the heartbeat starts and removed once it stops.
+		if (profile) {
+			try {
+				profiler = createProfiler(profile);
+			}
+			catch (error) {
+				entry.profileError = String(error.message || error);
+			}
+		}
 		let beat = heartbeat(), start = now();
+		profiler?.start();
 		try {
 			await run({ ready: () => {
 				readyAt ??= now();
-			}, extras });
+				profiler?.markReady(readyAt);
+			}, extras, span: (name, fn) => (profiler ? profiler.span(name, fn) : fn()) });
 		}
 		catch (error) {
 			failure = error;
@@ -411,6 +1127,7 @@ describe('Research native interaction performance in a large workspace', functio
 		let settled = await settle(TAIL_MS);
 		let settledAt = now();
 		beat.stop();
+		profiler?.stop();
 		let windowAll = gapStats(beat.rows), controlAll = gapStats(beat.control);
 		let suspected = throttled(windowAll, controlAll);
 		let effective = controlAll.ticks ? Math.min(windowAll.maxGapMs, controlAll.maxGapMs) : windowAll.maxGapMs;
@@ -455,6 +1172,14 @@ describe('Research native interaction performance in a large workspace', functio
 		}
 		catch (error) {
 			entry.snapshotError = String(error.message || error);
+		}
+		if (profiler) {
+			try {
+				entry.profile = profiler.report(start, beat.control.length ? beat.control : beat.rows);
+			}
+			catch (error) {
+				entry.profileError = String(error.message || error);
+			}
 		}
 		report.operations.push(entry);
 		await writeReport();
@@ -869,11 +1594,13 @@ describe('Research native interaction performance in a large workspace', functio
 		}
 	});
 	afterEach(async function () {
+		stopProfiler();
 		report.tests.push({ name: this.currentTest.title, state: this.currentTest.state, error: this.currentTest.err?.message });
 		await writeReport();
 	});
 	after(async function () {
 		this.timeout(180000);
+		stopProfiler();
 		let steps = report.cleanup.steps = [];
 		let step = async (name, fn) => {
 			try {
@@ -983,10 +1710,12 @@ describe('Research native interaction performance in a large workspace', functio
 			await settle(300);
 			await ensureWorkspace('writing');
 		}
-		await measure('07-open-big-project', '打开大项目进入装配（继续装配）', LIMITS.openProject, async ({ ready, extras }) => {
+		await measure('07-open-big-project', '打开大项目进入装配（继续装配）', LIMITS.openProject, async ({ ready, extras, span }) => {
 			let open = ui.$('manuscript-projects').querySelector('.project-card[data-project-id="' + BIG_ID + '"] .project-open');
 			assert.exists(open, '大项目卡片的“继续装配”');
-			open.click();
+			let clickStart = now();
+			span('测试点击：继续装配（同步部分）', () => open.click());
+			extras.clickSyncMs = Math.round(now() - clickStart);
 			await waitFor(() => assemblyUI()?.ready && win.Zotero_Tabs.selectedType === 'manuscript', '大项目装配页', { timeout: LIMITS.openProject + 5000 });
 			ready();
 			let doc = assemblyFrame().contentDocument;
@@ -994,6 +1723,9 @@ describe('Research native interaction performance in a large workspace', functio
 			extras.pages = doc.querySelectorAll('#canvas .paper').length;
 			extras.materialCards = doc.querySelectorAll('#material-results article.material[data-material]').length;
 			extras.saveStatus = doc.getElementById('save-status')?.textContent;
+		}, {
+			// The assembly frame does not exist yet: hook its document as it is created.
+			profile: { watch: (frameView, doc) => frameView.frameElement?.id === 'manuscript-' + BIG_ID && String(doc.documentURI).includes('manuscript.html') }
 		});
 	});
 	// The four assembly stages; readiness follows researchAssemblyWorkflowTest.
@@ -1008,20 +1740,35 @@ describe('Research native interaction performance in a large workspace', functio
 		let U = await ensureAssembly(from);
 		return measureStage(id, label, U, target);
 	};
-	let measureStage = (id, label, U, target) => measure(id, label, LIMITS.stage, async ({ ready, extras }) => {
-		let doc = assemblyFrame().contentDocument;
-		let control = doc.querySelector('#steps [data-step="' + target + '"]');
-		assert.exists(control, '装配阶段按钮 ' + target);
-		extras.stageLabel = control.textContent;
-		control.click();
-		if (U.p.ui.step !== target) throw new Error(label + '被阻止：' + (doc.getElementById('assembly-step-blocked')?.textContent || '阶段没有切换'));
-		await waitFor(() => stageReady(U, target), label, { timeout: LIMITS.stage + 5000 });
-		ready();
-		extras.directionWorkspace = !!doc.getElementById('direction-workspace') && !doc.getElementById('direction-workspace').hidden;
-		extras.writingAssistant = doc.body.dataset.writingAssistant || null;
-		extras.issues = Array.isArray(U.workflow.issues) ? U.workflow.issues.length : null;
-		extras.renderedBlocks = doc.querySelectorAll('#canvas .block').length;
+	// Whether the canvas was displayed decides whether renderEditor's per-block
+	// overflow check measured real boxes, so record it and the page count.
+	let canvasState = doc => ({
+		hidden: !!doc.getElementById('canvas')?.hidden,
+		papers: doc.querySelectorAll('#canvas .paper').length,
+		blocks: doc.querySelectorAll('#canvas .block').length,
+		display: doc.body.dataset.canvasDisplay || null
 	});
+	let measureStage = (id, label, U, target) => {
+		let before = canvasState(assemblyFrame().contentDocument);
+		return measure(id, label, LIMITS.stage, async ({ ready, extras, span }) => {
+			let doc = assemblyFrame().contentDocument;
+			let control = doc.querySelector('#steps [data-step="' + target + '"]');
+			assert.exists(control, '装配阶段按钮 ' + target);
+			extras.stageLabel = control.textContent;
+			extras.canvasBefore = before;
+			let clickStart = now();
+			span('测试点击：装配阶段按钮（同步部分）', () => control.click());
+			extras.clickSyncMs = Math.round(now() - clickStart);
+			if (U.p.ui.step !== target) throw new Error(label + '被阻止：' + (doc.getElementById('assembly-step-blocked')?.textContent || '阶段没有切换'));
+			await waitFor(() => stageReady(U, target), label, { timeout: LIMITS.stage + 5000 });
+			ready();
+			extras.directionWorkspace = !!doc.getElementById('direction-workspace') && !doc.getElementById('direction-workspace').hidden;
+			extras.writingAssistant = doc.body.dataset.writingAssistant || null;
+			extras.issues = Array.isArray(U.workflow.issues) ? U.workflow.issues.length : null;
+			extras.renderedBlocks = doc.querySelectorAll('#canvas .block').length;
+			extras.canvasAfter = canvasState(doc);
+		}, { profile: { view: assemblyFrame().contentWindow } });
+	};
 	it('08 switches assembly from 素材装配 to 方向讨论', async function () {
 		await switchStage('08-stage-0-to-1', '装配阶段：素材装配 → 方向讨论', 0, 1);
 	});

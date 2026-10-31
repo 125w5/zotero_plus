@@ -128,7 +128,8 @@ export function installAssemblyWorkflow(U,{el,button,persist,snapshot,changed,ap
  async function setStep(value,{focus=true}={}){
   if(!Number.isInteger(value)||value<0||value>3)return;const issue=assemblyStageIssue(U.p,value,readCounts());if(issue){status(issue,true);showBlocked(value,issue);return false;}const previous=state();if(U.p.ui.canvasDisplay==='digest'){U.p.ui.writingPlanOpen=false;U.p.ui.canvasDisplay=U.p.ui.writingPlanPreviousDisplay||'materials';delete U.p.ui.writingPlanPreviousDisplay;}U.p.ui.step=value;U.p.ui.leftOpen=true;
   U.p.ui.left=value===0?'materials':'structure';if(value>=1)U.p.ui.rightOpen=true;applyPanels();updatingNavigation=true;try{renderNavigation();}finally{updatingNavigation=false;}
-  if(previous!==value){U.writingRibbon?.reset();if(value===0)U.reconcileMaterialSections?.();U.renderEditor?.();U.selectionAssistant?.sync();}
+  // The canvas shows or hides before the editor renders: a hidden canvas cannot be split into pages.
+  if(previous!==value){U.writingRibbon?.reset();if(value===0)U.reconcileMaterialSections?.();U.directionWorkspace?.syncCanvas?.();U.renderEditor?.();U.selectionAssistant?.sync();}
   if(previous!==value&&!doc.defaultView.matchMedia('(prefers-reduced-motion:reduce)').matches)U.$('workspace').animate?.([{opacity:.86,transform:'translateY(3px)'},{opacity:1,transform:'none'}],{duration:170,easing:'cubic-bezier(.2,.7,.3,1)'});
   await refresh();await persist();if(focus){const target=value===0?U.$('material-search'):value===1?U.$('direction-workspace'):value===2?U.$('selection-assistant'):panel;target?.focus?.({preventScroll:true});}
  }

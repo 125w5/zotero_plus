@@ -54,13 +54,14 @@ export async function organizeLayout(prompt='检查章节、段落和素材的�
 let hideTimer;
 function reveal(){clearTimeout(hideTimer);$('canvas').classList.add('reveal-materials');}
 function conceal(){clearTimeout(hideTimer);hideTimer=setTimeout(()=>{if(!document.querySelector('.material-frame:hover,.material-frame:focus-within'))$('canvas').classList.remove('reveal-materials');},250);}
-export function renderAssembly(host,b,index){
+// materials: the project materials by id, built once per canvas render (renderEditor).
+export function renderAssembly(host,b,index,materials){
  // The article view shows the user's text; a linked card without text is drawn
  // as a placeholder so that nothing listed in the outline is hidden.
- if(canvasDisplayMode(U.p)==='article'){if(placeholderBlock(b)&&b.materials?.length)renderBlockPlaceholder(host,b);return;}
+ if(canvasDisplayMode(U.p)==='article'){if(placeholderBlock(b)&&b.materials?.length)renderBlockPlaceholder(host,b,{materials});return;}
  if(!b.assembly||!b.materials.length||b.hideMaterialFrame)return;host.classList.add('material-frame');host.dataset.assembly=b.id;host.style.setProperty('--card-tone',String(index%6));
  U.expandedMaterialCards||=new Set();U.inlineMaterialDisposers||=[];
- for(const link of b.materials){const m=U.p.materials.find(m=>m.id===link.id);if(!m)continue;const card=el('div',undefined,'material-card-source'),summary=el('div',undefined,'material-card-summary'),names=el('div',undefined,'material-caption'),note=el('div',undefined,'material-description'),key=b.id+'|'+m.id;card.dataset.materialId=m.id;const title=el('strong',U.A.titleFor(m));title.dataset.action='preview-material';title.dataset.materialId=m.id;names.append(title);note.setAttribute('aria-label','中文素材说明');const description=U.A.summaryFor(m);if(U.E.renderContent)U.E.renderContent(note,description);else note.textContent=description;summary.append(names,note);card.append(summary);host.append(card);
+ for(const link of b.materials){const m=materials?materials.get(link.id):U.p.materials.find(m=>m.id===link.id);if(!m)continue;const card=el('div',undefined,'material-card-source'),summary=el('div',undefined,'material-card-summary'),names=el('div',undefined,'material-caption'),note=el('div',undefined,'material-description'),key=b.id+'|'+m.id;card.dataset.materialId=m.id;const title=el('strong',U.A.titleFor(m));title.dataset.action='preview-material';title.dataset.materialId=m.id;names.append(title);note.setAttribute('aria-label','中文素材说明');const description=U.A.summaryFor(m);if(U.E.renderContent)U.E.renderContent(note,description);else note.textContent=description;summary.append(names,note);card.append(summary);host.append(card);
   U.inlineMaterialDisposers.push(installInlineMaterialDetail(card,m,{E:U.E,summary,expanded:U.expandedMaterialCards.has(key),onExpanded:open=>open?U.expandedMaterialCards.add(key):U.expandedMaterialCards.delete(key),onOpen:()=>{if(U.p.ui.blockID!==b.id)selectBlock(b.id);materialDetails(m);},onSave:highlights=>saveMaterialHighlights(m,highlights),onLocate:anchor=>openMaterial(m,undefined,anchor),onError:error=>status(error.message,true)}));
  }
  host.onpointerenter=reveal;host.onpointerleave=conceal;host.onfocusin=reveal;host.onfocusout=conceal;
