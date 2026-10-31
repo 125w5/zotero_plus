@@ -13,7 +13,7 @@ import * as L from '../../chrome/content/zotero/research/shared/library-scope.mj
 
 let conversations=await readFile(new URL('../../chrome/content/zotero/xpcom/research/conversations.js',import.meta.url),'utf8');
 let attachments=await readFile(new URL('../../chrome/content/zotero/xpcom/research/chat-attachments.js',import.meta.url),'utf8');
-let names=['甲.txt','乙.txt','丙.txt'];
+let names=['甲.txt','乙.txt','丙.txt','丁.txt'];
 
 function fixture(){
 	let data={},revision=0,index=0,gate=null;
@@ -40,6 +40,18 @@ test('a same-folder rescan that only reorders the files does not stop a running 
 	held.open();let read=await reading;
 	assert.deepEqual(Array.from(read.rows,row=>row.referenceID),['attachment:101','attachment:102','attachment:103'],'every selected file was read');
 	assert.equal(read.rows[0].text,'Text of /lib/甲.txt');
+});
+
+test('a file a rescan adds to the selection during the read does not stop it; the next read includes it',async()=>{
+	let f=fixture(),session=await L.syncLibraryScopeSession(f.E,scope([0,1,2]),{pptDraftID:'d1',origin:'ppt',activate:false});
+	let held=f.pause('/lib/甲.txt'),reading=f.A.read(f.A.selected(session.id),{sessionID:session.id});await held.reached;
+	// For example a PDF just dragged into the folder, once Zotero has indexed it.
+	await L.syncLibraryScopeSession(f.E,scope([0,1,2,3]),{pptDraftID:'d1',origin:'ppt',activate:false,sessionID:session.id});
+	assert.deepEqual(ids(f.A.selected(session.id)),['attachment:101','attachment:102','attachment:103','attachment:104'],'the new file is selected');
+	held.open();let read=await reading;
+	assert.deepEqual(Array.from(read.rows,row=>row.referenceID),['attachment:101','attachment:102','attachment:103'],'the running read keeps the files it started with');
+	let next=await f.A.read(f.A.selected(session.id),{sessionID:session.id});
+	assert.ok(Array.from(next.rows,row=>row.referenceID).includes('attachment:104'),'the next question reads the new file');
 });
 
 test('unchecking a file during the read still stops the read',async()=>{

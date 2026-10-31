@@ -170,11 +170,13 @@
 		await IOUtils.write(target, new Uint8Array(await blob.arrayBuffer()));
 		return target;
 	};
-	E.planPresentation = async function (meeting, onStatus) {
+	E.planPresentation = async function (meeting, onStatus, signal) {
 		let assembly = await E.runArtifactEngine({ operation: 'prompt' });
 		let config = await E.resolveModel(E.settings()), endpoint = E.core.endpoint(config.endpoint);
 		let key = await E.credentials.get(endpoint);
-		let win = Zotero.getMainWindow(), abort = new win.AbortController();
+		if (signal?.aborted) throw new Error('已取消');
+		let win = Zotero.getMainWindow(), abort = new win.AbortController(), cancel = () => abort.abort();
+		signal?.addEventListener('abort', cancel, { once: true });
 		const timers = artifactTimers();
 		let timer = timers.setTimeout(() => abort.abort(), 120000);
 		try {
@@ -195,10 +197,11 @@
 			if (!Array.isArray(plan.slides) || !plan.slides.length || plan.slides.length > 40) throw new Error('无效页面规划');
 			if(plan.slides.some(s=>!['text','table','asset'].includes(s.kind)))throw Error('AI 不生成图片或图表；请使用论文原图或人工整理的素材。');
 			await E.runArtifactEngine({ operation: 'validate', plan, evidence: meeting.outline.sources });
+			if (signal?.aborted) throw new Error('已取消');
 			await E.store.update(s => { s.meetings[meeting.id].slidePlan = plan; });
 			return plan;
 		}
-		finally { timers.clearTimeout(timer); }
+		finally { timers.clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
 	};
 	E.diagramCore = () => ChromeUtils.importESModule('chrome://zotero/content/research/shared/diagram.mjs');
 	E.selectionDiagramSVG = slide => E.diagramCore().diagramSVG(slide);

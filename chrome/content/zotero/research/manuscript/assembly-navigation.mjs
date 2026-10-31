@@ -35,7 +35,7 @@ const convertMath=tex=>String(tex)
  .replace(/\\([A-Za-z]+)/g,(_,name)=>Object.hasOwn(MATH_SYMBOLS,name)?MATH_SYMBOLS[name]:name)
  .replace(/([_^])\s*(?:\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}|(.))/gu,(_,mark,group,single)=>script(mark,group===undefined?single:convertMath(group)))
  .replace(/[{}\\$]/g,'');
-function mathText(tex){
+export function mathText(tex){
  // Escaped characters are literal text, not TeX structure. Those the
  // conversion would remove wait as private-use placeholders until it is done.
  const keep='{}$_&',hold=index=>String.fromCharCode(0xE000+index);
@@ -43,7 +43,7 @@ function mathText(tex){
  for(const [index,char] of [...keep].entries())value=value.split(hold(index)).join(char);
  return value.replace(/\s+/g,' ').trim();
 }
-function readableMath(text){let value=String(text);for(const token of editableMathTokens(value).reverse())value=value.slice(0,token.index)+mathText(token.latex)+value.slice(token.index+token.source.length);return value;}
+export function readableMath(text){let value=String(text);for(const token of editableMathTokens(value).reverse())value=value.slice(0,token.index)+mathText(token.latex)+value.slice(token.index+token.source.length);return value;}
 export function outlineLabel(project,block,titleFor=material=>material.title){
  const material=(block.materials||[]).map(link=>project.materials.find(value=>value.id===link.id)).find(Boolean),source=material&&titleFor(material);
  const label=!block.title&&block.type==='formula'&&block.text?mathText(block.text):readableMath(block.title||block.text||block.table?.caption||source||({formula:'公式',table:'表格',image:'图片'})[block.type]||'空白段落');

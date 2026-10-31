@@ -48,10 +48,10 @@ Object.assign(EasySchUI, {
 			await this.E.meetings.ask(this.requireMeeting(), this.$('meeting-answer').value, text => this.status(text), signal);
 			this.$('meeting-answer').value = '';
 		}));
-		this.bind('meeting-layout', () => this.runMeeting(async () => {
+		this.bind('meeting-layout', () => this.runMeeting(async signal => {
 			let m = this.E.meetings.all()[this.requireMeeting()];
 			if (!m.outline) throw new Error('请先生成组会大纲');
-			await this.E.planPresentation(m, text => this.status(text));
+			await this.E.planPresentation(m, text => this.status(text), signal);
 		}));
 		this.bind('meeting-data', async () => {
 			let id = this.requireMeeting();

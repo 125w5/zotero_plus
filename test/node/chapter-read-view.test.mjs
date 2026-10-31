@@ -205,6 +205,16 @@ test('every block of a chapter is listed: placeholders for cards without text, a
 	assert.deepEqual([after.get('n1').map(row => row.id), loose.map(row => row.id)], [['a'], ['b']]);
 });
 
+test('block lines show formulas and inline math as readable text, not raw LaTeX', () => {
+	let f = setup();
+	f.U.p.blocks.push({ id: 'bf', type: 'formula', sectionID: 's1', text: '\\frac{a+b}{2}' }, { id: 'bm', type: 'paragraph', sectionID: 's1', text: '误差随 $x_i^2$ 增长' });
+	f.U.renderEditor();
+	let intro = all(f.canvas, row => row.dataset.frameworkSection === 's1')[0], line = id => all(intro, row => row.dataset.readBlock === id)[0].textContent;
+	assert.match(line('bf'), /公式 · \(a\+b\)\/2/);
+	assert.match(line('bm'), /误差随 xᵢ² 增长/);
+	for (let id of ['bf', 'bm']) assert.doesNotMatch(line(id), /[$\\]/, id + ' has no TeX markup');
+});
+
 test('while a chapter read streams, its brief shows live in the read toolbar progress line and nothing is saved from it (AI-03)', async () => {
 	let f = setup(), live = [], brief = '本章说明独立批次对照的设计与已有依据，并列出仍待补齐的跨设备数据与图表，这些都要在写作前补充核对。';
 	f.U.A.prepareChapterReads = async (id, options) => {

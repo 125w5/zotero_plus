@@ -10,6 +10,7 @@ import { rapidAssetPresentation } from '../shared/rapid-reading-assets.mjs';
 import { materialPreview } from '../shared/material-browser.mjs';
 import { materialAnchors } from '../shared/material-clues.mjs';
 import { chapterBlockRows } from './assembly-placement.mjs';
+import { mathText, readableMath } from './assembly-navigation.mjs';
 
 const GAP_LABELS = Object.freeze({ evidence: '证据', experiment: '实验', figure: '图表', decision: '方向', structure: '结构' });
 const CHANGED_LABELS = Object.freeze({ global: '研究范围或速读规则', plan: '可行性方案', decisions: '方向与决定', materials: '本章素材', corpus: '语料', blocks: '章节模块', authored: '已写正文', section: '章节' });
@@ -270,11 +271,11 @@ export function installChapterReadView(U, { el, button, status = () => {}, rende
 		host.append(box);
 	}
 	function blockPreview(block) {
-		if (block.type === 'table') return '表格 · ' + (block.table?.caption || (block.table?.rows?.length || 0) + ' 行');
-		if (block.type === 'image') return '图片 · ' + (block.text || '未写图注');
-		if (block.type === 'formula') return '公式 · ' + String(block.text || '').slice(0, 60);
+		if (block.type === 'table') return '表格 · ' + (block.table?.caption ? readableMath(block.table.caption) : (block.table?.rows?.length || 0) + ' 行');
+		if (block.type === 'image') return '图片 · ' + (block.text ? readableMath(block.text) : '未写图注');
+		if (block.type === 'formula') return '公式 · ' + mathText(block.text).slice(0, 60);
 		if (block.type === 'citation') return '引用 · ' + (block.text || '');
-		return String(block.text || '').replace(/\s+/g, ' ')
+		return readableMath(block.text || '').replace(/\s+/g, ' ')
 			.trim()
 			.slice(0, 90) || '空白段落';
 	}
