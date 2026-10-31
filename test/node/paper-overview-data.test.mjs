@@ -100,11 +100,15 @@ test('closing a content page during its local style read prevents late DOM write
  const pending=prepareReaderPaneStyles(old,options);old.defaultView.dispatchEvent(new Event('unload'));finish({responseText:'.closed-pane{display:grid}'});
  await assert.rejects(pending,/来源页面已关闭/);assert.equal(old.head.children.length,0);assert.equal((await prepareReaderPaneStyles(next,options)).textContent,'.closed-pane{display:grid}');assert.equal(reads,1);assert.equal(next.head.children.length,1);
 });
-test('Chinese brief translations are shared and never generate unsupported summary claims',async()=>{
- const original='Controlled CNN evaluation prevents data leakage.',translated='受控 CNN 评估防止数据泄漏。';let calls=0;
- const E={quickTranslate:async text=>{calls++;assert.equal(text,original);return {text:translated};}};installPaperOverview(E,{Zotero:{},IOUtils:{}});
- const [a,b]=await Promise.all([E.paperAbstractBrief(original),E.paperAbstractBrief(original)]);assert.equal(a.text,translated);assert.equal(a.full,original);assert.deepEqual(a,b);assert.equal(calls,1);
- assert.equal((await E.paperAbstractBrief('独立设备的评估避免训练集与测试集之间的数据泄漏。')).text,'独立设备的评估避免训练集与测试集之间的数据泄漏。');assert.equal(calls,1);
+test('opening an overview shows the English source excerpt and its keywords without a translation or model request',async()=>{
+ const english='Domain adaptation with CNN addresses independent device shifts. '+'The evaluation uses separate recordings with fixed partitions and identical preprocessing. '.repeat(5)+'Experiments show 95.6% accuracy on the held-out recordings.';let translations=0;
+ const parent={id:61,isRegularItem:()=>true,getField:key=>({title:'Controlled English paper',abstractNote:english})[key]||'',getCreators:()=>[]};
+ const E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({}),quickTranslate:async()=>{translations++;throw Error('opening the overview must not translate');}};
+ installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost();await E.renderPaperOverview(host,parent);
+ const content=host.querySelector('.overview-abstract-content'),excerpt=abstractExcerpt(english);
+ assert.equal(translations,0,'no machine translation or model request');assert.equal(content.textContent,excerpt.text);assert.ok(excerpt.text.length<english.length);assert.match(content.textContent,/95\.6%/);
+ assert.equal(content.lang,'en','the excerpt keeps the language of its source');assert.equal(content.dataset.view,'excerpt');assert.deepEqual(content.children.filter(node=>node.tagName==='mark').map(node=>node.textContent),['CNN']);
+ assert.doesNotMatch(host.textContent,/正在翻译|暂不可用/,'no translation placeholder replaces the abstract');
 });
 test('overview retains title and native metadata before Chinese brief and uses a completed PDF parent',async()=>{
  const parent={id:58,isRegularItem:()=>true,getField:key=>({title:'Real paper title',publicationTitle:'Actual journal',date:'2021',abstractNote:'独立设备的评估避免训练集与测试集之间的数据泄漏。'})[key]||'',getCreators:()=>[{firstName:'Ada',lastName:'Lovelace'}]},item={id:57,isRegularItem:()=>false,getField:key=>key==='title'?'original.pdf':'',getCreators:()=>[]};let metricsParent;
@@ -112,11 +116,25 @@ test('overview retains title and native metadata before Chinese brief and uses a
  installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost();await E.renderPaperOverview(host,item);await new Promise(resolve=>setImmediate(resolve));
  assert.strictEqual(metricsParent,parent);const box=host.querySelector('.paper-overview'),info=host.querySelector('.paper-overview-info'),brief=host.querySelector('.overview-abstract');assert.ok(box.children.indexOf(info)<box.children.indexOf(brief));assert.match(info.textContent,/Real paper title/);assert.match(info.textContent,/Actual journal/);assert.match(info.textContent,/Ada Lovelace/);assert.equal(brief.querySelector('.overview-abstract-content').textContent,parent.getField('abstractNote'));
 });
-test('a late Chinese brief cannot replace a newly selected paper',async()=>{
- let finish;const pending=new Promise(resolve=>{finish=resolve;}),E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({}),quickTranslate:async()=>pending};installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});
+test('a late abstract read cannot replace a newly selected paper',async()=>{
+ let finish,reading=false;const pending=new Promise(resolve=>{finish=resolve;}),E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({})};installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});
+ const read=E.paperAbstract;E.paperAbstract=async(attachment,parent)=>{if(parent.id!==1)return read(attachment,parent);reading=true;await pending;return {text:'Older paper abstract read late.',kind:'metadata'};};
  const host=abstractHost(),item=(id,text)=>({id,isRegularItem:()=>true,getField:key=>key==='abstractNote'?text:key==='title'?'Paper '+id:'',getCreators:()=>[]});
- const first=E.renderPaperOverview(host,item(1,'Independent held-out devices validate the method.'));await new Promise(resolve=>setImmediate(resolve));await E.renderPaperOverview(host,item(2,'新论文明确报告独立设备的评估条件和实验限制。'));finish({text:'旧论文译文'});await first;
+ const first=E.renderPaperOverview(host,item(1,'Independent held-out devices validate the method.'));for(let i=0;i<20&&!reading;i++)await new Promise(resolve=>setImmediate(resolve));assert.ok(reading,'the first overview is waiting for its abstract');
+ await E.renderPaperOverview(host,item(2,'新论文明确报告独立设备的评估条件和实验限制。'));finish();await first;
  assert.equal(host.querySelector('.overview-abstract-content').textContent,'新论文明确报告独立设备的评估条件和实验限制。');
+});
+test('a slower earlier abstract read cannot replace or remove the abstract refreshed in the same overview',async()=>{
+ // Completed metadata supplies the abstract while the first read (a slow local PDF) is pending; refreshMetadata starts a second read in the same box.
+ for(const late of [{text:'Older PDF abstract read late.',kind:'pdf'},null]){
+  let finish,calls=0;const pending=new Promise(resolve=>{finish=resolve;}),initial={id:71,isRegularItem:()=>true,getField:key=>key==='title'?'Race paper':'',getCreators:()=>[]};
+  const completed={...initial,getField:key=>({title:'Race paper',abstractNote:'Completed metadata reports the newer abstract.'})[key]||''},E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({}),completePaperMetadata:async()=>completed};
+  installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const read=E.paperAbstract;E.paperAbstract=async(attachment,parent)=>{if(++calls===1){await pending;return late;}return read(attachment,parent);};
+  const host=abstractHost(),task=E.renderPaperOverview(host,initial);for(let i=0;i<50&&!host.querySelector('.overview-abstract');i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,2,'completed metadata starts a second read');assert.equal(host.querySelector('.overview-abstract-content').textContent,'Completed metadata reports the newer abstract.');
+  finish();await task;const sections=host.querySelector('.paper-overview').children.filter(node=>node.className==='overview-abstract');
+  assert.equal(sections.length,1,'the late read does not remove the newer abstract');assert.equal(sections[0].dataset.source,'metadata');assert.equal(sections[0].querySelector('.overview-abstract-content').textContent,'Completed metadata reports the newer abstract.');
+ }
 });
 test('full abstracts keep original English above Chinese and share one translation across columns and reopening',async()=>{
  const english='Independent CNN validation reports 95.6% accuracy without shared recordings.',chinese='独立 CNN 验证报告 95.6% 准确率，未共享录音。';let calls=0,finish;
@@ -136,4 +154,41 @@ test('a failed abstract translation offers an explicit retry and late translatio
  const retry=host.querySelector('.paper-abstract-retry');assert.ok(retry);retry.onclick();await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,2);
  const oldTask=host._abstractTask;await E.renderPaperAbstract(host,item('这里保留新论文的真实中文摘要。'));const newest=host.querySelector('.paper-abstract-original');assert.equal(host._abstractTask,null,'新的中文原文不继续等待旧论文译文');await E.renderPaperAbstract(host,item('这里保留新论文的真实中文摘要。'));finish({text:'Older translated abstract'});await oldTask;
  assert.strictEqual(host.querySelector('.paper-abstract-original'),newest);assert.match(newest.textContent,/新论文/);assert.equal(host.querySelector('.paper-abstract-chinese'),null);
+});
+// AI workbench previews and conversation file details have no item-details ancestor, so no separate abstract pane.
+const overviewEnglish='Domain adaptation with CNN addresses independent device shifts. Experiments show 95.6% accuracy on the held-out recordings.',overviewChinese='CNN 用于设备间的域适应问题，实验在留出数据上报告 95.6% 准确率。';
+test('outside the item pane the overview opens the full bilingual abstract only when the reader asks',async()=>{
+ let translations=0,notify;const fields={title:'Controlled English paper',abstractNote:overviewEnglish},parent={id:62,isRegularItem:()=>true,getField:key=>fields[key]||'',getCreators:()=>[]};
+ const E={store:{get:()=>undefined,subscribe:listener=>{notify=listener;return ()=>{};}},library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({}),quickTranslate:async text=>{translations++;assert.equal(text,overviewEnglish);return {text:overviewChinese};}};
+ installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost();await E.renderPaperOverview(host,parent);await new Promise(resolve=>setImmediate(resolve));
+ const open=host.querySelector('.overview-abstract-open'),content=host.querySelector('.overview-abstract-content');
+ assert.equal(translations,0,'opening the overview does not translate');assert.notEqual(open.hidden,true,'the full abstract is reachable without item details');assert.equal(content.attributes.role,'button');assert.equal(content.tabIndex,0);assert.equal(host.querySelector('.paper-abstract'),null);
+ await open.onclick();
+ assert.equal(translations,1);assert.equal(host.querySelector('.overview-abstract').hidden,true,'the excerpt is not shown above its own full text');
+ assert.equal(host.querySelector('.paper-abstract-original').textContent,'英文原文'+overviewEnglish);assert.equal(host.querySelector('.paper-abstract-chinese').textContent,'中文译文'+overviewChinese);
+ const full=()=>host.children.filter(node=>node.className==='overview-abstract-full');assert.equal(full().length,1);
+ await open.onclick();content.onkeydown({key:'Enter',preventDefault(){}});assert.equal(full().length,1,'activating again adds no second copy');assert.equal(translations,1);
+ fields.abstractNote='A corrected English abstract replaces the earlier version of this paper.';notify({changedBranches:['manuscriptIndex']});
+ for(let i=0;i<20&&host.querySelector('.overview-abstract-full');i++)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(host.querySelector('.overview-abstract-full'),null,'a changed abstract drops the full view and its translation');assert.equal(host.querySelector('.paper-abstract-chinese'),null);
+ assert.notEqual(host.querySelector('.overview-abstract').hidden,true);assert.match(host.querySelector('.overview-abstract-content').textContent,/corrected English abstract/);assert.equal(translations,1,'the corrected abstract waits for another request');
+});
+test('the full abstract entry survives a cover retry and a newly selected paper keeps no earlier translation',async()=>{
+ let translations=0;const paper=(id,abstractNote)=>({id,isRegularItem:()=>true,getField:key=>({title:'Paper '+id,abstractNote})[key]||'',getCreators:()=>[]});
+ const E={store:storeFor({}),library:{localPDF:async()=>({id:90,getFilePathAsync:async()=>'/controlled.pdf'}),describe:()=>({})},materialSourceInfo:()=>({}),quickTranslate:async()=>{translations++;return {text:overviewChinese};}};
+ installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});E.firstPage=async()=>{throw Error('controlled cover failure');};
+ const host=abstractHost(),first=paper(63,overviewEnglish);await E.renderPaperOverview(host,first);const retry=host.querySelector('.overview-retry');assert.ok(retry,'the failed cover offers a retry');
+ const before=host.querySelector('.paper-overview');retry.onclick();for(let i=0;i<50&&(host.querySelector('.paper-overview')===before||!host.querySelector('.overview-abstract'));i++)await new Promise(resolve=>setImmediate(resolve));
+ assert.notStrictEqual(host.querySelector('.paper-overview'),before);assert.notEqual(host.querySelector('.overview-abstract-open').hidden,true,'the retried overview keeps the full abstract entry');
+ host.querySelector('.overview-abstract-content').onkeydown({key:'Enter',preventDefault(){}});for(let i=0;i<20&&!host.querySelector('.paper-abstract-chinese p');i++)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(translations,1);assert.equal(host.querySelector('.paper-abstract-chinese').textContent,'中文译文'+overviewChinese);
+ await E.renderPaperOverview(host,paper(64,'新论文报告独立设备的评估条件。'));
+ assert.equal(host.querySelector('.overview-abstract-full'),null,'the new paper starts from its excerpt');assert.equal(host.querySelector('.paper-abstract-chinese'),null);assert.equal(host.querySelector('.overview-abstract-content').textContent,'新论文报告独立设备的评估条件。');assert.equal(translations,1);
+});
+test('in the item pane the overview entry still opens the separate abstract pane without translating',async()=>{
+ let translations=0;const selected=[],parent={id:65,isRegularItem:()=>true,getField:key=>({title:'Controlled English paper',abstractNote:overviewEnglish})[key]||'',getCreators:()=>[]};
+ const E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({}),quickTranslate:async()=>{translations++;return {text:overviewChinese};}};
+ installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost();host.closest=selector=>selector==='item-details'?{tabID:'tab-reader',selectResearchPane:pane=>{selected.push(pane);}}:null;await E.renderPaperOverview(host,parent);
+ host.querySelector('.overview-abstract-open').onclick();host.querySelector('.overview-abstract-content').onkeydown({key:' ',preventDefault(){}});
+ assert.deepEqual(selected,['abstract','abstract']);assert.equal(translations,0);assert.equal(host.querySelector('.overview-abstract-full'),null);assert.notEqual(host.querySelector('.overview-abstract').hidden,true);
 });

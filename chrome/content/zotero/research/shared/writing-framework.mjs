@@ -49,7 +49,7 @@ const sourceContent=row=>({id:row.id,title:row.title,sourceSection:row.sectionTy
 export const frameworkAuthorText=row=>[row.text||'',row.table?.rows?.map(cells=>cells.filter(cell=>!cell.hidden).map(cell=>cell.text||cell.latex||'').join(' | ')).join('\n')||''].filter(Boolean).join('\n');
 const contentHashes=new WeakMap();
 function contentHash(row,read){const value=JSON.stringify(read(row)),old=contentHashes.get(row);if(old?.value===value)return old.hash;const hash=writingSnapshotHash(value);contentHashes.set(row,{value,hash});return hash;}
-function frameworkStructure(project,sectionID){return signature({styleContract:WRITING_STYLE_CONTRACT,title:project.title,preparation:preparationSignature(project),writingWorkflow:workflowContext(project,sectionID),section:project.sections.find(row=>row.id===sectionID),blocks:project.blocks.filter(row=>row.sectionID===sectionID).map(({id,type,materials})=>({id,type,materials:(materials||[]).map(({id,role})=>({id,role}))}))});}
+export function frameworkStructure(project,sectionID){return signature({styleContract:WRITING_STYLE_CONTRACT,title:project.title,preparation:preparationSignature(project),writingWorkflow:workflowContext(project,sectionID),section:project.sections.find(row=>row.id===sectionID),blocks:project.blocks.filter(row=>row.sectionID===sectionID).map(({id,type,materials})=>({id,type,materials:(materials||[]).map(({id,role})=>({id,role}))}))});}
 export function frameworkUnitSignature(project,sectionID,node){
  const blocks=(project.blocks||[]).filter(row=>row.sectionID===sectionID),ids=node.authorBlockIDs||[];
  const materials=node.materialIDs||[...new Set((node.evidence||[]).map(row=>row.sourceID).filter(id=>!id.startsWith('author:')))];

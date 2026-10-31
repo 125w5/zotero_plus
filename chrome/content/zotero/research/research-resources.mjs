@@ -69,8 +69,8 @@ function collect({ai=false,purpose=''}={}){execute(async()=>{
  if(!current)throw Error('请先新建语料库');const target=current,name=corpus()?.name||'',controller=new AbortController();collecting={controller,projectID:options.projectID};$('stop-collect').hidden=false;
  try{
   const result=await E.corpus.collect(target,{paperIDs:paperIDs(),section:$('section').value,query:ai?'':$('query').value,purpose,ai,status:notice,signal:controller.signal});
-  const where=target===current?'语料库':'“'+name+'”',dropped=result.dropped?'；模型多选的 '+result.dropped+' 份超过每次 20 份的上限，未加入':'';
-  notice(result.added?'已向'+where+'加入 '+result.added+' 份完整语料'+(result.present?'，'+result.present+' 份已在其中':'')+dropped+'。':result.present?'所选论文的 '+result.present+' 份素材都已在'+where+'中，没有新增。':'没有新增语料。');
+  const where=target===current?'语料库':'“'+name+'”',outside=result.outside?'，'+result.outside+' 份不含语料库的关键词，未加入':'',dropped=result.dropped?'；模型多选的 '+result.dropped+' 份超过每次 20 份的上限，未加入':'';
+  notice(result.added?'已向'+where+'加入 '+result.added+' 份完整语料'+(result.present?'，'+result.present+' 份已在其中':'')+outside+dropped+'。':result.present?(outside?'所选论文的 '+result.present+' 份素材已在'+where+'中'+outside+'。':'所选论文的 '+result.present+' 份素材都已在'+where+'中，没有新增。'):'没有新增语料'+outside+'。');
  }
  catch(error){if(!controller.signal.aborted)throw error;notice('已停止收集，语料库未改动。');}
  finally{if(collecting?.controller===controller)collecting=null;$('stop-collect').hidden=true;}

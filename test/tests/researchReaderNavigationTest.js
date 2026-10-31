@@ -16,7 +16,7 @@ describe('Stable paper reader navigation', function () {
   E.ensurePaperMetrics = async () => {};
   win = await loadZoteroPane(); await E.attachWindow(win);
   folder = PathUtils.join(Zotero.DataDirectory.dir, 'reader-navigation-acceptance'); await IOUtils.makeDirectory(folder,{ignoreExisting:true});
-  for (const item of await Zotero.Items.getAll(Zotero.Libraries.userLibraryID)) if (item.isPDFAttachment() && !item.deleted && await item.fileExists()) { pdf=item; break; }
+  for (const item of await Zotero.Items.getAll(Zotero.Libraries.userLibraryID)) if (item.isPDFAttachment() && !item.isInTrash() && await item.fileExists()) { pdf=item; break; }
   assert.exists(pdf,'隔离文库需要真实 PDF');
   reader = await E.openReaderReady(pdf.id);
   win.ZoteroContextPane.collapsed = false; win.ZoteroContextPane.context.mode = 'item';
@@ -158,7 +158,7 @@ describe('Stable paper reader navigation', function () {
   const overviewPane=details.getPanes().find(pane=>pane.dataset.pane.includes('research-overview'));
   assert.exists(overviewPane);const nativeBody=overviewPane.querySelector('[data-type="body"]'),originalNodes=[...nativeBody.childNodes],priorOpen=overviewPane.open,priorStyle=details.getAttribute('style');
   const cover={pageIndex:2,pageHeight:792,pageWidth:612,bbox:[32,28,580,754],path:'controlled-high-resolution.png',thumbnail:'controlled-thumbnail.png',skippedPages:[{pageIndex:0,reason:'publisher-cover'},{pageIndex:1,reason:'submission-cover'}]};
-  let impact=5.1;E.materialSourceInfo=()=>({metric:{impact_factor:impact,metric_year:2025,source:'受控 JCR 记录'},journalContext:{journal:'受控期刊'}});
+  let impact=5.1,snapshotBranch;E.materialSourceInfo=()=>({metric:{impact_factor:impact,metric_year:2025,source:'受控 JCR 记录'},journalContext:{journal:'受控期刊'}});
   E.paperAbstract=async()=>({text:'This controlled abstract validates the actual interface without calling any translation model.',kind:'metadata'});
   E.quickTranslate=async(text,signal,options)=>{assert.strictEqual(options.allowModelFallback,false,'打开摘要只能使用机翻，不启动模型');return {text:'受控中文摘要：使用独立验证集核对实际界面。'};};
   E._overviewPages=new Map();E.assets.cover=async attachmentID=>{assert.equal(attachmentID,pdf.id);calls++;return cover;};E.previewImage=async path=>{paths.push(path);return path==='controlled-high-resolution.png'?fullImage:thumbnail;};E.library.openSource=async source=>{opened.push(source);};
@@ -175,7 +175,9 @@ describe('Stable paper reader navigation', function () {
    image.dispatchEvent(new win.PointerEvent('pointerenter'));await wait(()=>win.document.querySelector('.research-media-hover'),'再次悬停');image.dispatchEvent(new win.PointerEvent('pointerleave'));assert.equal(paths.filter(path=>path==='controlled-high-resolution.png').length,1,'同一预览多次悬停不重读完整 PNG');
    image.click();await wait(()=>win.document.querySelector('.research-media-modal'),'单击放大查看');assert.equal(opened.length,1,'单击大图不新开论文');win.document.querySelector('.research-media-backdrop').click();assert.notExists(win.document.querySelector('.research-media-modal'));
    await prior.overview(host,pdf);assert.strictEqual(host.querySelector('.paper-cover'),image,'相同题录重绘不会重建首页');assert.equal(calls,1);
-   impact=5.4;await E.store.update(s=>{s.settings._overviewControlledTick=1;});await wait(()=>host.querySelector('.overview-if').textContent.includes('5.4'),'IF 更新');assert.strictEqual(host.querySelector('.paper-cover'),image,'IF 更新不闪烁重建图片');assert.equal(calls,1);
+   // The overview refreshes only for journal metric or index commits; write a
+   // controlled metric entry the way metrics-provider.js saves a real one.
+   impact=5.4;snapshotBranch=!!E.store.get('journalMetricSnapshots');await E.store.update(s=>{s.journalMetricSnapshots||={};s.journalMetricSnapshots._overviewControlledTick={at:new Date().toISOString(),metric:{impact_factor:impact}};});await wait(()=>host.querySelector('.overview-if').textContent.includes('5.4'),'IF 更新');assert.strictEqual(host.querySelector('.paper-cover'),image,'IF 更新不闪烁重建图片');assert.equal(calls,1);
    // The detached fixture above tests source selection only. Actual sidebars
    // include a native flex column whose intrinsic minimum width is different.
    // Use the real local PDF crop here; no model or network request is involved.
@@ -196,7 +198,7 @@ describe('Stable paper reader navigation', function () {
    nativeBody._overviewOff?.();nativeBody._overviewHoverCleanup?.();nativeBody._overviewItem=null;nativeBody._overviewSignature=null;nativeBody.replaceChildren(...originalNodes);overviewPane.open=priorOpen;
    if(priorStyle===null)details.removeAttribute('style');else details.setAttribute('style',priorStyle);
    win.removeEventListener('scroll',countScroll,true);host._overviewOff?.();host._overviewHoverCleanup?.();host.remove();E.assets.cover=saved.cover;E.previewImage=saved.preview;E.library.openSource=saved.open;E._overviewPages=saved.pages;E.paperAbstract=saved.abstract;E.quickTranslate=saved.translate;E.materialSourceInfo=saved.sourceInfo;
-   await E.store.update(s=>{delete s.settings._overviewControlledTick;});
+   if(snapshotBranch!==undefined)await E.store.update(s=>{delete s.journalMetricSnapshots?._overviewControlledTick;if(!snapshotBranch&&s.journalMetricSnapshots&&!Object.keys(s.journalMetricSnapshots).length)delete s.journalMetricSnapshots;});
   }
  });
 });

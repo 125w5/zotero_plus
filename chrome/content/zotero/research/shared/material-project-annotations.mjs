@@ -4,7 +4,10 @@
 const copy=value=>JSON.parse(JSON.stringify(value));
 export function saveProjectMaterialHighlights(project,material,highlights){
  project.materials||=[];let local=project.materials.find(row=>row.id===material.id);
- if(!local){local=copy(material);project.materials.push(local);}
+ // A full-text hit (findPaperPassages) has no revision; its project copy starts
+ // at the first version, as a new material does, since every project material
+ // needs one (M.assertProject). Highlights count in annotationRevision.
+ if(!local){local=copy(material);if(!Number.isInteger(local.revision))local.revision=1;project.materials.push(local);}
  local.projectAnnotationProjectID=project.id;local.projectHighlights=copy(highlights);local.highlights=copy(highlights);local.annotationRevision=(local.annotationRevision||0)+1;
  return local;
 }

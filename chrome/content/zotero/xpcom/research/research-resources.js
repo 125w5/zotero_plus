@@ -23,9 +23,9 @@
 	E.corpus.saveEntry=async(id,input)=>{
 		const corpus=E.corpus.view(id),old=corpus?.entries.find(row=>row.id===input.id),edited=!!old&&(old.origin==='source'||old.sourceEdited)&&input.text!==undefined&&String(input.text).trim()!==String(old.text||'').trim();
 		const row=C.corpusEntry({...old,...input,...(edited?{origin:'manual',sourceEdited:true,originalText:old.originalText||old.text}:{})},{id:input.id||'entry-'+Zotero.Utilities.randomString(12)}),inScope=Domain.matchesResearchScope(C.corpusSourceRecord(row),C.corpusResearchScope(corpus),ENTRY_SCOPE);
-		if(!inScope&&row.origin==='source')throw Error('这份语料不符合语料库的研究领域或关键词');
+		if(!inScope&&row.origin==='source')throw Error('这份语料不含语料库的关键词');
 		await E.store.update(state=>{const current=state.corpora?.[id];if(!current)throw Error('语料库不存在');const index=current.entries.findIndex(entry=>entry.id===row.id);if(index<0)current.entries.push(row);else current.entries[index]=row;current.updatedAt=row.updatedAt;});
-		return inScope?row:{...row,scopeWarning:'这份手工语料不含语料库的研究领域或关键词；已保存，用于分析前请核对'};
+		return inScope?row:{...row,scopeWarning:'这份手工语料不含语料库的关键词；已保存，用于分析前请核对'};
 	};
 	E.corpus.removeEntry=async(id,entryID)=>E.store.update(state=>{const corpus=state.corpora?.[id];if(corpus)corpus.entries=corpus.entries.filter(row=>row.id!==entryID);});
 	const sourceMaterial=row=>row.sourceText?.trim()&&row.kind!=='idea'&&!['ai-discussion','ai-illustration'].includes(row.sourceType)&&!(row.conversationID&&row.messageID)&&(!row.aiGenerated||row.kind==='semantic'&&/^article-section-zh-/.test(row.analysisVersion||'')&&row.anchor?.attachmentID&&row.sourceParagraphIDs?.length);
@@ -76,21 +76,29 @@
 		const stop=()=>{if(signal?.aborted)throw Error('已取消语料整理');};
 		paperIDs=paperIDs||E.library.selection().map(row=>row.id);if(!paperIDs.length)throw Error('请先在文库中选择论文');
 		status('正在整理完整章节素材…');await E.manuscripts.ensureArticleSectionMaterials?.();stop();
-		// Rows of the selected papers, and notes selected on their own. PPT draft
-		// records and other rows without a selected paper stay out.
-		const selected=new Set(paperIDs),chosen=row=>selected.has(row.paperItemID||row.anchor?.paperItemID)||selected.has(row.sourceItemID),sourceKey=row=>row.sourceItemID?row.kind+'\0'+row.sourceItemID:'';
-		const library=E.manuscripts.assetLibraryView?E.manuscripts.assetLibraryView():E.manuscripts.assetLibrary(),cards=Object.values(library).filter(chosen),published=new Set(cards.map(sourceKey).filter(Boolean));
-		// A Zotero note or annotation that is already a material card is read from that card.
+		// Rows of the selected papers and of selected PDFs without a parent item,
+		// and notes selected on their own. PPT draft records and other rows without
+		// a selected paper or PDF stay out.
+		const selected=new Set(paperIDs),chosen=row=>selected.has(row.paperItemID||row.anchor?.paperItemID)||selected.has(row.attachmentID||row.anchor?.attachmentID)||selected.has(row.sourceItemID),sourceKey=row=>row.sourceItemID?row.kind+'\0'+row.sourceItemID:'';
+		// A Zotero note or annotation that is already a material card is read from
+		// that card. An AI 主题素材 card only quotes it and does not count; a card
+		// saved from an AI 研究讨论 is that note and keeps it out of the corpus. That
+		// card keeps the paper of the save and the note may since have moved under
+		// another paper, so discussion cards are matched in the whole library.
+		const library=E.manuscripts.assetLibraryView?E.manuscripts.assetLibraryView():E.manuscripts.assetLibrary(),rows=Object.values(library),cards=rows.filter(chosen),published=new Set([...cards.filter(row=>!row.aiGenerated),...rows.filter(row=>row.sourceType==='ai-discussion'||row.conversationID&&row.messageID)].map(sourceKey).filter(Boolean));
 		const notes=(await E.manuscripts.candidates(paperIDs)).filter(row=>chosen(row)&&!published.has(sourceKey(row)));stop();
 		const sources=[],seen=new Set();for(const row of [...cards,...notes]){if(!sourceMaterial(row))continue;const keys=[...C.corpusKeys({...row,materialID:row.id})];if(keys.some(key=>seen.has(key)))continue;for(const key of keys)seen.add(key);sources.push(row);}
 		if(!sources.length)throw Error('所选论文还没有可收集的章节素材、笔记或批注；语料库未改动。请先阅读并索引论文，或在 PDF 中添加批注。');
-		const researchScope=C.corpusResearchScope(corpus),inScope=sources.filter(row=>Domain.matchesResearchScope(C.corpusSourceRecord(row),researchScope,ENTRY_SCOPE));
+		const researchScope=C.corpusResearchScope(corpus),inScope=sources.filter(row=>Domain.matchesResearchScope(C.corpusSourceRecord(row),researchScope,ENTRY_SCOPE)),scoped=new Set(inScope);
 		if(!inScope.length)throw Error('所选论文的 '+sources.length+' 份素材都不含语料库的关键词；语料库未改动。可在“编辑范围”中调整关键词。');
-		const words=ai?[]:String(query).normalize('NFKC').toLowerCase().split(/[\s,，;；]+/).filter(Boolean);
-		const matched=inScope.filter(row=>(!section||(row.sectionType||row.section||'').includes(section))&&(!words.length||words.every(word=>C.corpusSearchText({...row,text:row.sourceText}).includes(word))));
+		const words=ai?[]:String(query).normalize('NFKC').toLowerCase().split(/[\s,，;；]+/).filter(Boolean),wanted=row=>(!section||(row.sectionType||row.section||'').includes(section))&&(!words.length||words.every(word=>C.corpusSearchText({...row,text:row.sourceText}).includes(word)));
+		const matched=inScope.filter(wanted);
 		if(!matched.length)throw Error('所选论文有 '+inScope.length+' 份符合范围的素材，但都不匹配当前的'+(words.length&&section?'搜索词和章节筛选':words.length?'搜索词':'章节筛选')+'；语料库未改动。可清空筛选后重试。');
-		const known=new Set(corpus.entries.flatMap(row=>[...C.corpusKeys(row)])),fresh=matched.filter(row=>![...C.corpusKeys({...row,materialID:row.id})].some(key=>known.has(key))),present=matched.length-fresh.length;
-		if(!fresh.length)return {added:0,present,outside:0,dropped:0};
+		const known=new Set(corpus.entries.flatMap(row=>[...C.corpusKeys(row)])),collected=row=>[...C.corpusKeys({...row,materialID:row.id})].some(key=>known.has(key)),fresh=matched.filter(row=>!collected(row));
+		// outside counts the rows the filters keep but the corpus keywords leave out.
+		// A row collected before the keywords changed is still in the corpus: present.
+		const left=sources.filter(row=>!scoped.has(row)&&wanted(row)),outside=left.filter(row=>!collected(row)).length,present=matched.length-fresh.length+left.length-outside;
+		if(!fresh.length)return {added:0,present,outside,dropped:0};
 		let picked=fresh,dropped=0;
 		if(ai){
 			const aim=purpose||corpus.name,allowed=C.rankCorpusCandidates(fresh,{purpose:aim,researchScope}).slice(0,80),byID=new Map(allowed.map(row=>[String(row.id),row]));status('正在挑选与研究目的相关的完整语料…');
@@ -100,7 +108,7 @@
 			picked=valid.slice(0,20).map(key=>byID.get(key));dropped=valid.length-picked.length;
 		}
 		const result=await appendMaterials(id,picked,{section,signal,publish:new Set(notes.map(row=>row.id))});
-		return {...result,present:present+result.present,dropped};
+		return {...result,present:present+result.present,outside:outside+result.outside,dropped};
 	};
 	const projectFor=id=>E.notebook?.projectView?.(id)||E.notebook?.project?.(id)||E.manuscripts.get(id);
 	const fitsProject=(corpus,scope)=>{const domain=C.corpusResearchScope(corpus).domain;return !domain||domain==='other'||!scope.domain||scope.domain==='other'||domain===scope.domain;};
@@ -158,8 +166,11 @@
 	E.corpus.importProject=async(projectID,corpusID,entryIDs)=>{
 		const corpus=E.corpus.view(corpusID);if(!corpus)throw Error('语料库不存在');const project=projectFor(projectID);if(!project)throw Error('论文项目不存在');const researchScope=Domain.researchScopeFromProject(project);
 		// Rows no longer need a literal domain term, so the corpus domain itself
-		// must fit the project; a corpus without a domain fits every project.
-		if(!fitsProject(corpus,researchScope))throw Error('这个语料库的研究领域与项目不同，未导入；项目素材未改动。可在“编辑范围”中把语料库的研究领域改为项目领域或不限后再导入。');
+		// must fit the project; a corpus without a domain fits every project. A
+		// corpus the project chose in preparation is read whatever its domain
+		// (eligible()), so it imports too; rows outside the keywords keep scopeWarning.
+		const chosen=project.preparationCorpusSelection?.corpusIDs;
+		if(!(Array.isArray(chosen)&&chosen.includes(corpusID))&&!fitsProject(corpus,researchScope))throw Error('这个语料库的研究领域与项目不同，未导入；项目素材未改动。可在“编辑范围”中把语料库的研究领域改为项目领域或不限后再导入。');
 		C.selectedCorpusMaterials(corpus,entryIDs,{researchScope,...ENTRY_SCOPE});
 		const rows=E.corpus.projectRows(projectID,{corpusIDs:[corpusID],ids:entryIDs.map(id=>'corpus-'+id),includeCopied:true,limit:Infinity});if(!rows.length)throw Error('请勾选要导入的语料');
 		// catalog saves through the manuscript revision guard. Advancing the

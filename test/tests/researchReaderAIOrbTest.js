@@ -92,10 +92,15 @@ describe('Reader AI logo overlay', function () {
    for(const mode of [{name:'native-dark',native:'dark',card:'#30363f',logo:'white.png'},{name:'explicit-light',native:'dark',app:'light',card:'#fff',logo:'black.png'},{name:'explicit-dark',native:'light',app:'dark',card:'#30363f',logo:'white.png'}]){
     for(const name of names)node.removeAttribute(name);node.setAttribute('data-theme',mode.native);if(mode.app)node.setAttribute('data-easysch-appearance',mode.app);
     await wait(()=>orb.querySelector('img').src.endsWith(mode.logo),'原生与应用主题优先级');assert.equal(win.getComputedStyle(surface.root).getPropertyValue('--ui-card').trim(),mode.card,mode.name+' 使用同一共享调色');
+    // Compact is the bottom reveal strip: the input row is hidden and inert, so
+    // its colours and the mode menu are checked after expanding, as a user would.
+    assert.equal(surface.root.dataset.cluiRetracted,'true',mode.name+' 底部默认只显示展开条');
+    assert.equal(win.getComputedStyle(surface.root.querySelector('.conversation-surface-footer'),'::before').display,'none','紧凑输入栏上方不留下悬空渐隐亮条');
+    surface.setExpanded(true);assert.equal(surface.root.dataset.cluiRetracted,'false');assert.isFalse(surface.root.querySelector('.clui-native-input-row').inert,'展开后输入栏可操作');
     const footer=surface.root.querySelector('.conversation-surface-footer'),background=pixel(win.getComputedStyle(footer).backgroundColor),colors=[win.getComputedStyle(surface.input).color,win.getComputedStyle(surface.input,'::placeholder').color];
     for(const underlay of [[0,0,0],[255,255,255]])for(const color of colors)assert.isAtLeast(contrast(pixel(color),over(background,underlay)),4.5,mode.name+' 输入及提示词在浅深论文背景上均可读');
-    assert.equal(win.getComputedStyle(footer,'::before').display,'none','紧凑输入栏上方不留下悬空渐隐亮条');
     surface.root.querySelector('.conversation-surface-mode').click();const popup=win.document.getElementById('easysch-conversation-preferences');await wait(()=>!popup.hidden,'文档级选项浮层');assert.equal(win.getComputedStyle(popup).getPropertyValue('--ui-card').trim(),mode.card,'浮层与输入栏继承同一主题');assert.isAtLeast(contrast(pixel(win.getComputedStyle(popup.querySelector('button')).color),pixel(mode.card).slice(0,3)),4.5,'浮层选项文字可读');surface.root.querySelector('.conversation-surface-mode').click();
+    assert.isTrue(popup.hidden,'再次点击关闭浮层');surface.setExpanded(false);
    }
    report.themeContrast='真实 Gecko 计算样式：原生深色、显式浅色优先、显式深色优先；输入/placeholder/浮层文字对比度均至少 4.5:1';
   }finally{for(let i=0;i<names.length;i++){if(prior[i]===null)node.removeAttribute(names[i]);else node.setAttribute(names[i],prior[i]);}surface.hide();}

@@ -1,16 +1,23 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 describe('Compact research surfaces', function () {
- this.timeout(180000);const E=Zotero.Research;let win,ui,project,pdf,folder;const results=[];
+ this.timeout(180000);const E=Zotero.Research;let win,ui,project,paper,pdf,folder,original;const results=[];
  const wait=async fn=>{for(let i=0;i<900;i++){if(await fn())return;await Zotero.Promise.delay(100);}throw Error('等待界面超时');};
  before(async()=>{
+  // The suite imports its own PDF. The shared test library can hold only
+  // trashed PDFs from earlier suites, which have no overview or cover.
+  original={prepare:E.manuscripts.prepareTranslation,index:E.manuscripts.indexArticle,queue:E.manuscripts.queueArticle,images:E.assets.queueImages,preparation:E.queueReaderPreparation};
+  E.manuscripts.prepareTranslation=E.manuscripts.indexArticle=E.manuscripts.queueArticle=E.assets.queueImages=async()=>null;E.queueReaderPreparation=()=>Promise.resolve();
   win=await loadZoteroPane();await E.attachWindow(win);ui=await E.openWorkflow('research');
   folder=PathUtils.join(Zotero.DataDirectory.dir,'compact-surface-2026-09-19');await IOUtils.makeDirectory(folder,{ignoreExisting:true});
-  const items=await Zotero.Items.getAll(Zotero.Libraries.userLibraryID);
-  for(const i of items)if(i.isPDFAttachment()&&await i.fileExists()){pdf=i;break;}
+  paper=new Zotero.Item('journalArticle');paper.setField('title','紧凑界面首页预览测试');await paper.saveTx();
+  const file=getTestDataDirectory();file.append('test.pdf');pdf=await Zotero.Attachments.importFromFile({file,parentItemID:paper.id});assert.exists(pdf,'随测试分发的 PDF 已导入');
  });
- after(async()=>{await E.store.flush();await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify({type:'原生 Gecko 交互与已有真实 PDF，未调用模型',results},null,2));win?.close();});
+ after(async()=>{
+  try{await E.store.flush();if(folder)await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify({type:'原生 Gecko 交互与随测试分发的 PDF，未调用模型',results},null,2));win?.close();await Zotero.Promise.delay(100);if(paper&&Zotero.Items.get(paper.id))await paper.eraseTx();}
+  finally{Object.assign(E.manuscripts,{prepareTranslation:original.prepare,indexArticle:original.index,queueArticle:original.queue});E.assets.queueImages=original.images;E.queueReaderPreparation=original.preparation;}
+ });
  it('shows first-page preview above abstract and keeps image evidence directly reachable',async function(){
-  if(!pdf)this.skip();win.Zotero_Tabs.select('zotero-pane');await win.ZoteroPane.selectItem(pdf.parentID||pdf.id);
+  win.Zotero_Tabs.select('zotero-pane');await win.ZoteroPane.selectItem(pdf.parentID||pdf.id);
   await wait(()=>win.document.querySelector('item-details:not([hidden]) .paper-cover')?.complete);
   const image=win.document.querySelector('item-details:not([hidden]) .paper-cover');assert.isAbove(image.naturalWidth,0);
   const details=image.closest('item-details'),panes=details.getPanes();assert.include(panes[0].dataset.pane,'research-overview');assert.equal(details.getPane('abstract').dataset.easyschMetadata,'hidden');

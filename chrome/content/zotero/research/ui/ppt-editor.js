@@ -77,6 +77,8 @@ Object.assign(EasySchUI,{
  },
  // Pages of sections removed by a structure change are archived, not deleted.
  // A restored page leaves the outline, so the next structure confirmation keeps it.
+ // A patch callback receives the store's draft (a Proxy), which structuredClone
+ // rejects; pages taken from it are copied as JSON.
  async pptRestoreArchivedPage(pageID,afterID){
   await this.pptFlushEdits();
   await this.pptPatch(draft=>{
@@ -84,7 +86,7 @@ Object.assign(EasySchUI,{
    draft.archivedSlides=draft.archivedSlides.filter(row=>row.id!==pageID);
    if(draft.slides.some(row=>row.id===pageID))return;
    if(draft.slides.length>=50)throw Error('一套汇报最多 50 页，请先整理现有页面');
-   const restored=structuredClone(page);delete restored.outlineID;
+   const restored=JSON.parse(JSON.stringify(page));delete restored.outlineID;
    const after=draft.slides.findIndex(row=>row.id===afterID);draft.slides.splice(after<0?draft.slides.length:after+1,0,restored);
   },true);
   this.pptSelected=this.pptDraft.slides.findIndex(page=>page.id===pageID);this.renderPPT();return pageID;
@@ -136,7 +138,7 @@ Object.assign(EasySchUI,{
   center.append(this.el('p',`可见正文约 ${M.density(s)} 字 · ${s.model?'模型 '+s.model:'用户草稿'}${s.cacheHit?' · 来自缓存':''}。画布是编辑预览，导出效果请查看实际渲染。`));
   const pageActionBody=this.el('div',undefined,'ppt-page-edit-actions ppt-inline-actions');pageActionBody.setAttribute('aria-label','当前页面操作');center.append(pageActionBody);
   this.pptButton('在本页后加入我的实验',async()=>{await this.pptPatch(x=>{x.step=4;x.contributionForm={...x.contributionForm,after:s.id};});this.renderPPT();},pageActionBody);
-  this.pptButton('复制本页',async()=>{await this.pptFlushEdits();const id='copy-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);await this.pptPatch(x=>{if(x.slides.length>=50)throw Error('一套汇报最多 50 页');const index=x.slides.findIndex(page=>page.id===s.id);if(index<0)return;const copy=structuredClone(x.slides[index]);copy.id=id;delete copy.outlineID;x.slides.splice(index+1,0,copy);},true);this.pptSelected=this.pptDraft.slides.findIndex(page=>page.id===id);this.renderPPT();},pageActionBody);
+  this.pptButton('复制本页',async()=>{await this.pptFlushEdits();const id='copy-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);await this.pptPatch(x=>{if(x.slides.length>=50)throw Error('一套汇报最多 50 页');const index=x.slides.findIndex(page=>page.id===s.id);if(index<0)return;const copy=JSON.parse(JSON.stringify(x.slides[index]));copy.id=id;delete copy.outlineID;x.slides.splice(index+1,0,copy);},true);this.pptSelected=this.pptDraft.slides.findIndex(page=>page.id===id);this.renderPPT();},pageActionBody);
   this.pptButton('删除本页（可撤销）',async()=>{await this.pptFlushEdits();await this.pptPatch(x=>{const index=x.slides.findIndex(page=>page.id===s.id);if(index>=0)x.slides.splice(index,1);},true);this.renderPPT();},pageActionBody);
   const props=this.el('aside');props.className='ppt-properties';grid.append(props);this.pptProperties(props,s,d);
   if(s.evidenceWarnings?.length)center.append(this.el('p',`${s.evidenceWarnings.length} 条内容未匹配到原文，已标为待验证观点；请在右侧核对后使用。`));

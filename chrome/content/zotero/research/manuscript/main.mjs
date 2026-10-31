@@ -178,8 +178,9 @@ function refreshAssetViews(){
  const inPlace=!sourcesChanged&&descriptionOnlyChange(branches)&&U.p.ui.left==='materials'&&!U.materialQuery&&refreshMaterialDescriptions($('material-results'),id=>U.p.materials.find(material=>material.id===id)||assets[id],{E:U.E});
  if(!inPlace)renderLibrary();rememberAssetViewDefaults(U.p,priorEntries,assetViewDefaults);
  const m=U.p.materials.find(material=>material.id===U.previewMaterialID)||assets[U.previewMaterialID],details=$('details');
- // An open title editor is not rebuilt under the user; it redraws when it closes.
- if(m&&U.p.ui.rightOpen&&details.dataset.materialId===m.id&&details.dataset.assetViewSignature!==assetDetailSignature(m)){if(U.materialRenaming?.input?.isConnected)U.materialRenaming.stale=true;else materialDetails(m);}
+ // Compare the view the details show: a partly excluded source shows its shortened text.
+ // materialDetails defers its own redraw while the title editor is open.
+ if(m&&U.p.ui.rightOpen&&details.dataset.materialId===m.id&&details.dataset.assetViewSignature!==assetDetailSignature((U.A.filterAutomaticMaterials?.([m])||[m])[0]||m))materialDetails(m);
  if(sourcesChanged){renderEditor();persist();}
 }
 function refreshMaterialExclusionViews({attachmentIDs}){
@@ -188,10 +189,17 @@ function refreshMaterialExclusionViews({attachmentIDs}){
  // Keep the canvas/caret and unrelated panels intact while updating the list.
  if(U.p.ui.left==='materials')renderLibrary();
  const material=U.p.materials.find(row=>row.id===U.previewMaterialID)||U.A.assetLibrary()[U.previewMaterialID];
- if(material&&U.p.ui.rightOpen&&U.A.materialAttachmentIDs([material]).some(id=>attachmentIDs.includes(id))){if(U.materialRenaming?.input?.isConnected)U.materialRenaming.stale=true;else materialDetails(material);}
+ if(!material||!U.p.ui.rightOpen||!U.A.materialAttachmentIDs([material]).some(id=>attachmentIDs.includes(id)))return;
+ // The first snapshot after native annotations load usually repeats what the
+ // details already show; rebuilding them would close the source drawer.
+ const signature=U.A.materialExclusionSignature?.([material]);
+ if(signature&&$('details').dataset.materialId===material.id&&$('details').dataset.exclusionSignature===signature)return;
+ materialDetails(material);
 }
 export function insertMaterial(m){const sectionID=U.p.ui.sectionID||U.p.sections[0].id,existing=placedBlock(U.p,sectionID,{material:m});if(existing){selectBlock(existing.id,{scroll:true});status('这份素材已在本章，已定位到原卡片；未重复插入');return existing;}snapshot();const b=M.block('paragraph',sectionID);attachMaterial(b,m.id);const index=U.p.blocks.findIndex(x=>x.id===U.p.ui.blockID);U.p.blocks.splice(index<0?U.p.blocks.length:index+1,0,b);U.p.ui.blockID=b.id;changed({editor:true});status('已插入素材，来源关联保留 · Ctrl+Z 撤销');}
-export function clearDetails(){U.disposeModuleDetails?.();U.disposeModuleDetails=null;U.formulaEditor?.flush?.();U.formulaEditor?.dispose();U.formulaEditor=null;U.imageSizeTools?.();U.imageSizeTools=null;U.materialExplanation?.dispose();U.materialExplanation=null;U.detailCanvasMedia?.();U.detailCanvasMedia=null;disposeMediaPreviews($('details'));U.disposeClues?.();U.disposeClues=null;const box=$('details');box.replaceChildren();delete box.dataset.materialId;return box;}
+// Gecko fires no blur when a focused field is removed: an open title editor is
+// committed as if it lost focus before its details are replaced.
+export function clearDetails(){if(U.materialRenaming?.input?.isConnected)U.materialRenaming.commit();U.disposeModuleDetails?.();U.disposeModuleDetails=null;U.formulaEditor?.flush?.();U.formulaEditor?.dispose();U.formulaEditor=null;U.imageSizeTools?.();U.imageSizeTools=null;U.materialExplanation?.dispose();U.materialExplanation=null;U.detailCanvasMedia?.();U.detailCanvasMedia=null;disposeMediaPreviews($('details'));U.disposeClues?.();U.disposeClues=null;const box=$('details');box.replaceChildren();delete box.dataset.materialId;delete box.dataset.exclusionSignature;return box;}
 function syncMaterialSelection(id){
  if(U.pendingMaterialSelection?.id===id)return;
  if(!U.pendingMaterialSelection&&U.E.notebook.state(U.p.id).selectedMaterial===id)return;
@@ -208,6 +216,9 @@ export async function saveMaterialHighlights(m,highlights){
 }
 export function materialDetails(m){
  if(!m)return;if(U.previewMaterialID===m.id&&U.materialExplanation?.isDirty())return;
+ // Canvas renders, source and exclusion refreshes do not rebuild an open title
+ // editor; its details redraw when it closes.
+ if(U.materialRenaming?.input?.isConnected&&U.materialRenaming.id===m.id&&U.previewMaterialID===m.id){U.materialRenaming.stale=true;return;}
  // A filtered list row is detached. Keep mutations bound to the original
  // project/shared record, while every reading component gets its safe view.
  // List rows can be the frozen shared library; edits need this project's
@@ -215,27 +226,35 @@ export function materialDetails(m){
  m=U.p.materials.find(material=>material.id===m.id)||(m.materialExclusion?libraryAsset(U.A,m.assetID||m.id)||m:Object.isFrozen(m)?libraryAsset(U.A,m.id)||{...m}:m);
  const original=m,attachments=U.A.materialAttachmentIDs?.([m])||[];U.materialExclusionAttachments=[...new Set([...(U.materialExclusionAttachments||[]),...attachments])];U.unsubscribeMaterialExclusions?.update(U.materialExclusionAttachments);
  const display=(U.A.filterAutomaticMaterials?.([m])||[m])[0];
- if(!display){U.previewMaterialID=original.id;U.p.ui.materialID=original.id;const box=clearDetails();box.dataset.materialId=original.id;box.append(el('h3',U.A.titleFor(original)),el('p','该选段已划掉，不再用于自动素材。删除原文标记后恢复。'));button('打开原文',()=>openMaterial(original),box,'quiet-action');return;}
+ if(!display){U.previewMaterialID=original.id;U.p.ui.materialID=original.id;const box=clearDetails();box.dataset.materialId=original.id;box.dataset.exclusionSignature=U.A.materialExclusionSignature?.([original])||'';box.append(el('h3',U.A.titleFor(original)),el('p','该选段已划掉，不再用于自动素材。删除原文标记后恢复。'));button('打开原文',()=>openMaterial(original),box,'quiet-action');return;}
  U.A.ensureChineseSummaries?.([display]);const different=U.previewMaterialID!==m.id;U.previewMaterialID=m.id;U.p.ui.materialID=m.id;U.workflow?.closePanel();
  if(U.p.ui.catalog&&!U.p.ui.catalog.selection?.includes(m.id))U.p.ui.catalog.selection=[m.id];
  for(const card of $('library').querySelectorAll('[data-material]')){const active=U.p.ui.catalog?.selection?.includes(card.dataset.material)||false;card.classList.toggle('selected',active);card.setAttribute('aria-selected',String(active));}
  syncMaterialSelection(m.id);
  if(different)persist();if(!U.p.ui.rightOpen){U.p.ui.rightOpen=true;applyPanels();persist();}
- const box=clearDetails();box.dataset.materialId=m.id;box.dataset.assetViewSignature=assetDetailSignature(display);const heading=el('div',undefined,'detail-heading'),materialTitle=el('h3',U.A.titleFor(display));materialTitle.tabIndex=0;materialTitle.title='双击修改标题';heading.append(materialTitle);const rename=()=>{if(materialTitle.querySelector('input'))return;let input=el('input'),feedback=el('small','','material-explanation-feedback');input.value=m.title||'';input.setAttribute('aria-label','素材标题');input.title='Enter 保存，Esc 取消';feedback.setAttribute('role','alert');materialTitle.replaceChildren(input,feedback);input.focus();input.select();
+ const box=clearDetails();box.dataset.materialId=m.id;box.dataset.assetViewSignature=assetDetailSignature(display);box.dataset.exclusionSignature=U.A.materialExclusionSignature?.([m])||'';const heading=el('div',undefined,'detail-heading'),materialTitle=el('h3',U.A.titleFor(display));
+ // Only a saved record takes a title. A full-text hit, and its highlighted
+ // project copy, keep the section label until they are saved as a card.
+ const renamable=(!!m.assetID||U.p.materials.some(material=>material.id===m.id))&&!String(m.id).startsWith('passage-');if(renamable){materialTitle.tabIndex=0;materialTitle.title='双击修改标题';}heading.append(materialTitle);const rename=()=>{if(materialTitle.querySelector('input'))return;let shown=materialTitle.textContent,input=el('input'),feedback=el('small','','material-explanation-feedback');input.value=m.title||'';input.setAttribute('aria-label','素材标题');input.title='Enter 保存，Esc 取消';feedback.setAttribute('role','alert');materialTitle.replaceChildren(input,feedback);input.focus();input.select();
   // A failed save keeps the editor and the typed title, and background
-  // refreshes wait until it closes (refreshAssetViews). A newer revision that
+  // refreshes wait until it closes (materialDetails). A newer revision that
   // left the title alone is rebased; a title changed elsewhere needs Enter.
-  let saving=false,conflict=false,base=m.title||'',editing=U.materialRenaming={input,stale:false};
-  let finish=()=>{saving=true;if(U.materialRenaming===editing)U.materialRenaming=null;materialTitle.textContent=U.A.titleFor(m);if(editing.stale)materialDetails(m);};
-  let save=async({confirmed=false}={})=>{if(saving||conflict&&!confirmed)return;let title=input.value.trim();if(!title||title===(m.title||'')){finish();return;}saving=true;feedback.textContent='';input.removeAttribute('aria-invalid');
+  // The field is locked while the title is written.
+  let saving=false,conflict=false,reported=false,base=m.title||'',editing=U.materialRenaming={input,id:m.id,stale:false,commit:()=>{editing.stale=false;void save();}};
+  // Redraw only while the details still show this editor; the next view of
+  // the material is built from the current record anyway.
+  let finish=()=>{saving=true;if(U.materialRenaming===editing)U.materialRenaming=null;let current=U.p.materials.find(row=>row.id===m.id)||libraryAsset(U.A,m.assetID||m.id)||m;materialTitle.textContent=U.A.titleFor(current);if(editing.stale&&materialTitle.isConnected&&U.previewMaterialID===m.id&&U.p.ui.rightOpen)materialDetails(current);};
+  // After the question, edit() compares the typed title with the stored one.
+  let save=async({confirmed=false}={})=>{if(saving||conflict&&!confirmed)return;let title=input.value.trim();if(!title||!conflict&&title===(m.title||'')){finish();return;}saving=true;input.readOnly=true;input.setAttribute('aria-busy','true');feedback.textContent='正在保存…';input.removeAttribute('aria-invalid');
    try{
-    if(m.assetID){let edit=async()=>{let current=U.A.asset?.(m.assetID)||m;if((current.title||'')!==base){conflict=true;base=current.title||'';throw Object.assign(Error('这份素材的标题已在别处改为“'+base+'”；按 Enter 用你输入的标题覆盖，或按 Esc 保留它'),{titleConflict:true});}return U.A.editAsset(m.assetID,{title},current.revision);};let next;try{next=await edit();}catch(error){if(error.titleConflict)throw error;next=await edit();}mergeMaterialAsset(m,next);}
-    else{snapshot();m.title=title;m.revision=(m.revision||0)+1;}
-    M.invalidate(U.p,m.id);await persist();renderLibrary();finish();
+    if(m.assetID){let edit=async()=>{let current=U.A.asset?.(m.assetID)||m;if((current.title||'')!==base){conflict=true;base=current.title||'';throw Object.assign(Error('这份素材的标题已在别处改为“'+base+'”；按 Enter 用你输入的标题覆盖，或按 Esc 保留它'),{titleConflict:true});}return title===(current.title||'')?current:U.A.editAsset(m.assetID,{title},current.revision);};let next;try{next=await edit();}catch(error){if(error.titleConflict)throw error;next=await edit();}mergeMaterialAsset(m,next);}
+    else{snapshot();m.title=title;m.userEdited=true;m.revision=(m.revision||0)+1;}
+    M.invalidate(U.p,m.id);await persist();renderLibrary();if(reported)status('已保存新标题“'+title+'”');finish();
    }
-   catch(error){saving=false;status(error.message,true);if(!input.isConnected)return;feedback.textContent=error.titleConflict?error.message:'标题未保存：'+String(error.message||error).replace(/[。.]$/,'')+'。输入的标题保留在框中，可按 Enter 重试。';input.setAttribute('aria-invalid','true');if(confirmed)input.focus();}
+   // The status bar stands alone: the box may be gone when the save fails.
+   catch(error){saving=false;reported=true;input.readOnly=false;input.removeAttribute('aria-busy');status('“'+shown+'”的新标题“'+title+'”未保存：'+(error.titleConflict?'这份素材的标题已在别处改为“'+base+'”':String(error.message||error).replace(/[。.]$/,''))+'。',true);if(!input.isConnected)return;feedback.textContent=error.titleConflict?error.message:'标题未保存：'+String(error.message||error).replace(/[。.]$/,'')+'。输入的标题保留在框中，可按 Enter 重试。';input.setAttribute('aria-invalid','true');if(confirmed)input.focus();}
   };
-  input.onblur=()=>void save();input.onkeydown=event=>{if(event.isComposing||event.keyCode===229)return;if(event.key==='Enter'){event.preventDefault();void save({confirmed:true});}if(event.key==='Escape'){event.preventDefault();event.stopPropagation();finish();}};};materialTitle.ondblclick=rename;materialTitle.onkeydown=event=>{if(event.key==='F2'){event.preventDefault();rename();}};
+  input.onblur=()=>void save();input.onkeydown=event=>{if(event.isComposing||event.keyCode===229)return;if(event.key==='Enter'){event.preventDefault();void save({confirmed:true});}if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(!saving)finish();}};};if(renamable){materialTitle.ondblclick=rename;materialTitle.onkeydown=event=>{if(event.key==='F2'){event.preventDefault();rename();}};}
  const back=button('返回正文',()=>{U.previewMaterialID=null;U.p.ui.materialID=null;syncMaterialSelection(null);if(selected())selectBlock(selected().id);else{renderDetails();persist();}},heading,'quiet-action');back.dataset.action='return-module';box.append(heading);
  const actions=el('div',undefined,'detail-actions');button('插入正文',()=>{const b=selected();if(!b){insertMaterial(m);selectBlock(U.p.ui.blockID);return;}snapshot();attachMaterial(b,m.id);selectBlock(b.id);changed({editor:true});},actions,'primary').dataset.action='insert-material';
  if(materialAnchors(m).some(a=>a.attachmentID)||m.sourceItemID||m.anchor?.url)button('打开来源',()=>openMaterial(m),actions).dataset.action='open-source';box.append(actions);

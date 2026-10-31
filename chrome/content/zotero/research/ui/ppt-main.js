@@ -74,7 +74,9 @@ Object.assign(EasySchUI,{
   if(notice){this.pptTaskDraftID=draft.id;this.pptTaskText=notice.text;this.pptLastError=notice.error?notice.text:null;this.pptLastRetry=null;}
   this.pptSelected=0;this.pptReviewOpen=false;this.show('ppt');this.renderPPT();
  },
- pptButton(label,action,parent,className){const b=this.el('button',label);b.type='button';b.className='ppt-control'+(className?' '+className:'');b.onclick=async()=>{if(b.dataset.busy==='true')return;b.dataset.busy='true';b.setAttribute('aria-busy','true');try{await this.pptFlushEdits?.();await action();}catch(e){this.status(e.message,true);}finally{delete b.dataset.busy;b.removeAttribute('aria-busy');}};parent.append(b);return b;},
+ // A running action keeps its button disabled (the shared :disabled style) until it succeeds, fails or is cancelled.
+ // Setting disabled meanwhile (a PPT task locking the view, a page updating its own controls) takes effect when it ends.
+ pptButton(label,action,parent,className){const b=this.el('button',label);b.type='button';b.className='ppt-control'+(className?' '+className:'');b.onclick=async()=>{if(b.dataset.busy==='true')return;let wanted=b.disabled;b.dataset.busy='true';b.setAttribute('aria-busy','true');b.disabled=true;try{Object.defineProperty(b,'disabled',{configurable:true,get:()=>true,set:value=>{wanted=!!value;}});await this.pptFlushEdits?.();await action();}catch(e){this.status(e.message,true);}finally{delete b.dataset.busy;b.removeAttribute('aria-busy');delete b.disabled;b.disabled=wanted;}};parent.append(b);return b;},
  pptField(label,value,parent,{tag='input',rows=3,type='text'}={}){const l=this.el('label',label,'ppt-field'),input=this.el(tag);if(tag==='input')input.type=type;if(tag==='textarea')input.rows=rows;input.value=value??'';l.append(input);parent.append(l);return input;},
  async pptPatch(fn,history=false){this.pptDraft=await this.E.studio.patch(this.pptDraft.id,fn,{snapshot:history});return this.pptDraft;},
  // persist:false keeps the outcome off the draft (a task that is not this report's own work);

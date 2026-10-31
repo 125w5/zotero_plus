@@ -21,12 +21,12 @@ test('corpus keeps complete paragraphs, provenance anchors and section types',()
 });
 test('corpus rejects source text from a different project field and only flags a manual note without silently broadening its scope',()=>{
  const scope={researchScope:{domain:'physics',primaryKeyword:'spin'}},source={id:'c',entries:[Corpus.corpusEntry({title:'Image recognition',text:'Visual segmentation of images.',origin:'source',materialID:'m'},{id:'image'})]};
- assert.throws(()=>Corpus.selectedCorpusMaterials(source,['image'],scope),/研究领域或关键词/);assert.equal(source.entries.length,1);
+ assert.throws(()=>Corpus.selectedCorpusMaterials(source,['image'],scope),/1 份不含当前研究范围的关键词/);assert.equal(source.entries.length,1);
  const manual={id:'c',entries:[Corpus.corpusEntry({title:'Image recognition',text:'Visual segmentation of images.'},{id:'image'})]},[row]=Corpus.selectedCorpusMaterials(manual,['image'],scope);assert.equal(row.scopeWarning,true);assert.equal(row.verification,'user');
 });
 test('source collection filters the corpus domain before AI selection and excludes AI conversation as evidence',async()=>{
  const f=fixture(),corpus=await f.E.corpus.create('自旋方法',{domain:'physics',primaryKeyword:'spin'}),result=await f.E.corpus.collect(corpus.id,{paperIDs:[1],section:'方法'});assert.equal(result.added,1);assert.equal(corpus.entries[0].materialID,f.good.id);assert.equal(corpus.entries[0].anchor.attachmentID,2);assert.equal(corpus.entries[0].sourceRevision,2);
- await assert.rejects(f.E.corpus.saveEntry(corpus.id,{title:'图像方法',text:'Image recognition with vision network.',origin:'source',materialID:'image-material'}),/不符合/);
+ await assert.rejects(f.E.corpus.saveEntry(corpus.id,{title:'图像方法',text:'Image recognition with vision network.',origin:'source',materialID:'image-material'}),/不含语料库的关键词/);
  const note=await f.E.corpus.saveEntry(corpus.id,{title:'图像方法',text:'Image recognition with vision network.'});assert.match(note.scopeWarning,/已保存/);assert.equal(corpus.entries.at(-1).origin,'manual');assert.equal(corpus.entries.at(-1).scopeWarning,undefined,'the warning is not stored on the entry');
 });
 test('project import updates the live manuscript snapshot and reports only newly imported materials',async()=>{

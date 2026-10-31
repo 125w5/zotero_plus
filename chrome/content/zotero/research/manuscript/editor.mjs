@@ -54,7 +54,9 @@ export function renderEditor(){
    applyCanvasBlockDisplay(node,b);node.style.marginTop=(b.spaceBefore||0)+'pt';node.dataset.pageBreak=String(!!b.pageBreakBefore);if(b.pageBreakBefore&&(!node.hidden||b.explicitPage))newPage();page.append(node);if(!node.hidden&&paperOverflows(page,node)&&page.querySelectorAll('.block:not([hidden])').length>1){node.remove();newPage();page.append(node);}
   }
  }
- canvas.scrollTop=scroll;const active=canvas.querySelector(`[data-id="${U.p.ui.blockID}"] .editable`);if(active&&U.p.ui.caret){active.editableMath?.source();if(active.contentEditable==='true')restoreCaret(active,U.p.ui.caret);}renderDetails();
+ // Restoring the caret focuses the paragraph in Gecko: an open material title
+ // editor would lose focus and save a half-typed title (U.materialRenaming).
+ canvas.scrollTop=scroll;const active=canvas.querySelector(`[data-id="${U.p.ui.blockID}"] .editable`);if(active&&U.p.ui.caret&&!U.materialRenaming?.input?.isConnected){active.editableMath?.source();if(active.contentEditable==='true')restoreCaret(active,U.p.ui.caret);}renderDetails();
 }
 function paperOverflows(page,node){
  const style=getComputedStyle(page),zoom=U.p.ui.paperZoom||1,paddingTop=parseFloat(style.paddingTop)||0,paddingBottom=parseFloat(style.paddingBottom)||0;

@@ -29,13 +29,36 @@
   });}return exclusionEvents.subscribe(fn,options);
  };
  A.stopMaterialExclusionSync=()=>{exclusionEvents?.stop();exclusionEvents=null;};
- A.create=async(title,template)=>{const p=M.createProject(title,template);await E.store.update(s=>{s.manuscripts||={};s.manuscripts[p.id]=p;});await A.ensureLibraryItem(p.id);return p;};
+ // The record is stored first. A library row that fails here is added by the
+ // next A.save or the startup A.syncLibrary, so the caller keeps the project.
+ A.create=async(title,template)=>{const p=M.createProject(title,template);await E.store.update(s=>{s.manuscripts||={};s.manuscripts[p.id]=p;});try{await A.ensureLibraryItem(p.id);}catch(error){Zotero.logError(error);}return p;};
  A.save=async(p)=>{M.assertProject(p);await E.store.update(s=>{const old=s.manuscripts?.[p.id];if(!old)throw Error('论文项目已删除');if(old.revision!==p.revision)throw Error('项目已在其他位置更新，请重新打开以避免覆盖');s.manuscripts[p.id]={...p,revision:p.revision+1,updatedAt:new Date().toISOString()};});await A.ensureLibraryItem(p.id);return A.get(p.id);};
 	// A copy takes its chapter reads, task plan and research notebook (plan
 	// versions, decisions, drafts) along; researchPreparation.planVersionID points
 	// into that notebook. A running assessment stays with the original's job.
 	// Removing a project keeps them so the trash undo restores all three.
-	A.copy=async(id)=>{const original=A.get(id);if(!original)throw Error('项目不存在');const p=M.clone(original);p.id=M.id('manuscript');p.title+=' · 副本';p.revision=0;await E.store.update(s=>{s.manuscripts[p.id]=p;for(let key of ['projectReadings','projectTaskPlans','researchNotebooks'])if(s[key]?.[id]){let value=JSON.parse(JSON.stringify(s[key][id]));if(key==='researchNotebooks'&&value.assessment?.status==='running')delete value.assessment;s[key][p.id]=value;}});await A.ensureLibraryItem(p.id);return p;};
+	// The copy gets new plan version ids, and its confirmed plan cards are
+	// republished under the new artifact ids with their content and revision, so
+	// a plan change in the copy never marks the original's plan card stale.
+	// remap replaces those ids wherever the copied branches name them.
+	let remap=(value,ids)=>(typeof value==='string'?ids.get(value)??value:Array.isArray(value)?value.map(row=>remap(row,ids)):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,row])=>[ids.get(key)??key,remap(row,ids)])):value);
+	// Signatures that hash those ids, the title or the project id are recomputed
+	// for the copy where they are current for the original (project-copy.mjs), so
+	// the copy opens in the states the original shows. A failed recompute leaves
+	// that state stale and never blocks the copy.
+	let restampCopy=(source,target)=>{try{let report=ChromeUtils.importESModule('chrome://zotero/content/research/shared/project-copy.mjs').restampProjectCopy?.(source,target);if(report?.failed?.length)Zotero.logError(Error('复制项目时未能重算签名：'+report.failed.join('；')));}catch(error){Zotero.logError(error);}};
+	// The material catalog files materials under a root topic whose id is the
+	// project id (catalogFor), and browsing starts on it (materialCatalogState).
+	// The copy takes that root over, with the research topics under it, its
+	// manual orders and undo snapshots, so a material saved in the copy is filed
+	// under the same root as the copied ones.
+	let retopic=(catalog,from,to)=>{if(!catalog)return;for(let row of [...(catalog.topics||[]),...(catalog.categories||[])])for(let key of ['id','parentID','topicID'])if(row[key]===from)row[key]=to;for(let entry of Object.values(catalog.entries||{}))if(Array.isArray(entry.topics))entry.topics=[...new Set(entry.topics.map(topic=>(topic===from?to:topic)))];for(let key of Object.keys(catalog.orders||{})){let [topic,...rest]=key.split('|');if(topic===from){catalog.orders[[to,...rest].join('|')]=catalog.orders[key];delete catalog.orders[key];}}};
+	// The copy starts in the original's paper folder but did not create it: null
+	// records that folder as chosen, as for a project created in a chosen folder,
+	// so 新建文件夹 gives the copy a folder of its own. A notebook without an idea
+	// or a goal assessed its plan with the title as the idea; the copy keeps that
+	// idea instead of its own title.
+	A.copy=async(id)=>{const original=A.get(id);if(!original)throw Error('项目不存在');let p=M.clone(original),cards=[];p.id=M.id('manuscript');p.title+=' · 副本';p.revision=0;p.createdPaperCollectionID=null;retopic(p.materialCatalog,id,p.id);for(let snapshot of p.catalogHistory||[])retopic(snapshot,id,p.id);if(p.ui?.catalog?.topic===id)p.ui.catalog.topic=p.id;await E.store.update(s=>{let notebook=s.researchNotebooks?.[id]&&JSON.parse(JSON.stringify(s.researchNotebooks[id])),ids=new Map(),fresh=(value,next)=>{if(value&&!ids.has(value))ids.set(value,next());};if(notebook?.assessment?.status==='running')delete notebook.assessment;for(let value of [...(notebook?.versions||[]).flatMap(row=>[row.id,row.editedFrom]),notebook?.selectedVersion,notebook?.assessment?.versionID,p.researchPreparation?.planVersionID,...[...(notebook?.artifacts||[]),...(notebook?.decisions||[]),...(notebook?.messages||[])].map(row=>row?.versionID)])fresh(value,()=>M.id('plan'));for(let row of notebook?.artifacts||[]){fresh(row.id,()=>'artifact-'+(ids.get(row.versionID)||M.id('plan')));fresh(row.materialID,()=>M.id('asset'));if(s.researchMaterials?.[row.materialID]&&!cards.includes(row.materialID))cards.push(row.materialID);}for(let cardID of cards)s.researchMaterials[ids.get(cardID)]={...remap(JSON.parse(JSON.stringify(s.researchMaterials[cardID])),ids),createdAt:new Date().toISOString()};p=remap(p,ids);let source={project:original,notebook},target={project:p,notebook:notebook&&remap(notebook,ids)};if(target.notebook&&!target.notebook.ideaDraft&&!p.researchGoal)target.notebook.ideaDraft=original.title;for(let [key,name] of [['projectReadings','readings'],['projectTaskPlans','taskPlan']])if(s[key]?.[id]){source[name]=JSON.parse(JSON.stringify(s[key][id]));target[name]=remap(source[name],ids);}restampCopy(source,target);s.manuscripts[p.id]=p;if(target.readings)s.projectReadings[p.id]=target.readings;if(target.taskPlan)s.projectTaskPlans[p.id]=target.taskPlan;if(target.notebook)s.researchNotebooks[p.id]=target.notebook;});if(cards.length)A.notifyAssetsChanged?.();await A.ensureLibraryItem(p.id);return p;};
 	// Chapter reads (projectReadings) and task plans (projectTaskPlans) live in
 	// their own branches, one entry per project, so a status click or read edit
 	// does not re-save the manuscript. Views are frozen per entry; a replaced

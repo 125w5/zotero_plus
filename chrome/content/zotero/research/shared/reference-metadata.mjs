@@ -23,9 +23,15 @@ export function consumeReferenceTask(tasks,key,work,{signal,createController=()=
 
 const namedAuthor=name=>{const words=String(name||'').trim().split(/\s+/u);return {lastName:words.pop()||'',firstName:words.join(' ')};};
 const semanticRecord=p=>({id:p.paperId||p.externalIds?.ArXiv||'',title:p.title||'',abstract:p.abstract||'',doi:cleanDOI(p.externalIds?.DOI),url:p.externalIds?.ArXiv?'https://arxiv.org/abs/'+p.externalIds.ArXiv:p.url||'',date:p.publicationDate||String(p.year||''),journal:p.venue||'',source:'Semantic Scholar',pdf:p.openAccessPdf?.url||'',authors:(p.authors||[]).map(person=>namedAuthor(person.name))});
+// Only an open-access copy gives the PDF: primary_location is the version of record,
+// and its pdf_url can be the paywalled publisher file. oa_url may be a landing page.
+const openalexPDF=p=>{
+ const location=[p.best_oa_location,p.primary_location,...(p.locations||[])].find(x=>x?.pdf_url&&(x===p.best_oa_location?x.is_oa!==false:x.is_oa));
+ return location?.pdf_url||(p.open_access?.is_oa!==false&&/\.pdf(?:[?#]|$)/i.test(p.open_access?.oa_url||'')?p.open_access.oa_url:'');
+};
 const openalexRecord=p=>{
  const words=[];for(const [word,positions]of Object.entries(p.abstract_inverted_index||{}))for(const index of positions)words[index]=word;
- return {id:p.id||'',title:p.title||p.display_name||'',abstract:words.join(' '),doi:cleanDOI(p.doi),url:p.doi||p.primary_location?.landing_page_url||'',date:p.publication_date||String(p.publication_year||''),journal:p.primary_location?.source?.display_name||'',source:'OpenAlex',pdf:p.best_oa_location?.pdf_url||p.primary_location?.pdf_url||'',authors:(p.authorships||[]).map(person=>namedAuthor(person.author?.display_name))};
+ return {id:p.id||'',title:p.title||p.display_name||'',abstract:words.join(' '),doi:cleanDOI(p.doi),url:p.doi||p.primary_location?.landing_page_url||'',date:p.publication_date||String(p.publication_year||''),journal:p.primary_location?.source?.display_name||'',source:'OpenAlex',pdf:openalexPDF(p),authors:(p.authorships||[]).map(person=>namedAuthor(person.author?.display_name))};
 };
 
 /** Public metadata fallbacks still have to match the printed reference. Search

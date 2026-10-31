@@ -65,15 +65,6 @@
 		else throw new Error('不支持的检索源');
 		cached.set(key, { results, at: Date.now() }); return results;
 	};
-	R.importAcademicPDF = async function (record) {
-		let url = new URL(record.pdf);
-		if (url.protocol !== 'https:' || url.hostname !== 'arxiv.org') throw new Error('只下载 arXiv 官方开放 PDF');
-		let saved = await R.importAcademic(record), item = Zotero.Items.get(saved.id);
-		let attachment = await item.getBestAttachment();
-		if (!attachment?.isPDFAttachment()) attachment = await Zotero.Attachments.importFromURL({ url: url.href, parentItemID: item.id, contentType: 'application/pdf' });
-		if (!attachment) throw new Error('PDF 下载失败；题录已保留，可点击原址下载');
-		await Zotero.Reader.open(attachment.id);
-	};
 	// Import and the reference pane's full-text check share one duplicate rule.
 	async function findRecord(record, libraryID) {
 		let identity=Screen.paperIdentity(record);if(identity?.startsWith('arxiv:')){let base=identity.slice(6).replace(/v\d+$/,'');let byURL=new Zotero.Search();byURL.libraryID=libraryID;byURL.addCondition('url','contains','arxiv.org/abs/'+base);let matches=await Zotero.Items.getAsync(await byURL.search());let found=matches.find(x=>x.isRegularItem()&&!x.deleted&&Screen.paperIdentity({url:x.getField('url')})?.replace(/v\d+$/,'')==='arxiv:'+base);if(found)return found;}

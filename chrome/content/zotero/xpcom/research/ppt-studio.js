@@ -5,7 +5,9 @@
  ChromeUtils.importESModule('chrome://zotero/content/research/shared/workspace-outputs.mjs').installWorkspaceOutputs(E,{Zotero,IOUtils:globalThis.IOUtils});
  const Scope=ChromeUtils.importESModule('chrome://zotero/content/research/shared/ppt-scope.mjs');
  const Outline=ChromeUtils.importESModule('chrome://zotero/content/research/shared/ppt-outline.mjs');S.outlineTools=Outline;
- const capture=d=>({at:new Date().toISOString(),slides:structuredClone(d.slides),...(d.archivedSlides?{archivedSlides:structuredClone(d.archivedSlides)}:{}),outline:structuredClone(d.outline),outlineApproved:d.outlineApproved,outlineCustomized:d.outlineCustomized,outlineModel:d.outlineModel,templateID:d.templateID,step:d.step,themeID:d.themeID,theme:structuredClone(d.theme)});
+ // A mutator receives the store's draft (a Proxy), which structuredClone rejects; a JSON copy reads through it.
+ const copy=value=>value===undefined?undefined:JSON.parse(JSON.stringify(value));
+ const capture=d=>({at:new Date().toISOString(),slides:copy(d.slides),...(d.archivedSlides?{archivedSlides:copy(d.archivedSlides)}:{}),outline:copy(d.outline),outlineApproved:d.outlineApproved,outlineCustomized:d.outlineCustomized,outlineModel:d.outlineModel,templateID:d.templateID,step:d.step,themeID:d.themeID,theme:copy(d.theme)});
  S.all=()=>E.store.get('pptDrafts')||{};
  S.get=id=>E.store.get('pptDrafts',id);
  S.patch=async(id,change,{snapshot=false}={})=>{
@@ -48,7 +50,7 @@
   const previous=from.pop();to.push(capture(d));Object.assign(d,{slides:previous.slides,themeID:previous.themeID,theme:previous.theme});if(previous.archivedSlides)d.archivedSlides=previous.archivedSlides;if(previous.outline){d.outline=previous.outline;d.outlineApproved=previous.outlineApproved;d.outlineCustomized=previous.outlineCustomized;d.outlineModel=previous.outlineModel;if(previous.templateID)d.templateID=previous.templateID;d.step=previous.step;delete d.outlineProposal;}
  });
  S.editOutline=async(id,operation)=>S.patch(id,d=>{d.outline=Outline.applyOutlineEdit(d.outline,operation);d.outlineCustomized=true;d.outlineApproved=false;delete d.outlineProposal;},{snapshot:true});
- S.acceptOutline=async id=>S.patch(id,d=>{const p=d.outlineProposal;if(!p)throw Error('没有待接受的结构建议');if(p.base!==Outline.outlineFingerprint(d.outline))throw Error('结构已发生变化，请重新生成建议，当前编辑已保留');d.outline=structuredClone(p.sections);d.outlineCustomized=true;if(p.templateID)d.templateID=p.templateID;d.outlineApproved=false;d.outlineModel=p.model;delete d.outlineProposal;d.step=2;},{snapshot:true});
+ S.acceptOutline=async id=>S.patch(id,d=>{const p=d.outlineProposal;if(!p)throw Error('没有待接受的结构建议');if(p.base!==Outline.outlineFingerprint(d.outline))throw Error('结构已发生变化，请重新生成建议，当前编辑已保留');d.outline=copy(p.sections);d.outlineCustomized=true;if(p.templateID)d.templateID=p.templateID;d.outlineApproved=false;d.outlineModel=p.model;delete d.outlineProposal;d.step=2;},{snapshot:true});
  S.discardOutline=async id=>S.patch(id,d=>{delete d.outlineProposal;});
  S.selectMaterials=async(id,references=[])=>{
   const isPaper=file=>['pdf','paper'].includes(file.kind)&&file.paperItemID,papers=[];for(const reference of references){if(!isPaper(reference))continue;const item=await Zotero.Items.getAsync(reference.paperItemID);if(item)papers.push(E.library.describe(item.parentItem||item));}

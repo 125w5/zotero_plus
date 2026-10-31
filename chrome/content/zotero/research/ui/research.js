@@ -119,14 +119,16 @@ Object.assign(EasySchUI, {
 		}
 		this.$('cancel').hidden = false;
 		this.busy = true;
-		let actions = ['analyze', 'translate', 'synthesize', 'make-outline', 'ask', 'presentation', 'refresh', 'clear-memory', 'run-paper-skill'];
-		for (let id of actions) this.$(id).disabled = true;
+		// Held rather than disabled, so a bound button whose own job is still
+		// running stays disabled when this analysis ends first.
+		let actions = ['analyze', 'translate', 'synthesize', 'make-outline', 'ask', 'presentation', 'refresh', 'clear-memory', 'run-paper-skill'].map(id => this.$(id));
+		for (let button of actions) this.holdButton(button);
 		try {
 			let record = await this.E.ai.run({ mode, papers, prompt, selection: this.selection, signal: this.legacyJobSignal(),
 				onStatus: s => this.status(s) });
 			this.renderHistory(); this.record = record; this.renderResult();
 			this.status('分析已保存。请核对原文证据；可保存为研究笔记。');
 		}
-		finally { this.busy = false; this.$('cancel').hidden = true; for (let id of actions) this.$(id).disabled = false; }
+		finally { this.busy = false; this.$('cancel').hidden = true; for (let button of actions) this.releaseButton(button); }
 	},
 });

@@ -4,6 +4,7 @@ import {U,$,el,button,field,modal,status,snapshot,changed,persist,selected,selec
 import {removeSelection} from './keyboard.mjs';
 import {insertBlock,editFormula} from './editor.mjs';
 import {allMaterials} from './material-library.mjs';
+import {saveMaterialBrowseScope} from './material-research-filters.mjs';
 import {catalogFor} from '../shared/material-catalog.mjs';
 import {canvasDisplayMode,installCanvasDisplay,renderBlockPlaceholder} from './canvas-display.mjs';
 import {placeholderBlock} from './assembly-placement.mjs';
@@ -21,7 +22,8 @@ export async function findEvidence(query){
  const b=selected(),range=b?captureRange(b):null,selectedText=range&&range.end>range.start?b.text.slice(range.start,range.end):'';
  const goal=String(query||selectedText||b?.text||b?.requirements||U.p.memory?.goal||'').trim();
  U.p.ui.left='materials';U.p.ui.leftOpen=true;U.p.ui.catalog={...U.p.ui.catalog,topic:'',type:'',categoryID:null,facets:{},sort:'relevance',selection:[]};
- U.materialQuery=goal;await U.E.notebook.update(U.p.id,{query:goal});applyPanels();renderNavigation();await persist();
+ // The notebook subscription restores the browse keyword, so save the lookup there first.
+ U.materialQuery=saveMaterialBrowseScope(U.p,{primaryKeyword:goal}).primaryKeyword;await U.E.notebook.update(U.p.id,{query:goal});applyPanels();renderNavigation();await persist();
  const input=$('material-search');input?.focus({preventScroll:true});
  status(goal?'已查找相关素材；单击预览来源，正文保持原样。':'输入研究问题或方法名，查找相关素材。');
 }
@@ -38,7 +40,8 @@ export function showLayoutProposal(proposal,{reveal=true}={}){
   if(JSON.stringify({sections:U.p.sections,blocks:U.p.blocks,materials:U.p.materials})!==expected)throw Error('资料或正文已改变，请重新整理顺序。');
   const candidate=U.A.applyLayout(U.p,proposal);
   if(materialsChanged){const catalog=catalogFor(candidate,allMaterials()),key=candidate.id+'|',visible=allMaterials().filter(m=>catalog.entries[m.id].topics.includes(candidate.id)).map(m=>m.id),available=new Set(visible),moving=proposal.materialOrder.filter(id=>available.has(id)),selected=new Set(moving),queue=moving.slice(),baseline=[...new Set([...(catalog.orders[key]||[]),...visible])].filter(id=>available.has(id));catalog.orders[key]=baseline.map(id=>selected.has(id)?queue.shift():id);candidate.ui.catalog={...candidate.ui.catalog,topic:candidate.id,type:'',categoryID:null,facets:{},sort:'manual',selection:[]};candidate.ui.left='materials';candidate.ui.leftOpen=true;}
-  snapshot();U.p=candidate;const saved=U.p.proposals.find(d=>d.id===proposal.id);if(saved)saved.status='applied';if(materialsChanged){U.materialQuery='';applyPanels();}changed({editor:true});if(materialsChanged)U.E.notebook.update(U.p.id,{query:''}).catch(e=>status(e.message,true));box.replaceChildren(el('p','顺序已更新 · Ctrl+Z 撤销'));status('已调整顺序，正文和来源保留 · Ctrl+Z 撤销');
+  // The notebook subscription restores the browse keyword, so clear it there too.
+  snapshot();U.p=candidate;const saved=U.p.proposals.find(d=>d.id===proposal.id);if(saved)saved.status='applied';if(materialsChanged){U.materialQuery=saveMaterialBrowseScope(U.p,{primaryKeyword:''}).primaryKeyword;applyPanels();}changed({editor:true});if(materialsChanged)U.E.notebook.update(U.p.id,{query:''}).catch(e=>status(e.message,true));box.replaceChildren(el('p','顺序已更新 · Ctrl+Z 撤销'));status('已调整顺序，正文和来源保留 · Ctrl+Z 撤销');
  },box,'primary');
  button('保持当前顺序',()=>{const saved=U.p.proposals.find(d=>d.id===proposal.id);if(saved)saved.status='rejected';persist();box.replaceChildren();},box);
 }

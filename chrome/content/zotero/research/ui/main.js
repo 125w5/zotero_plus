@@ -22,9 +22,37 @@ var EasySchUI = {
 		this.$('status').textContent = message;
 		this.$('status').parentElement.classList.toggle('error', error);
 	},
+	// A button stays disabled while any job holds it, so a job that ends first
+	// does not free a button another running job still holds.
+	buttonHolds: new WeakMap(),
+	holdButton(button) {
+		this.buttonHolds.set(button, (this.buttonHolds.get(button) || 0) + 1);
+		button.disabled = true;
+	},
+	releaseButton(button) {
+		let count = (this.buttonHolds.get(button) || 1) - 1;
+		if (count) {
+			this.buttonHolds.set(button, count);
+			return;
+		}
+		this.buttonHolds.delete(button);
+		button.disabled = false;
+	},
+	// As on the settings page: the clicked button is disabled and aria-busy until
+	// its job succeeds, fails or is cancelled, and a second click starts nothing.
 	bind(id, action) {
-		this.$(id).addEventListener('click', async () => {
+		let button = this.$(id), running = false;
+		button.addEventListener('click', async () => {
+			if (running || button.disabled) return;
+			running = true;
+			this.holdButton(button);
+			button.setAttribute('aria-busy', 'true');
 			try { await action(); } catch (e) { this.status(e.message, true); }
+			finally {
+				running = false;
+				this.releaseButton(button);
+				button.setAttribute('aria-busy', 'false');
+			}
 		});
 	},
 	projectKey() {

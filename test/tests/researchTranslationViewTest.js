@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 describe('Continuous cached translation view',function(){
  this.timeout(90000);
- const E=Zotero.Research;let win,sourceReader,sourceView,pdf,doc,app,reader,panel,notify,pages,prior,calls,folder,originalPrepare,originalIndex,originalImages,originalPreparationQueue;
+ const E=Zotero.Research;let win,sourceReader,sourceView,pdf,doc,app,reader,panel,notify,pages,prior,calls,folder,originalPrepare,originalIndex,originalImages,originalPreparationQueue,originalQueueArticle;
  const report={type:'真实 Zotero 原生 DOM + 受控版式、译文与图片回复',limitations:['不等同真人操作、真实模型、实际图像提取或网络验收'],tests:[]};
  const wait=async fn=>{for(let i=0;i<200;i++){if(await fn())return;await Zotero.Promise.delay(50);}throw Error('等待译文界面超时');};
  const click=(node,type='click',options={})=>node.dispatchEvent(new doc.defaultView.MouseEvent(type,{bubbles:true,cancelable:true,...options}));
@@ -12,17 +12,23 @@ describe('Continuous cached translation view',function(){
   position:{pageIndex:i,rects:[[40,height-120,240,height-80]]}
  }]});
  before(async()=>{
-  originalPrepare=E.manuscripts.prepareTranslation;E.manuscripts.prepareTranslation=async()=>null;
+  let warmed=false;originalPrepare=E.manuscripts.prepareTranslation;E.manuscripts.prepareTranslation=async()=>{warmed=true;return null;};
   // The fixture is imported locally. Keep unrelated import/open preparation
   // from starting real indexing, image or model work beside controlled pages.
   originalIndex=E.manuscripts.indexArticle;E.manuscripts.indexArticle=async()=>null;
   originalImages=E.assets.queueImages;E.assets.queueImages=async()=>null;
   originalPreparationQueue=E.queueReaderPreparation;E.queueReaderPreparation=()=>Promise.resolve();
+  // The import notifier and the startup re-queue reach prepareTranslation through
+  // queueArticle without the reader's shared task; keep them out of the count.
+  originalQueueArticle=E.manuscripts.queueArticle;E.manuscripts.queueArticle=async()=>null;
   win=await loadZoteroPane();await E.attachWindow(win);
   const file=getTestDataDirectory();file.append('test.pdf');pdf=await Zotero.Attachments.importFromFile({file});
   assert.exists(pdf,'从随测试分发的 PDF 建立原生阅读器，不依赖已有文库');report.pdfFixture={file:file.leafName,attachmentID:pdf.id,importedBySuite:true};
   sourceReader=await E.openReaderReady(pdf.id);sourceView=sourceReader._internalReader._primaryView;await sourceView.initializedPromise;
   doc=sourceReader._iframeWindow.document;app=sourceView._iframeWindow.PDFViewerApplication;
+  // Let the real reader's toolbar warm-up (init + 180 ms) land on this stub,
+  // not on a test's counter. It is at most one call per reader.
+  for(let i=0;i<20&&!warmed;i++)await Zotero.Promise.delay(50);
   folder=PathUtils.join(Zotero.DataDirectory.dir,'translation-view-acceptance');await IOUtils.makeDirectory(folder,{ignoreExisting:true});
  });
  beforeEach(async()=>{
@@ -51,7 +57,7 @@ describe('Continuous cached translation view',function(){
   await E.store.update(s=>{if(prior.drafts)s.translationDrafts=prior.drafts;else delete s.translationDrafts;for(const [key,value]of [['readerTranslationZoom',prior.zoom],['readerTranslationWidth',prior.width],['readerTranslationLayout',prior.layout]]){if(value===undefined)delete s.settings[key];else s.settings[key]=value;}});
   await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));
  });
- after(async()=>{E.manuscripts.prepareTranslation=originalPrepare;E.manuscripts.indexArticle=originalIndex;E.assets.queueImages=originalImages;E.queueReaderPreparation=originalPreparationQueue;await E.store.flush();});
+ after(async()=>{E.manuscripts.prepareTranslation=originalPrepare;E.manuscripts.indexArticle=originalIndex;E.manuscripts.queueArticle=originalQueueArticle;E.assets.queueImages=originalImages;E.queueReaderPreparation=originalPreparationQueue;await E.store.flush();});
  const open=async()=>{panel=E.openReaderTranslation(reader);await wait(()=>calls.reads.length>=pages.length&&firstBox());return panel;};
  it('prepares on document open and reads every cached page before scrolling',async()=>{
   const toolbar=[];E.readerTranslationToolbar({reader,doc,append:button=>toolbar.push(button)});await wait(()=>calls.prepare===1);

@@ -6,13 +6,16 @@ import vm from 'node:vm';
 import * as WorkspaceOutputs from '../../chrome/content/zotero/research/shared/workspace-outputs.mjs';
 import * as references from '../../chrome/content/zotero/research/shared/reference-matcher.mjs';
 import {installJournalSubscriptions,installJournalSubscriptionTimer} from '../../chrome/content/zotero/research/shared/discovery-journals.mjs';
+import * as Arxiv from '../../chrome/content/zotero/research/shared/arxiv.mjs';
 
 let source=new URL('../../chrome/content/zotero/xpcom/research/discovery.js',import.meta.url);
+let arxivSource=new URL('../../chrome/content/zotero/xpcom/research/arxiv.js',import.meta.url);
 
 // obtainPaper with recorded stubs: every library write and network step is logged in order.
-async function load({existing=null,lookup=null,probe=async()=>({available:true}),download=async()=>new Uint8Array([37,80,68,70,45])}={}){
+// withArxiv also loads arxiv.js, whose obtainPaper wrapper is what the application calls.
+async function load({existing=null,lookup=null,probe=async()=>({available:true}),download=async()=>new Uint8Array([37,80,68,70,45]),withArxiv=false,filesEditable=true}={}){
 	let calls=[],stages=[],files=new Map(),nextID=40;
-	let item=id=>({id,saved:true});
+	let item=id=>({id,saved:true,getAttachments:()=>[]});
 	let E={
 		workspaceOutputs:{rememberDownload:async()=>{}},
 		store:{get:()=>({}),peek:()=>undefined,update:async fn=>fn({})},
@@ -32,7 +35,7 @@ async function load({existing=null,lookup=null,probe=async()=>({available:true})
 		Research:E,
 		addShutdownListener(){},
 		Items:{getAsync:async id=>item(id)},
-		Libraries:{get:()=>({filesEditable:true})},
+		Libraries:{get:()=>({filesEditable})},
 		Reader:{open:async()=>calls.push('open')},
 		Utilities:{randomString:()=>'x'},
 		getTempDirectory:()=>({path:'/tmp'}),
@@ -43,9 +46,10 @@ async function load({existing=null,lookup=null,probe=async()=>({available:true})
 		Zotero,
 		IOUtils:{write:async()=>{},remove:async()=>{}},
 		PathUtils:{join:(...parts)=>parts.join('/')},
-		ChromeUtils:{importESModule:url=>url.includes('workspace-outputs')?WorkspaceOutputs:url.includes('reference-matcher')?references:{installDiscoveryFeed(){},installJournalSubscriptionTimer}}
+		ChromeUtils:{importESModule:url=>url.includes('workspace-outputs')?WorkspaceOutputs:url.includes('reference-matcher')?references:url.endsWith('/arxiv.mjs')?Arxiv:{installDiscoveryFeed(){},installJournalSubscriptionTimer}}
 	});
 	vm.runInContext(await readFile(source,'utf8'),context);
+	if(withArxiv)vm.runInContext(await readFile(arxivSource,'utf8'),context);
 	let progress=value=>stages.push(value.stage);
 	return {E,calls,stages,progress};
 }
@@ -58,7 +62,8 @@ test('a reference without a public PDF files nothing in the library',async()=>{
 
 test('a PDF address that fails the probe files nothing and downloads nothing',async()=>{
 	let f=await load({probe:async()=>({available:false,error:'来源返回网页或验证页面，未提供 PDF'})});
-	await assert.rejects(f.E.obtainPaper({id:'r2',doi:'10.1000/landing',title:'Landing',pdf:'https://repository.example/landing'},{open:false,collectionID:7}),/^Error: 公开 PDF 暂不可用：来源返回网页或验证页面，未提供 PDF；文库没有变化/);
+	// A web page at the PDF address returns on every attempt, so no retry is offered.
+	await assert.rejects(f.E.obtainPaper({id:'r2',doi:'10.1000/landing',title:'Landing',pdf:'https://repository.example/landing'},{open:false,collectionID:7}),/^Error: 来源返回网页或验证页面，未提供 PDF；文库没有变化$/);
 	assert.deepEqual(f.calls,['find','probe']);
 });
 
@@ -107,6 +112,50 @@ test('an arXiv record still uses the arXiv preprint import',async()=>{
 	f.E.importAcademicPDF=async(record,options)=>{routed.push(record);return {itemID:99,attachmentID:98,collectionID:options.collectionID};};
 	let result=await f.E.obtainOpenPaper({id:'2401.01234v2',source:'arXiv',title:'An arXiv paper',url:'https://arxiv.org/abs/2401.01234v2',pdf:'https://arxiv.org/pdf/2401.01234v2',oa:true},{collectionID:7});
 	assert.equal(routed.length,1);assert.equal(result.itemID,99);assert.ok(!f.calls.includes('import'),f.calls.join(','));
+});
+
+// arxiv.js: an arXiv record is filed only after its PDF has been downloaded and checked.
+let arxivPDF=()=>new TextEncoder().encode('%PDF-1.7\n'+'arXiv paper content '.repeat(8));
+let arxivRecord={id:'2401.01234v2',source:'arXiv',title:'An arXiv paper',url:'https://arxiv.org/abs/2401.01234v2',pdf:'https://arxiv.org/pdf/2401.01234v2',authors:[]};
+
+test('an arXiv PDF is downloaded and checked before the record is filed and attached',async()=>{
+	let f=await load({withArxiv:true,download:async()=>arxivPDF()}),imported=[];
+	let importAcademic=f.E.importAcademic;f.E.importAcademic=async(record,options)=>{imported.push(record);return importAcademic(record,options);};
+	let result=await f.E.obtainPaper(arxivRecord,{open:false,collectionID:7,onProgress:f.progress});
+	assert.deepEqual(f.calls,['find','download','import','attach:11'],'nothing is written before the PDF bytes arrive');
+	assert.equal(imported.length,1);assert.equal(imported[0].source,'arXiv');assert.equal(imported[0].url,'https://arxiv.org/abs/2401.01234v2');
+	assert.equal(result.itemID,11);assert.equal(result.attachmentID,40);assert.equal(result.downloaded,true);assert.equal(result.path,'/local/40.pdf');
+	assert.deepEqual(f.stages,['lookup','download','save','saved']);
+});
+
+test('a failed arXiv download files nothing, and an existing record is left as it was',async()=>{
+	// A refusal can pass and offers a retry; bytes that are not a PDF, or a 404, return on every attempt.
+	for(let [download,message] of [[async()=>{throw Error('PDF 无法获取（HTTP 403）');},'公开 PDF 暂不可用：PDF 无法获取（HTTP 403）；文库没有变化，可稍后重试'],[async()=>new TextEncoder().encode('<html>Access denied</html>'),'下载返回非 PDF 内容；文库没有变化']]){
+		let f=await load({withArxiv:true,download});
+		await assert.rejects(f.E.obtainPaper(arxivRecord,{open:false,collectionID:7}),{message});
+		assert.deepEqual(f.calls,['find','download'],'no import, attachment or folder change after a failed download');
+	}
+	let f=await load({withArxiv:true,existing:{id:12,pdf:null},download:async()=>{throw Error('PDF 无法获取（HTTP 404）');}});
+	await assert.rejects(f.E.obtainPaper(arxivRecord,{open:false,collectionID:7}),{message:'PDF 无法获取（HTTP 404）；文库中的这条题录没有改动'});
+	assert.deepEqual(f.calls,['find','download'],'the existing record is not moved into the folder without its PDF');
+	let readOnly=await load({withArxiv:true,filesEditable:false});
+	await assert.rejects(readOnly.E.obtainPaper(arxivRecord,{open:false,collectionID:7}),/^Error: 目标文库不能保存附件；文库没有变化$/);
+	assert.deepEqual(readOnly.calls,['find'],'nothing is downloaded or filed for a library that cannot keep the PDF');
+});
+
+test('with arxiv.js loaded, a record that is not an arXiv record keeps the original obtainPaper path',async()=>{
+	// The open copy of this journal article is on arxiv.org; the record itself is not an arXiv record.
+	let journal={id:'0123456789abcdef0123456789abcdef01234567',source:'Semantic Scholar',title:'A journal article with an arXiv copy',doi:'10.1103/physrevlett.000.000002',url:'https://doi.org/10.1103/physrevlett.000.000002',journal:'Physical Review Letters',pdf:'https://arxiv.org/pdf/2401.05678v1',oa:true};
+	let open={id:'https://openalex.org/W4400000002',source:'OpenAlex',title:'An open journal article',doi:'10.1000/open-journal',url:'https://doi.org/10.1000/open-journal',journal:'Open Journal',pdf:'https://repository.example/open-journal.pdf',oa:true};
+	for(let record of [journal,open]){
+		let f=await load({withArxiv:true}),imported=[],routed=[];
+		let importAcademic=f.E.importAcademic;f.E.importAcademic=async(value,options)=>{imported.push(value);return importAcademic(value,options);};
+		f.E.importAcademicPDF=async value=>{routed.push(value);return {itemID:99,attachmentID:98};};
+		await f.E.obtainPaper(record,{open:false,collectionID:7});
+		assert.equal(routed.length,0,'not sent to the arXiv preprint import: '+record.title);
+		assert.deepEqual(f.calls,['find','probe','find','download','import','attach:11','place:11:7']);
+		assert.equal(imported.length,1);assert.equal(imported[0].source,record.source);assert.equal(imported[0].url,record.url);assert.equal(imported[0].journal,record.journal);
+	}
 });
 
 const raw=doi=>({DOI:doi,title:['Measured quantum spin experiment'],type:'journal-article','container-title':['Physical Review Letters'],ISSN:['0031-9007'],published:{'date-parts':[[2026,10,19]]},author:[{family:'Author'}],license:[{URL:'https://creativecommons.org/licenses/by/4.0/'}],link:[{URL:'https://example.org/'+doi+'.pdf','content-type':'application/pdf'}]});

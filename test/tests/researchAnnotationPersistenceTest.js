@@ -77,7 +77,10 @@ describe('Reader annotation persistence and note responsiveness',function(){
  });
  afterEach(async function(){report.tests.push({name:this.currentTest.title,state:this.currentTest.state,error:this.currentTest.err?.message});await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));});
  after(async()=>{
-  try{if(folder)await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));await E.store.flush();if(reader&&!reader._isUninitialized){reader.close();await wait(()=>reader._isUninitialized,'关闭隔离测试阅读器');}const existing=(await Zotero.Items.getAsync([...new Set(created)])).filter(Boolean);if(existing.length)await Zotero.Items.trashTx(existing.map(item=>item.id));}
+  try{if(folder)await IOUtils.writeUTF8(PathUtils.join(folder,'report.json'),JSON.stringify(report,null,2));await E.store.flush();if(reader&&!reader._isUninitialized){reader.close();await wait(()=>reader._isUninitialized,'关闭隔离测试阅读器');}
+   // Erase rather than trash: a trashed parent leaves its PDF in the shared test
+   // library, where later suites can pick it up. Children go before their parent.
+   for(const id of [...new Set(created)].filter(Boolean).reverse()){const item=await Zotero.Items.getAsync(id);if(item)await item.eraseTx();}}
   finally{Object.assign(E.manuscripts,{prepareTranslation:original.prepare,indexArticle:original.index});E.assets.queueImages=original.images;E.queueReaderPreparation=original.queue;E.quickTranslate=original.quick;if(win&&!win.closed)win.close();}
  });
  it('saves highlight and underline from the floating buttons into the real DB and PDF overlay',async()=>{
@@ -91,6 +94,9 @@ describe('Reader annotation persistence and note responsiveness',function(){
    let annotation;await wait(()=>{annotation=core._state.annotations.find(a=>!before.has(a.id));return annotation;},'manager 新批注');
    assert.strictEqual(manager.addAnnotation,realAdd,'未替换真正的 manager 保存实现');assert.equal(annotation.type,type);assert.equal(annotation.color,color);assert.equal(annotation.text,selection.text);
    let saved;await wait(async()=>{saved=await Zotero.Items.getByLibraryAndKeyAsync(pdf.libraryID,annotation.id);return !!saved&&typeof saved.isAnnotation==='function'&&saved.isAnnotation();},'数据库批注');
+   // The cached item is visible before its save transaction reloads the
+   // annotation fields. Read them once that transaction has committed.
+   await Zotero.DB.waitForTransaction();
    assert.equal(saved.parentID,pdf.id);assert.equal(saved.annotationType,type);assert.equal(saved.annotationColor,color);assert.equal(saved.annotationText,selection.text);
    assert.deepEqual(JSON.parse(saved.annotationPosition).rects,JSON.parse(JSON.stringify(annotation.position.rects)),'保存完整原文位置');
    created.push(saved.id);
@@ -131,7 +137,7 @@ describe('Reader annotation persistence and note responsiveness',function(){
   try{
    await wait(()=>changes.length,'原生排除订阅初始化');changes.length=0;
    const annotations=E.annotateSelection(reader,selection,'strikeout');assert.lengthOf(annotations,1);const native=annotations[0];
-   let saved;await wait(async()=>{saved=await Zotero.Items.getByLibraryAndKeyAsync(pdf.libraryID,native.id);return !!saved&&typeof saved.isAnnotation==='function'&&saved.isAnnotation();},'原生删除线保存');created.push(saved.id);await E.store.flush();
+   let saved;await wait(async()=>{saved=await Zotero.Items.getByLibraryAndKeyAsync(pdf.libraryID,native.id);return !!saved&&typeof saved.isAnnotation==='function'&&saved.isAnnotation();},'原生删除线保存');await Zotero.DB.waitForTransaction();created.push(saved.id);await E.store.flush();
    assert.equal(saved.annotationType,'ink');assert.equal(saved.annotationComment||'','');assert.includeMembers(saved.getTags().map(tag=>tag.tag),['删除线','easysch:material-exclude']);
    const quote=E.store.get('materialExclusionQuotes',pdf.id+':'+saved.key);assert.equal(quote.text,selection.text);assert.equal(quote.position.pageIndex,selection.position.pageIndex);assert.deepEqual(quote.position.rects,JSON.parse(JSON.stringify(selection.position.rects)));
    await wait(()=>changes.length,'真实删除线触发精准排除通知');

@@ -59,7 +59,12 @@ html[data-appearance] #library .catalog-top{position:relative;background:transpa
 html[data-appearance] #library #material-view-controls{padding-top:3px!important}
 @media(max-width:980px){html[data-appearance] #tools.writing-ribbon{padding-inline:8px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=text]{width:265px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=paragraph]{width:265px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=scripts]{width:134px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-font{width:98px;max-width:98px}}
 @media(max-width:760px){html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=text]{flex:1;min-width:230px}html[data-appearance] .writing-ribbon #manual-writing-tools .writing-format-group[data-writing-group=paragraph]{flex:1;min-width:230px}.writing-ribbon-view #canvas-display-mode button{padding-inline:8px}.writing-ribbon-tabs button{padding-inline:8px!important}.writing-find-fields{flex-basis:100%}.writing-ribbon-bar{gap:5px}}
-@media(max-width:1180px){html[data-appearance] #workspace>:is(#left,#right){max-width:clamp(210px,24vw,280px)}html[data-appearance] #left-tabs{padding-inline:6px}html[data-appearance] #left-tabs button{padding-inline:4px}}
+/* Narrow windows: the material pane may shrink below the shared 300px minimum so the
+   article keeps an editable width. Its tabs, view switch (icons keep their titles) and
+   filter popover stay inside the narrower pane. The popover takes the controls bar's
+   content width (100cqi); the bar spans the visible library whatever the dragged pane
+   width or scrollbar. */
+@media(max-width:1180px){html[data-appearance] #workspace>:is(#left,#right){max-width:clamp(210px,24vw,280px)}html[data-appearance] #workspace>#left{min-width:210px}html[data-appearance] #workspace>#left>#left-tabs{padding-inline:6px}html[data-appearance] #workspace>#left>#left-tabs>button{padding-inline:4px!important}html[data-appearance] #workspace>#left #material-view-controls .material-view-label{display:none}html[data-appearance] #workspace>#left #library .material-library-controls{container-type:inline-size}html[data-appearance] #workspace>#left #library .search-filter-popover{width:min(344px,100cqi)}}
 
 /* Groups retain their shape; narrow editors scroll the ribbon horizontally. */
 html[data-appearance] .writing-ribbon #manual-writing-tools .manual-writing-toolbar{flex-wrap:nowrap;width:max-content;min-width:100%;gap:8px;padding-bottom:5px}

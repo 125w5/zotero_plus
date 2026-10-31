@@ -12,9 +12,15 @@ function Assert-SourceClientClosed {
     }
 }
 Assert-SourceClientClosed
-$bash = 'C:\msys64\usr\bin\bash.exe'
-if (!(Test-Path -LiteralPath $bash)) { throw 'MSYS2 is required: install zip, unzip, rsync, python, p7zip.' }
-$env:PATH = 'C:\msys64\usr\lib\p7zip;C:\msys64\usr\bin;E:\Git\cmd;E:\nodejs;' + $env:PATH
+$msys = if ($env:MSYS2_ROOT) { $env:MSYS2_ROOT } else { 'C:\msys64' }
+$msys = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($msys)
+$bash = Join-Path $msys 'usr\bin\bash.exe'
+if (!(Test-Path -LiteralPath $bash)) { throw 'MSYS2 is required: install zip, unzip, rsync, python, p7zip. Set MSYS2_ROOT if it is not in C:\msys64.' }
+$env:MSYS2_ROOT = $msys
+$env:PATH = (Join-Path $msys 'usr\lib\p7zip') + ';' + (Join-Path $msys 'usr\bin') + ';' + $env:PATH
+foreach ($tool in 'git', 'node') {
+    if (!(Get-Command $tool -CommandType Application -ErrorAction SilentlyContinue)) { throw "$tool is required on PATH: add the folder that contains $tool.exe (for Git for Windows, its cmd folder)." }
+}
 $env:TMPDIR = (& $bash -c 'cygpath -u "$1"' -- $scratch).Trim()
 New-Item -ItemType Directory -Force $scratch | Out-Null
 Push-Location $repo

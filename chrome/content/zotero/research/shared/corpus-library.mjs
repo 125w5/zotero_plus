@@ -41,8 +41,10 @@ export function corpusEntryInScope(entry,corpus,researchScope,options){return ma
 // The identities of a corpus row or a candidate material: its material id, and
 // its paper with its text. Zotero notes and annotations get a new material id
 // on every read, so their text is what shows that they are already collected.
+// A row of a PDF without a parent item has its PDF in place of the paper, so a
+// manual entry or another PDF with the same text is a different row.
 export function corpusKeys(row){
-	const paper=row?.paperItemID??row?.anchor?.paperItemID??'',keys=new Set();if(row?.materialID)keys.add('m\0'+row.materialID);
+	const paper=row?.paperItemID??row?.anchor?.paperItemID??(row?.anchor?.attachmentID?'a'+row.anchor.attachmentID:''),keys=new Set();if(row?.materialID)keys.add('m\0'+row.materialID);
 	for(const value of [row?.text,row?.originalText,row?.sourceText]){const text=String(value||'').replace(/\s+/g,' ').trim();if(text)keys.add('t\0'+paper+'\0'+text);}
 	return keys;
 }
@@ -56,7 +58,7 @@ export function rankCorpusCandidates(materials,{purpose='',researchScope={}}={})
 // the user's own note: it stays importable and carries scopeWarning instead.
 export function selectedCorpusMaterials(corpus,entryIDs=[],{researchScope,domain=true}={}){
 	const selected=new Set(entryIDs),rows=(corpus.entries||[]).filter(row=>selected.has(row.id));if(rows.length!==selected.size)throw Error('部分语料已删除，请重新选择');
-	const outside=rows.filter(row=>!corpusEntryInScope(row,corpus,researchScope,{domain})),refused=outside.filter(row=>row.origin==='source'&&!row.sourceEdited);if(refused.length)throw Error('所选语料中有 '+refused.length+' 份不符合当前研究领域或关键词，请调整选择或研究范围');
+	const outside=rows.filter(row=>!corpusEntryInScope(row,corpus,researchScope,{domain})),refused=outside.filter(row=>row.origin==='source'&&!row.sourceEdited);if(refused.length)throw Error('所选语料中有 '+refused.length+' 份不含当前研究范围的关键词，请调整选择或研究范围');
 	return rows.map(row=>({kind:'note',title:row.title,paperTitle:row.paperTitle,sourceText:row.text,corpusID:corpus.id,corpusEntryID:row.id,sectionType:row.section,tags:row.tags||[],paperItemID:row.paperItemID||null,anchor:{...row.anchor,paperItemID:row.paperItemID||null,citationItemID:row.paperItemID||null,sourceText:row.text,url:row.uri||row.anchor?.url||null},origin:row.origin,verification:row.paperItemID?'unverified':'user',...(outside.includes(row)?{scopeWarning:true}:{})}));
 }
 const entryTerms=new WeakMap();

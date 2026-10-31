@@ -222,9 +222,10 @@ describe('Assembly material clues in native Zotero', function () {
 		const originalText = ui.$('status').textContent;
 		const refresh = sandbox.stub(R.manuscripts, 'refreshMaterial').resolves({sourceText: material.sourceText});
 		try {
-			const maintenance = ui.$('details').querySelector('.material-maintenance');
-			maintenance.open = true;
-			const check = [...maintenance.querySelectorAll('button')].find(button => button.textContent === '检查来源更新');
+			// The source check sits directly in the material's action row.
+			const maintenance = ui.$('details').querySelector('.material-maintenance-actions');
+			assert.exists(maintenance, '素材操作行');
+			const check = [...maintenance.querySelectorAll('button')].find(button => button.textContent === '核查来源');
 			assert.exists(check);check.click();await wait(() => refresh.calledOnce, '受控来源检查');
 			await Zotero.Promise.delay(50);
 			assert.isTrue(ui.$('status').hidden);

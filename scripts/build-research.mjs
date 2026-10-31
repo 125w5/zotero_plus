@@ -31,7 +31,9 @@ try {
 	let env = { ...process.env, NODE_OPTIONS: '--openssl-legacy-provider' };
 	if (process.platform === 'win32') {
 		let key = Object.keys(env).find(k => k.toLowerCase() === 'path') || 'PATH';
-		env[key] += ';C:\\msys64\\usr\\bin;E:\\Git\\usr\\bin';
+		let msys = process.env.MSYS2_ROOT || 'C:\\msys64';
+		let gitRoot = path.resolve(execFileSync('git', ['--exec-path'], { encoding: 'utf8' }).trim(), '..', '..', '..');
+		env[key] += `;${path.join(msys, 'usr', 'bin')};${path.join(gitRoot, 'usr', 'bin')}`;
 	}
 	exitCode = await new Promise((resolve, reject) => {
 		let proc = spawn(process.execPath, ['js-build/build.js'], { cwd: root, stdio: 'inherit', env });

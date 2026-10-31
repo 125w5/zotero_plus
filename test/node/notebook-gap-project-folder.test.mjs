@@ -10,6 +10,7 @@ import * as Plan from '../../chrome/content/zotero/research/shared/academic-plan
 import * as Domain from '../../chrome/content/zotero/research/shared/research-domain.mjs';
 import * as Model from '../../chrome/content/zotero/research/shared/manuscript-model.mjs';
 import {notebookBrowser} from '../../chrome/content/zotero/research/notebook-browser.mjs';
+import {libraryWorld} from './notebook-page-harness.mjs';
 
 const root=new URL('../../',import.meta.url);
 const read=path=>readFile(new URL(path,root),'utf8');
@@ -146,4 +147,40 @@ test('the create dialog closes and points to the kept project when setup fails a
 	assert.ok(host.querySelector('.project-create-dialog'),'without a created project the dialog stays open for a retry');
 	assert.match(dialog.textContent,/项目尚未创建/);
 	assert.equal(messages.length,1);
+});
+
+// The tests below run the real folder reads (paperFolderSelection) on a small library.
+test('the folder chosen or created for a new project is saved with its first write, so a kept project keeps it',async()=>{
+	for(let choice of ['existing','new']){
+		let f=libraryWorld({folders:[{id:60,name:'图像测量文献'}],papers:[{id:7,title:'Image measurement',folders:[60]}]}),save=f.A.save,fails=1,failure;
+		// The library step after the record is stored fails once, as a busy database does.
+		f.A.save=async value=>{let result=await save(value);if(fails-->0)throw Error('数据库忙，请稍后重试');return result;};
+		try{await f.N.beginProject({title:'图像测量研究',...(choice==='existing'?{collectionID:60}:{newCollectionName:'图像测量研究'}),isCurrent:()=>false});}
+		catch(error){failure=error;}
+		assert.ok(failure?.projectID,'the error names the kept project');
+		let kept=f.state.manuscripts[failure.projectID],folderID=choice==='existing'?60:kept.createdPaperCollectionID;
+		assert.ok(folderID,choice);assert.equal(kept.paperCollectionID,folderID,'the kept project has its folder ('+choice+')');
+		let created=f.created.length,folder=await f.N.ensureProjectCollection(failure.projectID);
+		assert.equal(folder.collectionID,folderID,'continuing the setup uses that folder');assert.equal(f.created.length,created,'no second folder');
+	}
+});
+
+test('新建文件夹 on a project from the earlier create dialog reuses its folder named after the title',async()=>{
+	let f=libraryWorld({folders:[{id:60,name:'图像测量研究'}],papers:[{id:7,title:'Image measurement',folders:[60]}],project:{title:'图像测量研究',paperCollectionID:60,materialPaperIDs:[7],paperSelectionExplicit:false},notebook:{view:'plan',workflowStage:'feasibility'}});
+	let page=await f.openPage();
+	try{
+		await page.$('project-new-folder').onclick();await f.quiet();
+		assert.deepEqual(f.created,[],'no empty “· 文献” folder');
+		assert.equal(f.project.paperCollectionID,60);assert.deepEqual(f.project.materialPaperIDs,[7],'its papers stay in scope');
+		assert.equal(f.project.createdPaperCollectionID,60,'the folder is now recorded as the project\'s own');
+		assert.match(page.$('status').textContent,/未重复新建/);
+	}
+	finally{await page.close();}
+});
+
+test('a chosen folder that only shares the project title is not taken as the project\'s own folder',async()=>{
+	let f=libraryWorld({folders:[{id:60,name:'图像测量研究'}]}),p=await f.N.beginProject({title:'图像测量研究',collectionID:60,isCurrent:()=>false});
+	assert.equal(f.state.manuscripts[p.id].createdPaperCollectionID,null,'a chosen folder is recorded as chosen');
+	let folder=await f.N.ensureProjectCollection(p.id,{newFolder:true});
+	assert.equal(folder.reused,undefined);assert.deepEqual(f.created,['图像测量研究 · 文献']);
 });

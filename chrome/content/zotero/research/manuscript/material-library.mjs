@@ -161,5 +161,6 @@ function renderSearchHistory(){
  host.hidden=document.activeElement!==input||!!input.value.trim()||!queries.length;
  input.setAttribute('aria-controls',host.id);input.setAttribute('aria-expanded',String(!host.hidden));
  host.setAttribute('role','group');host.setAttribute('aria-label','最近搜索');
- for(const query of queries.slice(0,6)){const item=button(query,()=>{U.materialQuery=query;input.value=query;U.E.notebook.update(U.p.id,{query});U.E.notebook.rememberQuery(U.p.id,query);host.hidden=true;input.setAttribute('aria-expanded','false');renderResults();input.focus();},host);item.title='重新搜索：'+query;}
+ // The notebook subscription restores the browse keyword, so save the chosen query there first.
+ for(const query of queries.slice(0,6)){const item=button(query,()=>{U.materialQuery=saveMaterialBrowseScope(U.p,{primaryKeyword:query}).primaryKeyword;input.value=U.materialQuery;U.E.notebook.update(U.p.id,{query:U.materialQuery});U.E.notebook.rememberQuery(U.p.id,query);persist();host.hidden=true;input.setAttribute('aria-expanded','false');renderResults();input.focus();},host);item.title='重新搜索：'+query;}
 }

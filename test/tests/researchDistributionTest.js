@@ -2,6 +2,14 @@ describe('Self-contained EasySch distribution', function () {
  this.timeout(240000);
  let win, folder;
  const E = Zotero.Research, report = {runtime: [], controlled: [], live: {}, limitations: []};
+ // Only scripts/distribution/stage.py writes these next to zotero.exe; a source build has neither.
+ const preconfiguredPackage = async () => {
+  const directory = Services.dirsvc.get('XREExeF', Ci.nsIFile).parent.path;
+  for (const name of ['easysch-distribution.json', 'easysch-provider-defaults.json']) {
+   if (!await IOUtils.exists(PathUtils.join(directory, name))) return false;
+  }
+  return true;
+ };
  before(async () => {
   win = await loadZoteroPane(); await E.attachWindow(win);
   folder = PathUtils.join(Zotero.DataDirectory.dir, 'distribution-verification');
@@ -12,7 +20,11 @@ describe('Self-contained EasySch distribution', function () {
   await IOUtils.writeUTF8(PathUtils.join(folder, 'report.json'), JSON.stringify(report, null, 2));
   win?.close();
  });
- it('initializes bundled tools and APIs in a clean profile', async () => {
+ it('initializes bundled tools and APIs in a clean profile', async function () {
+  if (!await preconfiguredPackage()) {
+   report.limitations.push('非预配置安装包，未验证内置工具与接口');
+   this.skip();
+  }
   assert.exists(E.distribution);
   assert.isTrue(E.hasBundledProviders);
   const root = PathUtils.parent(Services.dirsvc.get('XREExeF', Ci.nsIFile).parent.path);
@@ -44,13 +56,21 @@ describe('Self-contained EasySch distribution', function () {
   assert.isTrue(await IOUtils.exists(result.previews[0]));
   report.runtime.push({operation:'PPTX 导出及真实 LibreOffice/Poppler 渲染',path:result.path,preview:result.previews[0]});
  });
- it('keeps user overrides and removals until explicitly restoring defaults', async () => {
-  const endpoint = E.settings().endpoint, key = await E.credentials.get(endpoint);
+ it('keeps user overrides and removals until explicitly restoring defaults', async function () {
+  if (!await preconfiguredPackage()) {
+   report.limitations.push('非预配置安装包，未验证内置接口的保留与恢复');
+   this.skip();
+  }
+  // E.settings() merges defaults; keep the stored value so the profile is put back as it was.
+  const endpoint = E.settings().endpoint, key = await E.credentials.get(endpoint), savedModel = E.store.get('settings', 'model');
   try {
    await E.credentials.set(endpoint,''); await E.store.update(s => s.settings.model = 'user-selected-model');
    await E.initDistribution(); assert.equal(await E.credentials.get(endpoint),''); assert.equal(E.settings().model,'user-selected-model');
    await E.applyBundledProviders({reset:true}); assert.equal(await E.credentials.get(endpoint),key); assert.notEqual(E.settings().model,'user-selected-model');
-  } finally { await E.applyBundledProviders({reset:true}); }
+  } finally {
+   await E.credentials.set(endpoint, key);
+   await E.store.update(s => { if (savedModel === undefined) delete s.settings.model; else s.settings.model = savedModel; });
+  }
   report.controlled.push('隔离配置中的删除/自选模型不会被重启初始化覆盖；可恢复内置接口');
  });
  it('connects to actual preconfigured API services', async () => {

@@ -31,17 +31,29 @@
   }
   await E.store.update(s=>{s.academicSearch||={};s.academicSearch['arxiv:'+query]={at:Date.now(),results};});return results;
  };
+ // A saved PDF of this exact arXiv version whose file is still on disk.
+ const versionPDF=async(item,id)=>{for(const aid of item.getAttachments()){const a=await Zotero.Items.getAsync(aid);if(a.isPDFAttachment()&&P.arxivID(a.getField('url'))===id&&await a.getFilePathAsync()&&await IOUtils.exists(await a.getFilePathAsync()))return a;}return null;};
  E.importAcademicPDF=async(record,options={})=>{const{open=true,onProgress=()=>{},signal}=options,id=P.arxivID(record.id)||P.arxivID(record.url)||P.arxivID(record.pdf);if(!id)throw Error('无法识别 arXiv PDF 编号');const target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID||Zotero.getActiveZoteroPane().getSelectedLibraryIDs()[0]||Zotero.Libraries.userLibraryID,collectionID:options.collectionID},key=target.libraryID+':'+id;onProgress({stage:'lookup',text:'正在匹配文库…'});if(downloads.has(key)){const result=await downloads.get(key);if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);onProgress({stage:'saved',text:'PDF 已保存'});if(open)await Zotero.Reader.open(result.attachmentID);return{...result,...target,reused:true};}
-  const task=(async()=>{const normalized={...record,source:'arXiv',url:'https://arxiv.org/abs/'+id,pdf:'https://arxiv.org/pdf/'+id},saved=await E.importAcademic(normalized,{select:false,...target}),item=await Zotero.Items.getAsync(saved.id);let attachment=null;for(const aid of item.getAttachments()){const a=await Zotero.Items.getAsync(aid),version=P.arxivID(a.getField('url'));if(a.isPDFAttachment()&&version===id&&await a.getFilePathAsync()&&await IOUtils.exists(await a.getFilePathAsync())){attachment=a;break;}}let transferred=false;
-   if(!attachment?.isPDFAttachment()||!await attachment.getFilePathAsync()||!await IOUtils.exists(await attachment.getFilePathAsync())){
-    if(Zotero.Libraries.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件');onProgress({stage:'download',text:'正在下载 PDF…'});const bytes=await request(normalized.pdf,true,signal);P.assertPDF(bytes);transferred=true;onProgress({stage:'save',text:'正在保存 PDF…'});const dir=Zotero.getTempDirectory().path,path=PathUtils.join(dir,'easysch-arxiv-'+Zotero.Utilities.randomString(12)+'.pdf');
-    try{await IOUtils.write(path,bytes);attachment=await Zotero.Attachments.importFromFile({file:Zotero.File.pathToFile(path),parentItemID:item.id,title:record.title,contentType:'application/pdf'});attachment.setField('url',normalized.pdf);await attachment.saveTx({skipSelect:true});}catch(e){throw Error('附件保存失败：'+e.message+'；题录已保留，可重试下载');}finally{await IOUtils.remove(path,{ignoreAbsent:true});}
+  // As in obtainOpenPaper, the record is filed only after its PDF has arrived and
+  // passed the PDF check; a failed download leaves the library as it was.
+  const task=(async()=>{const normalized={...record,id,source:'arXiv',url:'https://arxiv.org/abs/'+id,pdf:'https://arxiv.org/pdf/'+id},found=E.findAcademicItem&&await E.findAcademicItem(normalized,target);let item=found,attachment=found&&await versionPDF(found,id),transferred=false;
+   if(attachment)await E.placeAcademicInCollection?.(found.id,target);
+   else{
+    const unchanged=found?'文库中的这条题录没有改动':'文库没有变化';if(Zotero.Libraries.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件；'+unchanged);onProgress({stage:'download',text:'正在下载 PDF…'});
+    // Only a failure that will repeat (not a PDF, over the size limit, 404) is recorded,
+    // which removes the row from offered downloads for a day; a rate limit, refusal or
+    // timeout is not. A PDF that arrives clears the address.
+    let bytes;try{bytes=await request(normalized.pdf,true,signal);P.assertPDF(bytes);}catch(error){if(signal?.aborted||error.name==='AbortError')throw error;const failure=E.discoveryPDFUnavailable(error,unchanged);if(failure.lasting)await E.markDiscoveryPDFFailure?.(normalized.pdf,error);throw failure;}
+    await E.clearDiscoveryPDFFailure?.(normalized.pdf);onProgress({stage:'save',text:'正在保存 PDF…'});const saved=await E.importAcademic(normalized,{select:false,...target});item=await Zotero.Items.getAsync(saved.id);attachment=await versionPDF(item,id);
+    if(!attachment){try{attachment=await E.attachDiscoveryPDF(item,bytes,normalized);}catch(e){throw Error('附件保存失败：'+e.message+'；题录已保留，可重试下载');}transferred=true;}
    }
    onProgress({stage:'saved',text:'PDF 已保存'});if(open)await Zotero.Reader.open(attachment.id);E.manuscripts.queueArticle(attachment.id);return{itemID:item.id,attachmentID:attachment.id,downloaded:transferred,reused:!transferred,path:await attachment.getFilePathAsync(),...target};
   })();downloads.set(key,task);try{return await task;}finally{downloads.delete(key);}
  };
+ // Only an arXiv record (arxivRecordID) takes the arXiv preprint import. A journal
+ // article whose open copy is on arxiv.org keeps the original path, its item type and journal.
  const obtain=E.obtainPaper;E.obtainPaper=async(record,options)=>{
-  if(!P.arxivID(record.id)&&!P.arxivID(record.url)&&!P.arxivID(record.pdf))return obtain(record,options);
+  if(!P.arxivRecordID(record))return obtain(record,options);
   const result=await E.importAcademicPDF(record,options);await E.workspaceOutputs?.rememberDownload(record,result);return result;
  };
 })(Zotero.Research);

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 // The corpus page (research/research-resources.mjs) on the real corpus service:
 // 停止收集 and closing the tab abort a run (WSB-14, DC-02), AI 挑选 has its own
-// purpose field (WSB-01), an empty collect explains itself (WSB-21) and every
+// purpose field (WSB-01), an empty collect explains itself (WSB-21), rows
+// without the corpus keywords are counted in the notice (CR-4) and every
 // field has a name that is not its placeholder (DC-15).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -109,6 +110,38 @@ test('collecting papers already in the corpus says so, and both import buttons u
 	let library = await readFile(new URL('../../chrome/content/zotero/research/shared/library-workspace.mjs', import.meta.url), 'utf8');
 	assert.equal(page.$('import-library').textContent, '导入 Zotero 文库');
 	assert.match(library, /node\('button','导入 Zotero 文库'\)/);
+});
+
+test('CR-4: the collect notice says how many selected rows lack the corpus keywords', async () => {
+	let inside = chapter(0, {sourceText: '超导样品的低温输运测量。'});
+	let f = serviceFixture({library: {[inside.id]: inside, [chapter(1).id]: chapter(1)}});
+	f.store.corpora.c = {id: 'c', name: '超导', researchScope: {primaryKeyword: '超导'}, entries: []};
+	let page = await loadPage(f.E);
+	await page.$('collect').click();
+	await settle();
+	assert.equal(page.$('status').textContent, '已向语料库加入 1 份完整语料，1 份不含语料库的关键词，未加入。');
+	await page.$('collect').click();
+	await settle();
+	assert.equal(page.$('status').textContent, '所选论文的 1 份素材已在语料库中，1 份不含语料库的关键词，未加入。');
+});
+
+test('CR-4: after the corpus gets its keywords, rows it already holds are reported as in the corpus', async () => {
+	let inside = chapter(0, {sourceText: '超导样品的低温输运测量。'});
+	let f = serviceFixture({library: {[inside.id]: inside, [chapter(1).id]: chapter(1)}});
+	f.store.corpora.c = {id: 'c', name: '全部', researchScope: {}, entries: []};
+	let page = await loadPage(f.E);
+	await page.$('collect').click();
+	await settle();
+	assert.equal(page.$('status').textContent, '已向语料库加入 2 份完整语料。');
+	page.$('edit-corpus-scope').click();
+	page.$('corpus-scope-primary').value = '超导';
+	page.$('corpus-scope-form').requestSubmit();
+	await settle();
+	assert.equal(f.store.corpora.c.researchScope.primaryKeyword, '超导');
+	await page.$('collect').click();
+	await settle();
+	assert.equal(page.$('status').textContent, '所选论文的 2 份素材都已在语料库中，没有新增。');
+	assert.deepEqual([...f.store.corpora.c.entries.map(row => row.materialID)], ['chapter-0', 'chapter-1']);
 });
 
 test('every corpus page field is named by a label or aria-label, not only by its placeholder', async () => {

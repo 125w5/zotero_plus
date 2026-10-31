@@ -63,6 +63,21 @@ test('DC-05 / PPT-26: a re-render during a task keeps the draft switcher and doc
  await ui.openPPTStudio({draftID:other.id});assert.equal(ui.pptDraft.id,d.id,'another draft cannot be opened while the task runs');
  release();await task;assert.equal(view.querySelector('select').disabled,false,'controls return after the task');
 });
+test('DC-10 / WSB-26: a PPT button is disabled while its action runs, and a disabled state set meanwhile applies when it ends',async()=>{
+ const E=await studio(),S=E.studio,d=await S.create([]),{ui,view}=await screen(E);ui.pptDraft=S.get(d.id);let message='';ui.status=text=>message=text;
+ const row=element('div');view.append(row);let calls=0,release,fail;
+ const save=ui.pptButton('保存草稿',()=>{calls++;return new Promise((resolve,reject)=>{release=resolve;fail=reject;});},row);
+ let job=save.onclick();assert.equal(save.disabled,true,'disabled from the click');assert.equal(save.getAttribute('aria-busy'),'true');
+ save.onclick();await tick();assert.equal(calls,1,'a second click starts nothing');release();await job;
+ assert.equal(save.disabled,false,'free after success');assert.equal(save.getAttribute('aria-busy'),null);
+ job=save.onclick();await tick();fail(Error('磁盘不可写'));await job;assert.equal(save.disabled,false,'free after a failure');assert.equal(message,'磁盘不可写');
+ // As 获取选中附件 when its selection is cleared during the batch: the page's own state wins once the run ends.
+ job=save.onclick();await tick();save.disabled=true;assert.equal(save.disabled,true);release();await job;assert.equal(save.disabled,true,'the page keeps it disabled');save.disabled=false;
+ job=save.onclick();await tick();const task=ui.pptTask(async(status,signal)=>{await new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('已取消，本次未完成内容不会写入')),{once:true}));});await tick();
+ assert.ok(ui.pptAbort,'a task started while the button ran');release();await job;assert.equal(save.disabled,true,'a task that started meanwhile keeps the button locked');
+ const bar=element('footer');bar.id='ppt-task';view.append(bar);const cancel=ui.pptButton('取消任务',()=>ui.pptAbort.abort(),bar);
+ await cancel.onclick();await task;assert.equal(cancel.disabled,false,'取消任务 is not locked by its own task');assert.match(ui.pptTaskText,/已取消/);
+});
 test('DC-06: closing the PPT page aborts its running task and keeps the reason with the draft',async()=>{
  const E=await studio(),S=E.studio,d=await S.create([]);const {ui,listeners}=await screen(E,{fallback:true});ui.initPPTStudio();ui.pptDraft=S.get(d.id);
  assert.ok(listeners.some(([type])=>type==='pagehide'),'the page listens for its own unload');

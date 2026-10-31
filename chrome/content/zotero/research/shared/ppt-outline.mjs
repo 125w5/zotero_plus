@@ -34,8 +34,9 @@ export function outlineDiff(before=[],after=[]){
  for(const row of before)if(!next.has(row.id))changes.push({kind:'removed',before:row});
  return changes;
 }
+// rows can be the store's draft (a Proxy), which structuredClone rejects; a JSON copy reads through it.
 export function applyOutlineEdit(rows,operation){
- const next=structuredClone(rows),index=next.findIndex(row=>row.id===operation.id);
+ const next=JSON.parse(JSON.stringify(rows)),index=next.findIndex(row=>row.id===operation.id);
  if(operation.type==='add'){
   if(next.length>=50)throw Error('最多保留 50 个板块');if(!operation.row?.id)throw Error('新板块缺少编号');
   next.splice(operation.afterID?Math.max(0,next.findIndex(row=>row.id===operation.afterID)+1):next.length,0,operation.row);

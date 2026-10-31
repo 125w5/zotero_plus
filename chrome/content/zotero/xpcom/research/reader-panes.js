@@ -93,14 +93,17 @@
   }
   E.showReader(reader);await reader.navigate({position});return position;
  };
- // A reference enters the library only with a reachable public PDF. obtainPaper
- // files the record before it downloads, so the PDF is resolved and probed first.
- // A pdf field alone is not open access: an OpenAlex record falls back to the
- // primary location's pdf_url even when that location is closed.
+ // A reference enters the library only with a confirmed public PDF. obtainPaper
+ // downloads before it files the record, but treats any https pdf field as public,
+ // so a pdf not marked open access is checked on OpenAlex here first. OpenAlex
+ // records now take pdf_url only from open-access locations; only one cached by an
+ // earlier version can still carry a closed location's pdf_url.
  let openRecord=record=>/^https:\/\//i.test(record.pdf||'')&&(record.oa===true||record.source==='Semantic Scholar');
  let openReason=error=>{let text=String(error?.message||'').replace(/[，,]\s*(?:请重试|未保存附件)$/,'');return /\p{Script=Han}/u.test(text)?text:'来源暂时无法访问';};
  E.obtainReferencePaper=async(record,options={})=>{
-  if(Arxiv.arxivID(record.id)||Arxiv.arxivID(record.url)||Arxiv.arxivID(record.pdf))return E.obtainPaper(record,options);
+  // As in arxiv.js, only an arXiv record (arxivRecordID) is an arXiv preprint. A
+  // journal article whose open copy is on arxiv.org goes through the checks below.
+  if(Arxiv.arxivRecordID(record))return E.obtainPaper(record,options);
   let target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{},pinned={...options,...target};
   let existing=E.findAcademicItem&&await E.findAcademicItem(record,pinned);
   if(existing&&await E.library.localPDF(existing))return E.obtainPaper(record,pinned);
@@ -116,7 +119,8 @@
   }
   if(!candidate.pdf)throw Error('未找到公开 PDF；'+unchanged+'，可稍后重试');
   if(Zotero.Libraries?.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件；'+unchanged);
-  if(E.verifyDiscoveryPDF){let check=await E.verifyDiscoveryPDF(candidate.pdf,{signal:options.signal});if(!check?.available)throw Error('公开 PDF 暂不可用：'+openReason({message:check?.error})+'；'+unchanged+'，可稍后重试');}
+  // Worded as obtainPaper words its own check: a failure that will repeat is not offered for retry.
+  if(E.verifyDiscoveryPDF){let check=await E.verifyDiscoveryPDF(candidate.pdf,{signal:options.signal});if(!check?.available)throw E.discoveryPDFUnavailable(check?.error,unchanged);}
   try{return await E.obtainPaper(candidate,pinned);}
   catch(error){
    let added=!existing&&!/题录已保留|题录已加入/.test(error.message)&&E.findAcademicItem&&await E.findAcademicItem(record,pinned).catch(()=>null);

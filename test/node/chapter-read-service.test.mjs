@@ -13,6 +13,7 @@ import * as Selection from '../../chrome/content/zotero/research/manuscript/sele
 import * as Corpus from '../../chrome/content/zotero/research/shared/corpus-library.mjs';
 import * as Exclusions from '../../chrome/content/zotero/research/shared/material-exclusions.mjs';
 import * as JsonStream from '../../chrome/content/zotero/research/shared/json-stream.mjs';
+import * as ProjectCopy from '../../chrome/content/zotero/research/shared/project-copy.mjs';
 import { requestAssemblyWritingPreview } from '../../chrome/content/zotero/research/manuscript/assembly-writing-result.mjs';
 import { runAssemblyWritingRequest, captureAssemblyWritingRequest } from '../../chrome/content/zotero/research/manuscript/assembly-writing-request.mjs';
 import { readProject, methodReply, deepFreeze } from './fixtures/chapter-read-project.mjs';
@@ -73,7 +74,7 @@ async function service(project = readProject(), { replies = [], realRequest = fa
 			return reply;
 		}
 	};
-	let modules = { 'chat-completion.mjs': chat, 'json-stream.mjs': JsonStream, 'manuscript-model.mjs': M, 'research-ai-policy.mjs': Policy, 'material-exclusions.mjs': Exclusions, 'topic-materials.mjs': {}, 'material-content.mjs': {}, 'research-thread.mjs': Thread, 'manuscript-assessment.mjs': Assessment, 'assembly-writing-preview.mjs': Writing, 'writing-framework.mjs': Framework, 'selection-target.mjs': Selection, 'corpus-library.mjs': Corpus };
+	let modules = { 'chat-completion.mjs': chat, 'json-stream.mjs': JsonStream, 'manuscript-model.mjs': M, 'research-ai-policy.mjs': Policy, 'material-exclusions.mjs': Exclusions, 'topic-materials.mjs': {}, 'material-content.mjs': {}, 'research-thread.mjs': Thread, 'manuscript-assessment.mjs': Assessment, 'assembly-writing-preview.mjs': Writing, 'writing-framework.mjs': Framework, 'selection-target.mjs': Selection, 'corpus-library.mjs': Corpus, 'project-copy.mjs': ProjectCopy };
 	let item = id => ({ id, deleted: false, isRegularItem: () => true });
 	let Zotero = { Research: E, Utilities: { randomString: () => 'fixed' }, getMainWindow: () => ({ document: { getElementById: () => null }, AbortController }), Prefs: { get: () => '/python' }, Items: { getAsync: async ids => ids.map(item) }, Styles: { get: () => ({ getCiteProc: () => ({ updateItems() {}, makeBibliography: () => [{}, ['Author A. Paper one.', 'Author B. Paper two.']], free() {} }) }) } };
 	let context = vm.createContext({ Zotero, ChromeUtils: { importESModule: url => { let module = modules[url.split('/').at(-1)]; if (!module) throw Error('Unexpected import ' + url); return module; } }, URL, AbortController, PathUtils: { join: (...parts) => parts.join('/') }, IOUtils: { writeUTF8: async (path, text) => { written.set(path, text); } } });
@@ -226,7 +227,12 @@ test('views defer to replaced accessors, read edits batch into one write, a copy
 	f.state.projectTaskPlans.p = { version: 1, items: [] };
 	let copy = await f.A.copy('p');
 	assert.notEqual(copy.id, 'p');
-	assert.deepEqual(plain(f.state.projectReadings[copy.id]), plain(f.state.projectReadings.p));
+	let readsOf = id => plain({ nodes: Object.fromEntries(Object.entries(f.state.projectReadings[id].chapters).map(([sectionID, read]) => [sectionID, read.nodes])), edits: f.state.projectReadings[id].edits });
+	assert.deepEqual(readsOf(copy.id), readsOf('p'), 'the copy carries the read points and the edits');
+	// The copy has a new plan version id, so its stored basis is recomputed: equal
+	// bytes would read 待更新 in the copy.
+	assert.equal(f.A.chapterReadStates('p').s2.state, 'current');
+	assert.deepEqual(plain(f.A.chapterReadStates(copy.id)), plain(f.A.chapterReadStates('p')), 'the copy reads the same states');
 	assert.deepEqual(plain(f.state.projectTaskPlans[copy.id]), plain(f.state.projectTaskPlans.p));
 	await f.A.remove('p');
 	assert.ok(f.state.manuscriptTrash.p && !f.state.manuscripts.p);

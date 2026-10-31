@@ -8,6 +8,9 @@ let root=new URL('../../chrome/content/zotero/',import.meta.url);
 let shared=async name=>import(new URL('research/shared/'+name,root));
 let Matcher=await shared('reference-matcher.mjs'),Metadata=await shared('reference-metadata.mjs'),Arxiv=await shared('arxiv.mjs'),Detail=await shared('reader-reference-detail.mjs'),Geometry=await shared('annotation-geometry.mjs'),ActiveReader=await shared('active-reader.mjs');
 let tick=async(n=6)=>{for(let i=0;i<n;i++)await new Promise(resolve=>setImmediate(resolve));};
+// The application loads discovery.js before reader-panes.js; the pane words a failed PDF
+// check with discovery.js's own discoveryPDFUnavailable, taken here from the real file.
+let discoveryWording=(()=>{let E={};vm.runInNewContext(fs.readFileSync(new URL('xpcom/research/discovery.js',root),'utf8'),{Zotero:{Research:E,addShutdownListener(){},getMainWindow:()=>({AbortController})},ChromeUtils:{importESModule:url=>url.includes('reference-matcher')?Matcher:url.includes('workspace-outputs')?{installWorkspaceOutputs(){}}:url.includes('discovery-feed')?{installDiscoveryFeed(){},installJournalSubscriptionTimer(){}}:{}}});return E.discoveryPDFUnavailable;})();
 
 // Just enough DOM for the reference pane: tags, classes, ids, closest and events.
 class FakeNode{
@@ -43,7 +46,7 @@ function fixture({readers:makeReaders,collect}={}){
  let makeReader=(extra={})=>({itemID:7,_window:win,_isTabClosed:false,_isUninitialized:false,_initPromise:Promise.resolve(),_internalReader:{_primaryView:view},navigate:async location=>{events.push('navigate:'+location.position.pageIndex);},...extra});
  let readers=makeReaders?makeReaders({makeReader,win}):[makeReader({tabID:'reader-tab'})];
  let attachment={id:7,parentID:null,libraryID:1,isPDFAttachment:()=>true};
- let E={library:{localPDF:async()=>attachment,describe:item=>({id:item.id,title:'Current paper'})},referencesFromPDF:async()=>({records:[]}),collectReferences:collect||(async()=>({references:[],records:[]}))};
+ let E={library:{localPDF:async()=>attachment,describe:item=>({id:item.id,title:'Current paper'})},referencesFromPDF:async()=>({records:[]}),collectReferences:collect||(async()=>({references:[],records:[]})),discoveryPDFUnavailable:discoveryWording};
  let modules={'reference-matcher.mjs':Matcher,'reference-metadata.mjs':Metadata,'arxiv.mjs':Arxiv,'reader-reference-detail.mjs':{...Detail,prepareReferenceDetailStyles:async()=>{}},'paper-overview-data.mjs':{},'annotation-geometry.mjs':Geometry,'active-reader.mjs':ActiveReader,'reader-rapid-reading.mjs':{installRapidReading(){}}};
  let Zotero={Research:E,Reader:{_readers:readers,getByTabID:()=>null,open:async()=>{throw Error('a live reader must be reused');}},Items:{get:id=>id===7?attachment:null,getAsync:async id=>id===7?attachment:null},getMainWindow:()=>win,Promise:{delay:ms=>new Promise(resolve=>setTimeout(resolve,ms))},logError(){},Utilities:{Internal:{copyTextToClipboard(){}}}};
  let context={Zotero,Cu:{cloneInto:value=>value,waiveXrays:value=>value,unwaiveXrays:value=>value},ChromeUtils:{importESModule:url=>{let name=url.split('/').pop();if(!modules[name])throw Error('unexpected module '+url);return modules[name];}}};
@@ -128,14 +131,15 @@ test('a failed abstract read says so in the detail and its retry asks the source
 
 test('a closed-access pdf_url or a landing page is not taken for a public PDF',async()=>{
  let f=fixture(),obtained=[],lookups=[],probes=[];f.E.obtainPaper=async record=>{obtained.push(record);return {itemID:1,attachmentID:2};};f.E.findAcademicItem=async()=>null;
- // reference-metadata keeps OpenAlex primary_location.pdf_url even when that location is closed.
+ // An OpenAlex record cached by an earlier lookup can still carry a closed location's pdf_url.
  let closed={id:'https://openalex.org/W1',source:'OpenAlex',title:'A closed access cited method',pdf:'https://publisher.example/pdfdirect/closed.pdf'};
  f.E.requestProvider=async url=>{lookups.push(url);return JSON.stringify({best_oa_location:null,locations:[{is_oa:false,pdf_url:closed.pdf}]});};
  await assert.rejects(f.E.obtainReferencePaper(closed,{open:false}),/未找到公开 PDF；文库没有变化/);
  assert.deepEqual(lookups,['https://api.openalex.org/works/W1'],'the work is checked for an open-access location');assert.equal(obtained.length,0,'nothing is filed');
  f.E.verifyDiscoveryPDF=async url=>{probes.push(url);return {available:false,error:'来源返回非 PDF 内容，未保存附件'};};
  f.E.requestProvider=async()=>JSON.stringify({best_oa_location:{is_oa:true,pdf_url:'https://repository.example/landing'}});
- await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/landing',title:'Landing'},{open:false}),/^Error: 公开 PDF 暂不可用：来源返回非 PDF 内容；文库没有变化，可稍后重试$/);
+ // A landing page that returns no PDF does so on every attempt: no retry is offered.
+ await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/landing',title:'Landing'},{open:false}),/^Error: 来源返回非 PDF 内容；文库没有变化$/);
  assert.deepEqual(probes,['https://repository.example/landing']);assert.equal(obtained.length,0,'a URL that does not return a PDF files nothing');
  f.E.verifyDiscoveryPDF=async()=>({available:true});f.E.requestProvider=async()=>{throw Error('an open-access Semantic Scholar PDF needs no lookup');};
  await f.E.obtainReferencePaper({source:'Semantic Scholar',doi:'10.1234/s2',title:'S2',pdf:'https://s2.example/open.pdf'},{open:false});assert.equal(obtained.at(-1).pdf,'https://s2.example/open.pdf');

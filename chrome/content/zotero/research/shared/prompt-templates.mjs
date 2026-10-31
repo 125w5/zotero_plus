@@ -30,7 +30,8 @@ export function installPromptTemplates(doc,E,{selector='[data-ai-prompt],#ai-pro
   const close=()=>{closeTimer=setTimeout(()=>{if(doc.activeElement!==input&&!panel.contains(doc.activeElement)&&!running)panel.hidden=true;},150);};input.addEventListener('blur',close);panel.addEventListener('focusout',close);
   input.addEventListener('compositionstart',()=>composing=true);input.addEventListener('compositionend',()=>composing=false);
   input.addEventListener('keydown',e=>{if(e.isComposing||composing||e.keyCode===229)return;if(e.key==='Tab'&&!e.shiftKey&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();e.stopPropagation();open();panel.querySelector('button')?.focus();}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();panel.hidden=true;}});
-  panel.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();input.focus();panel.hidden=true;}});
+  // As in the input, an Esc in the list closes only the list; the page's own Esc waits for the next press.
+  panel.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();input.focus();panel.hidden=true;}});
  };
  const scan=()=>doc.querySelectorAll(selector).forEach(bind);scan();const observer=new doc.defaultView.MutationObserver(scan);observer.observe(doc.body||doc.documentElement,{childList:true,subtree:true});const dispose=()=>observer.disconnect();doc.defaultView.addEventListener('pagehide',dispose,{once:true});return {scan,dispose};
 }

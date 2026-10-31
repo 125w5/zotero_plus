@@ -16,16 +16,12 @@ Object.assign(EasySchUI, {
 			let folder = await this.E.pick(window, '选择导出目录（每次创建独立资料包）', 'folder');
 			if (!folder) return;
 			this.status('正在导出，包含引用、公式与期刊样式…');
-			this.$('export').disabled = true;
-			try {
-				let result = await this.E.exportDocument({ folder, title: this.$('draft-title').value,
-					markdown: this.$('draft').value, papers: this.papers, format: this.$('export-format').value });
-				this.status(`已导出：${result.path}${result.warnings.length ? '；请查看格式检查提示' : ''}`);
-				this.$('lint-result').replaceChildren(...result.warnings.map(s => this.el('p', s, 'warning')));
-				let open = this.el('button', '打开导出文件所在文件夹');
-				open.addEventListener('click', () => this.E.reveal(result.path)); this.$('lint-result').append(open);
-			}
-			finally { this.$('export').disabled = false; }
+			let result = await this.E.exportDocument({ folder, title: this.$('draft-title').value,
+				markdown: this.$('draft').value, papers: this.papers, format: this.$('export-format').value });
+			this.status(`已导出：${result.path}${result.warnings.length ? '；请查看格式检查提示' : ''}`);
+			this.$('lint-result').replaceChildren(...result.warnings.map(s => this.el('p', s, 'warning')));
+			let open = this.el('button', '打开导出文件所在文件夹');
+			open.addEventListener('click', () => this.E.reveal(result.path)); this.$('lint-result').append(open);
 		});
 		this.bind('biblatex', async () => {
 			if (!this.papers.length) throw new Error('请先选择文献');

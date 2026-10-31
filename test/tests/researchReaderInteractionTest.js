@@ -93,8 +93,11 @@ describe('Reader interaction repairs 2026-09-19',function(){
    assert.include(panel.querySelector('header span').textContent,pageNo+' /','右页码跟随左侧 PDF');
    const rightScroll=panel.querySelector('.translation-scroller');
    const rawWidth=pageMetrics[current].width,rawHeight=pageMetrics[current].height;
-   assert.closeTo(sheet.getBoundingClientRect().width,sourcePaper.getBoundingClientRect().width,1,'原文与译文纸张共用实际 CSS 宽度');
-   assert.closeTo(sheet.getBoundingClientRect().height,sourcePaper.getBoundingClientRect().height,1,'原文与译文纸张共用实际 CSS 高度');
+   // PDF.js rounds the page box down to --scale-round-x/y (2px at 150%; unset,
+   // so 1px, at integer device pixel ratios). The translated sheet is not rounded.
+   const roundStep=axis=>parseFloat(sourcePaper.style.getPropertyValue('--scale-round-'+axis))||1;
+   assert.closeTo(sheet.getBoundingClientRect().width,sourcePaper.getBoundingClientRect().width,roundStep('x')+.5,'原文与译文纸张共用实际 CSS 宽度');
+   assert.closeTo(sheet.getBoundingClientRect().height,sourcePaper.getBoundingClientRect().height,roundStep('y')+.5,'原文与译文纸张共用实际 CSS 高度');
    assert.closeTo(sheet.getBoundingClientRect().top,Cu.waiveXrays(app.pdfViewer.getPageView(pageNo-1)).div.getBoundingClientRect().top+view._iframeWindow.frameElement.getBoundingClientRect().top,2,'原文与译文纸张顶端在同一外层窗口坐标中对齐');
    assert.notExists(pdfDoc.querySelector('.easysch-translation-box'),'左侧原 PDF 不被译文层覆盖');
    assert.isAbove(parseFloat(box.style.width),0);assert.isAbove(parseFloat(box.style.height),0);
@@ -116,8 +119,8 @@ describe('Reader interaction repairs 2026-09-19',function(){
    await frames();
    assert.isTrue(wheel.defaultPrevented,'Ctrl+滚轮被右译文视图接管');
    assert.notEqual(app.pdfViewer.currentScaleValue,originalScale,'右侧 Ctrl+滚轮同步改变原文 PDF 缩放');
-   assert.closeTo(sheet.getBoundingClientRect().width,sourcePaper.getBoundingClientRect().width,1,'缩放后两侧纸张仍同宽');
-   assert.closeTo(sheet.getBoundingClientRect().height,sourcePaper.getBoundingClientRect().height,1,'缩放后两侧纸张仍同高');
+   assert.closeTo(sheet.getBoundingClientRect().width,sourcePaper.getBoundingClientRect().width,roundStep('x')+.5,'缩放后两侧纸张仍同宽');
+   assert.closeTo(sheet.getBoundingClientRect().height,sourcePaper.getBoundingClientRect().height,roundStep('y')+.5,'缩放后两侧纸张仍同高');
    assert.closeTo(sheet.getBoundingClientRect().top-rightScroll.getBoundingClientRect().top,sourcePaper.getBoundingClientRect().top-leftScroll.getBoundingClientRect().top,2,'共享缩放后两侧保留同一纵向阅读位置');
    if(leftScroll.scrollHeight>leftScroll.clientHeight+40&&rightScroll.scrollHeight>rightScroll.clientHeight+40){
     // Ctrl+wheel intentionally suppresses bidirectional synchronization for

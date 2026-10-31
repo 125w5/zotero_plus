@@ -57,10 +57,15 @@
   try{if(item&&!item.deleted){author=String(item.getField('firstCreator')||'').trim();year=String(item.getField('date')||'').match(/(?:19|20)\d{2}/u)?.[0]||'';title=String(item.getField('shortTitle')||item.getField('title')||title).trim();}}catch{/* Partly loaded item: fall back to the saved title. */}
   return author?[clipAuthor(author),year].filter(Boolean).join(' '):title?[clip(title,24),year].filter(Boolean).join(' '):'';
  };
+ // A title the user typed is shown as written, also without Chinese. userEdited
+ // also follows an edit of the 说明 alone, so a library card counts as renamed
+ // only when editAsset kept an earlier, different title in its history. A card
+ // only in this project keeps no history; its userEdited is taken as a rename.
+ let renamed=m=>!!(m.userEdited&&m.title)&&(m.assetID?(m.history||[]).some(row=>typeof row?.title==='string'&&row.title!==m.title):true);
  A.titleFor=m=>{if(m.sectionType&&m.userEdited&&m.title&&m.title!==m.section)return m.title;const reference=A.paperReference(m);
   // The heading takes the room the type and the reference leave.
   if(m.sectionType){let heading=m.section&&m.section!=='未识别章节'?numberedHeading(m.section):'',room=Math.max(12,LABEL_LENGTH-m.sectionType.length-(reference?reference.length+3:0)-3);return [m.sectionType,heading&&heading!==m.sectionType?clip(heading,room):'',reference].filter(Boolean).join(' · ');}
-  const translated=description(descriptionKey(m))?.titleZh,generic=label=>[label,reference].filter(Boolean).join(' · ');return String(m.id).startsWith('passage-')?translated||generic('论文原文素材'):language.hasChinese(m.title)?m.title:translated||generic('文献素材');};
+  const translated=description(descriptionKey(m))?.titleZh,generic=label=>[label,reference].filter(Boolean).join(' · ');return String(m.id).startsWith('passage-')?translated||generic('论文原文素材'):language.hasChinese(m.title)||renamed(m)?m.title:translated||generic('文献素材');};
  A.summaryFor=m=>language.chineseSummary({...m,...description(descriptionKey(m))});
  // Read storage once for a list/search pass, rather than cloning the workspace per card.
  A.summaryReader=()=>{let descriptions=view('materialDescriptions')||{};if(unwrittenDescriptions.size||writingDescriptions.size)descriptions={...descriptions,...Object.fromEntries(writingDescriptions),...Object.fromEntries(unwrittenDescriptions)};return m=>language.chineseSummary({...m,...descriptions[descriptionKey(m)]});};

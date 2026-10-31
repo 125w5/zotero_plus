@@ -12,13 +12,15 @@ export function notebookBrowser({E,N,A,id,$,el,button,status,run,onPaperScopeRef
  let anchor=null,visibleLimit=60;const state=()=>materialCatalogState(N.project(id));
  let paperScope;
  const paperActions=el('div');paperActions.className='preparation-paper-actions';$('project-paper-summary').after(paperActions);const collect=button('搜集文献',()=>document.body.classList.contains('plan-view')?document.querySelector('[data-action=recommended-papers]')?.click():E.openWorkflow('search',{projectID:id,collectionID:paperScope?.collectionID,query:N.project(id).researchGoal||N.project(id).title,researchScope:researchScopeFromProject(N.project(id))}),paperActions);collect.dataset.action='collect-project-papers';button('导入语料',()=>E.openResearchResources(window.parent,{projectID:id}),paperActions);button('刷新',()=>refreshPaperSelection().catch(error=>status(error.message)),paperActions);
+ // Showing the page creates no folder. A project without one gets it from 新建文件夹,
+ // a folder chosen here, or the first saved paper choice or task.
  async function refreshPaperSelection(){
-  const folders=await N.paperFolders(),folder=await N.ensureProjectCollection(id);paperScope=folder;const select=$('project-paper-folder');select.replaceChildren();for(const row of folders.collections){const option=el('option',row.path||row.name);option.value=String(row.id);select.append(option);}if(!folders.collections.some(row=>row.id===folder.collectionID)){const option=el('option',folder.name);option.value=String(folder.collectionID);select.append(option);}select.value=String(folder.collectionID);
+  const folders=await N.paperFolders(),folder=await N.ensureProjectCollection(id,{create:false});paperScope=folder;const select=$('project-paper-folder');select.replaceChildren();if(!folder){const none=el('option','未选择文献文件夹');none.value='';select.append(none);}for(const row of folders.collections){const option=el('option',row.path||row.name);option.value=String(row.id);select.append(option);}if(folder&&!folders.collections.some(row=>row.id===folder.collectionID)){const option=el('option',folder.name);option.value=String(folder.collectionID);select.append(option);}select.value=folder?String(folder.collectionID):'';
   $('project-paper-list').replaceChildren();
-  $('project-paper-summary').textContent=folder.papers.length?folder.selectedPaperIDs.length+' 篇 · 下载保存位置':'新下载的论文保存在此文件夹';
+  $('project-paper-summary').textContent=!folder?'尚未选择文献文件夹，可新建或选择已有文件夹':folder.papers.length?folder.selectedPaperIDs.length+' 篇 · 下载保存位置':'新下载的论文保存在此文件夹';
   await onPaperScopeRefresh();
  }
- $('project-paper-folder').onchange=()=>N.setPaperScope(id,{collectionID:Number($('project-paper-folder').value)}).then(refreshPaperSelection).catch(error=>status(error.message));
+ $('project-paper-folder').onchange=()=>{if(!$('project-paper-folder').value)return;N.setPaperScope(id,{collectionID:Number($('project-paper-folder').value)}).then(refreshPaperSelection).catch(error=>status(error.message));};
  // A project keeps one folder of its own: a repeated click reuses it.
  $('project-new-folder').title='为本项目新建文献文件夹；已有项目文件夹时直接使用它';
  $('project-new-folder').onclick=()=>N.ensureProjectCollection(id,{newFolder:true}).then(async folder=>{await refreshPaperSelection();status(folder?.reused?'已使用本项目的文件夹“'+folder.name+'”，未重复新建':'已新建文件夹“'+folder.name+'”，新下载的论文保存在这里');}).catch(error=>status(error.message));

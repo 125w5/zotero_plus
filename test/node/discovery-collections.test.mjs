@@ -51,6 +51,16 @@ test('the arXiv acquisition wrapper also honors explicit project destinations an
  const{E,items,requests,opened}=await fixture({withArxiv:true}),record={id:'2401.12345v2',source:'arXiv',title:'A versioned paper',url:'https://arxiv.org/abs/2401.12345v2',pdf:'https://arxiv.org/pdf/2401.12345v2',authors:[]};const first=await E.obtainPaper(record,{collectionID:7,open:false}),second=await E.obtainPaper(record,{collectionID:9,open:true});assert.equal(first.itemID,second.itemID);assert.equal(first.attachmentID,second.attachmentID);assert.equal(requests.length,1);assert.deepEqual(items.get(first.itemID).getCollections().sort(),[7,9]);assert.deepEqual(opened,[first.attachmentID]);
 });
 
+test('a failed arXiv PDF download leaves no empty record, and a later success downloads before it files',async()=>{
+ const{E,Zotero,items,writes}=await fixture({withArxiv:true}),record={id:'2401.54321v1',source:'arXiv',title:'A paper behind a denied PDF',url:'https://arxiv.org/abs/2401.54321v1',pdf:'https://arxiv.org/pdf/2401.54321v1',authors:[]},request=Zotero.HTTP.request;
+ Zotero.HTTP.request=async()=>({status:403,response:new ArrayBuffer(0)});
+ await assert.rejects(E.obtainPaper(record,{collectionID:7,open:false}),/^Error: 公开 PDF 暂不可用：PDF 无法获取（HTTP 403）；文库没有变化，可稍后重试$/);
+ assert.equal(items.size,0,'no item without an attachment');assert.equal(writes.length,0);
+ let filed=null;Zotero.HTTP.request=async(...args)=>{filed??=items.size;return request(...args);};
+ const saved=await E.obtainPaper(record,{collectionID:7,open:false});
+ assert.equal(filed,0,'the PDF is fetched before anything is filed');assert.equal(items.get(saved.itemID).itemType,'preprint');assert.deepEqual(items.get(saved.itemID).getCollections(),[7]);assert.equal(items.get(saved.itemID).getAttachments().length,1);
+});
+
 test('an HTML or denied response never becomes a PDF attachment and is excluded from cached downloadable candidates',async()=>{
  const{E,Zotero,record,items}=await fixture();for(const response of [{status:200,response:new TextEncoder().encode('<html>Access denied</html>').buffer},{status:403,response:new ArrayBuffer(0)}]){
   // A separate address per response, so the probe cache cannot answer the second case.

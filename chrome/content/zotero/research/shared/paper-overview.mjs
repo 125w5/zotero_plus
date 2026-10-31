@@ -18,12 +18,9 @@ export function installPaperOverview(E,{Zotero,IOUtils}){
   const path=await attachment.getFilePathAsync();if(!path)return null;const stat=await IOUtils.stat(path),cacheKey=[attachment.id,stat.lastModified,stat.size].join(':');let task=abstractTasks.get(cacheKey);
   if(!task){task=(async()=>{let source='';try{const cache=Zotero.Fulltext?.getItemCacheFile?.(attachment);if(cache?.path&&await IOUtils.exists(cache.path))source=await IOUtils.readUTF8(cache.path);}catch{}if(!source)source=(await Zotero.PDFWorker.getFullText(attachment.id,null)).text||'';const result=abstractFromExtractedDocument({paragraphs:[{sourceText:source}]});return result?{...result,attachmentID:attachment.id}:null;})();boundedMapSet(abstractTasks,cacheKey,task,24);task.catch(()=>{if(abstractTasks.get(cacheKey)===task)abstractTasks.delete(cacheKey);});}return task;
  };
- // Brief and full abstract views share machine-translation tasks.
+ // Only the full abstract view translates; its columns and reopening share one task.
  const translate=text=>{let task=translations.get(text);if(!task){task=Promise.resolve().then(()=>E.quickTranslate(text,undefined,{purpose:'material'})).then(result=>{if(!result?.text?.trim())throw Error('摘要译文为空');return result.text;});boundedMapSet(translations,text,task,24);task.catch(()=>{if(translations.get(text)===task)translations.delete(text);});}return task;};
- E.paperAbstractBrief=async text=>{
-  const excerpt=abstractExcerpt(text),chinese=(excerpt.text.match(/[\u3400-\u9fff]/g)||[]).length>(excerpt.text.match(/[A-Za-z]/g)||[]).length;
-  return {...excerpt,text:chinese?excerpt.text:await translate(excerpt.text)};
- };
+ const chineseText=text=>(text.match(/[\u3400-\u9fff]/g)||[]).length>(text.match(/[A-Za-z]/g)||[]).length;
  E.renderPaperAbstract=async(host,item)=>{
   if(!item)return;const request=host._abstractRequest='paper-abstract-request-'+(E._abstractRequestSequence=(E._abstractRequestSequence||0)+1),doc=host.ownerDocument;
   await preparePaperOverviewStyles(doc,{Zotero});if(host._abstractRequest!==request||!host.isConnected)return;
@@ -39,7 +36,7 @@ export function installPaperOverview(E,{Zotero,IOUtils}){
   if(!abstract?.text){box.append(el('p','题录和本地 PDF 暂无可读取的摘要。','paper-abstract-status'));return;}
   const terms=[...tags,...(abstract.keywords||[])];
   const content=(value,lang)=>{const paragraph=el('p',undefined,'paper-abstract-content');paragraph.lang=lang;for(const segment of abstractKeywordSegments(value,terms)){if(segment.keyword)paragraph.append(el('mark',segment.text,'overview-keyword'));else paragraph.append(doc.createTextNode(segment.text));}return paragraph;};
-  const chineseSource=(abstract.text.match(/[\u3400-\u9fff]/g)||[]).length>(abstract.text.match(/[A-Za-z]/g)||[]).length;
+  const chineseSource=chineseText(abstract.text);
   const original=el('section',undefined,'paper-abstract-original');original.append(el('h4',chineseSource?'中文摘要':'英文原文'),content(abstract.text,chineseSource?'zh':'en'));box.append(original);
   if(chineseSource)return;
   const translated=el('section',undefined,'paper-abstract-chinese'),status=el('p','正在翻译中文摘要…','paper-abstract-status');status.setAttribute('role','status');translated.append(el('h4','中文译文'),status);box.append(translated);
@@ -64,7 +61,7 @@ export function installPaperOverview(E,{Zotero,IOUtils}){
   const box=el('section',undefined,'paper-overview'),coverSlot=el('div',undefined,'paper-overview-cover');
   const status=el('small','正在读取首页…','overview-status'),meta=el('section',undefined,'paper-overview-info');
   coverSlot.append(status);box.append(coverSlot,meta);host.append(box);
-  let metadataSignature,currentMetadata=metadata,abstractSequence=0,abstractKey=documentKey(attachment?.id);
+  let metadataSignature,currentMetadata=metadata,abstractSequence=0,abstractKey=documentKey(attachment?.id),fullAbstract;
   const renderMetadata=value=>{
    metadataSignature=JSON.stringify(value);
    const heading=el('div',undefined,'paper-overview-heading'),title=el('h3',value.title),edit=el('button','编辑','overview-edit');
@@ -97,20 +94,20 @@ export function installPaperOverview(E,{Zotero,IOUtils}){
    const sequence=++abstractSequence;let abstract;
    try{abstract=await E.paperAbstract(attachment,parent);}catch(error){Zotero.debug('论文摘要本地读取：'+error.message);}
    if(!valid()||sequence!==abstractSequence)return;
-   box.querySelector('.overview-abstract')?.remove();if(!abstract?.text)return;
+   box.querySelector('.overview-abstract')?.remove();fullAbstract?.remove();fullAbstract=null;if(!abstract?.text)return;
    const section=el('section',undefined,'overview-abstract'),head=el('div',undefined,'paper-overview-heading'),label=el('h4','摘要');
    const expand=el('button','阅读全文','overview-abstract-open'),content=el('p',undefined,'overview-abstract-content');
    expand.type='button';expand.title='查看完整双语摘要';expand.setAttribute('aria-label',expand.title);
    head.append(label,expand);section.append(head,content);section.dataset.source=abstract.kind;
    section.title=abstract.kind==='pdf'?'来自本地 PDF 的摘要':'题录中的摘要';box.append(section);
-   content.lang='zh';content.dataset.view='excerpt';content.textContent='正在翻译摘要…';
-   const open=()=>details?.selectResearchPane?.('abstract');expand.hidden=!details;expand.onclick=open;
-   if(details){content.setAttribute('role','button');content.tabIndex=0;content.title='查看完整双语摘要';content.onclick=open;content.onkeydown=event=>{if(['Enter',' '].includes(event.key)&&!event.isComposing){event.preventDefault();void open();}};}
-   try{
-    const excerpt=await E.paperAbstractBrief(abstract.text);if(!valid()||sequence!==abstractSequence)return;
-    content.replaceChildren();const terms=[...(currentMetadata.tags||[]),...(abstract.keywords||[])];
-    for(const segment of abstractKeywordSegments(excerpt.text,terms)){if(segment.keyword)content.append(el('mark',segment.text,'overview-keyword'));else content.append(doc.createTextNode(segment.text));}
-   }catch(error){if(!valid()||sequence!==abstractSequence)return;content.textContent='中文简述暂不可用';content.title=error.message;}
+   // The overview shows the abstract's own sentences; only the full abstract view translates.
+   // Hosts without item details (workbench preview, file details) have no abstract pane, so the
+   // full view replaces the excerpt below this overview; a changed abstract or a new paper drops it.
+   const excerpt=abstractExcerpt(abstract.text);content.lang=chineseText(excerpt.text)?'zh':'en';content.dataset.view='excerpt';
+   const open=()=>{if(details)return details.selectResearchPane?.('abstract');if(section.hidden||!valid()||sequence!==abstractSequence)return null;section.hidden=true;fullAbstract=el('div',undefined,'overview-abstract-full');host.append(fullAbstract);return E.renderPaperAbstract(fullAbstract,item);};expand.onclick=open;
+   content.setAttribute('role','button');content.tabIndex=0;content.title='查看完整双语摘要';content.onclick=open;content.onkeydown=event=>{if(['Enter',' '].includes(event.key)&&!event.isComposing){event.preventDefault();void open();}};
+   const terms=[...(currentMetadata.tags||[]),...(abstract.keywords||[])];
+   for(const segment of abstractKeywordSegments(excerpt.text,terms)){if(segment.keyword)content.append(el('mark',segment.text,'overview-keyword'));else content.append(doc.createTextNode(segment.text));}
   };
   const refreshMetadata=()=>{
    if(!valid())return;

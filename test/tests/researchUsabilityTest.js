@@ -14,27 +14,36 @@ describe('EasySch usability repairs 2026-09-18',function(){
  it('only offers local PDF files, and keeps picker controls visible at laptop size',async()=>{
   const missing=await createDataObject('item',{title:'未下载的题录不得进入阅读'}),candidates=await E.library.readingCandidates();assert.isTrue(candidates.some(p=>p.id===paper.id));assert.isFalse(candidates.some(p=>p.id===missing.id));
   await ui.chooseResearchPapers();const doc=ui.$('view-research').ownerDocument,dialog=doc.getElementById('research-paper-picker');assert.isTrue(dialog.open);
-  const input=dialog.querySelector('input');input.value=paper.getField('title');input.dispatchEvent(new doc.defaultView.Event('input'));
-  const row=dialog.querySelector('.picker-row'),checkbox=row.querySelector('input');row.click();assert.isTrue(checkbox.checked);assert.isTrue(row.classList.contains('selected'));
+  // The search box is the dialog's own input; the first input is the header's 全选 checkbox.
+  const input=dialog.querySelector(':scope>input'),all=dialog.querySelector('.selection-toolbar input[type=checkbox]'),count=()=>dialog.querySelector('.selection-toolbar [role=status]').textContent,filter=text=>{input.value=text;input.dispatchEvent(new doc.defaultView.Event('input'));};
+  // The main pane's selection preselects papers; clear it with 全选 so each step starts from nothing chosen.
+  for(let n=0;n<2&&!count().includes('已选 0 篇');n++)all.click();assert.include(count(),'已选 0 篇');
+  filter(paper.getField('title'));assert.lengthOf(dialog.querySelectorAll('.picker-row'),1,'搜索只留下本测试的论文');
+  const row=dialog.querySelector('.picker-row'),checkbox=row.querySelector('input');row.click();assert.isTrue(checkbox.checked);assert.isTrue(row.classList.contains('selected'));assert.include(count(),'已选 1 篇');
   const rect=checkbox.getBoundingClientRect(),label=row.querySelector('span').getBoundingClientRect(),actions=dialog.querySelector('.picker-actions').getBoundingClientRect();assert.isBelow(Math.abs((rect.top+rect.height/2)-(label.top+label.height/2)),8);assert.isBelow(actions.bottom,doc.defaultView.innerHeight);
-  dialog.querySelector('.selection-toolbar button').click();assert.include(dialog.textContent,'已选 1 篇');await shot('01-compact-picker.png');dialog.close();
+  row.click();filter(paper.getField('title'));assert.isFalse(all.checked);assert.isFalse(all.indeterminate);all.click();assert.isTrue(all.checked);assert.isTrue(dialog.querySelector('.picker-row input').checked);assert.include(count(),'已选 1 篇');await shot('01-compact-picker.png');dialog.close();
   report.controlled.push('原生 Gecko DOM 操作：本地 PDF 过滤、整行选择与选中底色、全选、窄窗口固定按钮');
  });
  it('repairs structured responses once and binds literal PDF excerpts without trusting invented quotes',async()=>{
   let calls=0,saved=0;const source={id:'S1',text:'The conﬁguration uses\na held-out test set.'},state={papers:{}};
-  const ai=E.createAI({fetch:async()=>({ok:true,json:async()=>({choices:[{message:{content:++calls===1?'not JSON':JSON.stringify({sections:[{heading:'核验',body:'使用独立测试集。',claim_type:'observation',quoteIDs:['Q1']}],questions:[]})}}]})}),controller:()=>new win.AbortController(),settings:()=>({endpoint:'https://example.org',model:'controlled'}),credential:async()=>'',collect:async()=>({sources:[source],warnings:[]}),store:{get:()=>state,update:async fn=>{fn(state);saved++;}}});
+  const ai=E.createAI({fetch:async()=>({ok:true,json:async()=>({choices:[{message:{content:++calls===1?'not JSON':JSON.stringify({sections:[{heading:'核验',body:'使用独立测试集。',claim_type:'observation',quoteIDs:['Q1']}],questions:[]})}}]})}),controller:()=>new win.AbortController(),settings:()=>({endpoint:'https://example.org',model:'controlled'}),credential:async()=>'',collect:async()=>({sources:[source],warnings:[]}),store:{get:(...path)=>path.reduce((value,key)=>value?.[key],state),update:async fn=>{fn(state);saved++;}}});
   const record=await ai.run({mode:'ask',papers:[E.library.describe(paper)]});assert.equal(calls,2);assert.equal(saved,1);assert.equal(record.result.sections[0].quotes[0].text,source.text);
   report.controlled.push('受控回复：一次格式修复；PDF 连字与换行按摘录编号绑定；仅在校验通过后保存');
  });
  it('returns from academic chat and renders Markdown as content',async()=>{
-  win.Zotero_Tabs.select('zotero-pane');await win.ZoteroPane.selectItem(paper.id);await wait(()=>win.document.querySelector('.academic-chat'));
-  const chat=[...win.document.querySelectorAll('.academic-chat')].find(n=>n.dataset.researchItem===String(paper.id));assert.exists(chat);chat.querySelector('textarea').focus();assert.isTrue(chat.classList.contains('focused'));chat.querySelector('.academic-info-toggle').click();assert.isFalse(chat.classList.contains('focused'));assert.isFalse(chat.closest('item-details').classList.contains('academic-focus'));
-  const pane=chat.closest('item-pane-custom-section');pane.open=false;pane.open=true;assert.isTrue(chat.classList.contains('focused'));chat.querySelector('.academic-info-toggle').click();assert.isFalse(chat.classList.contains('focused'));
+  // A paper's right pane renders one feature at a time; open academic chat as its side icon does.
+  win.Zotero_Tabs.select('zotero-pane');await win._researchLibraryWorkspace?.show('local');const details=win.document.getElementById('zotero-item-details');await win.ZoteroPane.selectItem(paper.id);let pane;await wait(async()=>{pane=details.item?.id===paper.id&&details.dataset.easyschNavigation==='paper'&&details.getPanes().find(p=>String(p.dataset.pane).includes('research-workstation'));if(!pane)return false;if(details.researchActivePane!==pane.dataset.pane)await details.selectResearchPane(pane.dataset.pane);return details.researchActivePane===pane.dataset.pane&&pane.querySelector('.academic-chat');});
+  const chat=[...pane.querySelectorAll('.academic-chat')].find(n=>n.dataset.researchItem===String(paper.id));assert.exists(chat);chat.querySelector('textarea').focus();assert.isTrue(chat.classList.contains('focused'));
+  // The 返回 button is hidden under paper navigation, and how Esc leaves the chat is still a product decision,
+  // so leave and re-enter through the side icons a user clicks: 信息 selects the overview, the chat icon returns.
+  const overview=details.getPanes().find(p=>String(p.dataset.pane).includes('research-overview')).dataset.pane,click=id=>{const icon=details.sidenav.querySelector(`.btn[data-pane="${id}"]`);assert.exists(icon,id);assert.isFalse(icon.parentElement.hidden,id+' 图标可见');icon.dispatchEvent(new win.MouseEvent('click',{bubbles:true,cancelable:true,button:0,detail:1}));};
+  click('info');await wait(()=>details.researchActivePane===overview);assert.isFalse(chat.classList.contains('focused'));assert.isFalse(details.classList.contains('academic-focus'));assert.equal(win.getComputedStyle(pane).display,'none','右栏离开对话');assert.notEqual(win.getComputedStyle(details.getPane(overview)).display,'none','右栏显示论文概览');
+  click(pane.dataset.pane);await wait(()=>details.researchActivePane===pane.dataset.pane&&chat.classList.contains('focused'));assert.isTrue(details.classList.contains('academic-focus'));assert.notEqual(win.getComputedStyle(pane).display,'none','重新进入同一对话');
   const n=win.document.createElementNS('http://www.w3.org/1999/xhtml','div');E.renderContent(n,'**中文结论**\n\n| 方法 | 结果 |\n|---|---|\n| CNN | 待验证 |\n\n$$E=mc^2$$');assert.exists(n.querySelector('strong'));assert.exists(n.querySelector('table'));assert.exists(n.querySelector('.katex'));assert.notInclude(n.textContent,'**');
   let opened;const uri='zotero://open-pdf/library/items/EXAMPLE?page=1',sources=[{id:'P1-L1',uri,position:{pageIndex:0,rects:[[1,2,3,4]]}},{id:'P1-L2',uri,position:{pageIndex:0,rects:[[5,6,7,8]]}}];
   E.renderContent(n,`[P1-L2](${uri})`,{sources,onSource:s=>opened=s});n.querySelector('[role="button"]').click();assert.strictEqual(opened,sources[1]);
   E.renderContent(n,`[未知链接](zotero://select/library/items/UNKNOWN) [执行](javascript:alert(1))`,{sources});assert.isNull(n.querySelector('a,button'));
-  report.controlled.push('原生 Gecko DOM 操作：对话返回、格式化中文/表格/公式');
+  report.controlled.push('原生 Gecko DOM 操作：经侧栏图标离开并重新进入对话、格式化中文/表格/公式');
  });
  it('writes a native highlight, note and precise sentence link and preserves source files',async()=>{
   const selection={paperID:paper.id,attachmentID:pdf.id,pageIndex:0,position:{pageIndex:0,rects:[[54,690,300,702]]},text:'Software validation selection; not an experimental result.',sortIndex:'00000|000001|00001'};

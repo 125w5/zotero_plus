@@ -138,15 +138,18 @@
   const result=await task;if(signal?.aborted)throw Error('已取消');return result;
  };
  E.candidateMetric=async(record,{needTop=false}={})=>{if(!record.journal)return null;const item=new Zotero.Item('journalArticle');item.setField('publicationTitle',record.journal);if(record.issn)item.setField('ISSN',record.issn);return await E.ensurePaperMetrics(item,{needTop});};
+ // Saves PDF bytes that have already arrived as the item's attachment; arxiv.js
+ // uses the same step after its own download.
+ E.attachDiscoveryPDF=async(item,bytes,record)=>{const path=PathUtils.join(Zotero.getTempDirectory().path,'easysch-oa-'+Zotero.Utilities.randomString(12)+'.pdf');try{await IOUtils.write(path,bytes);const attachment=await Zotero.Attachments.importFromFile({file:Zotero.File.pathToFile(path),parentItemID:item.id,contentType:'application/pdf',title:record.title});attachment.setField('url',record.pdf);await attachment.saveTx({skipSelect:true});return attachment;}finally{await IOUtils.remove(path,{ignoreAbsent:true});}};
  const oaTasks=new Map();
  E.obtainOpenPaper=async(record,options={})=>{
   const {onProgress=()=>{},signal}=options,target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID,collectionID:options.collectionID};
   if(!record.oa||record.retracted)throw Error('此候选未确认可公开获取，或已标记撤稿；请先核对来源。');
   const key=String(target.libraryID||'')+':'+(record.doi||record.url||record.id);if(oaTasks.has(key)){const result=await oaTasks.get(key);if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);return{...result,...target};}
   const task=(async()=>{
-   // Only an arXiv record is filed as an arXiv preprint. A journal article
-   // whose open copy is on arxiv.org keeps its own item type and journal.
-   if(/arxiv\.org\/(abs|pdf)\//i.test(record.url+' '+record.id))return E.importAcademicPDF(record,{open:false,onProgress,signal,...target});
+   // Only an arXiv record (arxivRecordID) is filed as an arXiv preprint. A journal
+   // article whose open copy is on arxiv.org keeps its own item type and journal.
+   if(Ref.arxivRecordID(record))return E.importAcademicPDF(record,{open:false,onProgress,signal,...target});
    // The record is filed only after its PDF bytes have arrived.
    let found=E.findAcademicItem&&await E.findAcademicItem(record,target),attachment=found&&await E.library.localPDF(found);if(attachment){await E.placeAcademicInCollection?.(found.id,target);return{itemID:found.id,attachmentID:attachment.id,reused:true,...target};}
    if(!record.pdf||!/^https:\/\//.test(record.pdf))throw Error('暂无直接公开 PDF；文库没有变化，可打开来源页面。');
@@ -154,7 +157,7 @@
    let bytes;try{bytes=await E.requestDiscoveryPDF(record.pdf,{signal,onProgress:progress=>onProgress({stage:'download',text:'正在下载 PDF…',...progress})});}catch(error){if(!signal?.aborted)await E.markDiscoveryPDFFailure?.(record.pdf,error);throw error;}
    onProgress({stage:'save',text:'正在保存 PDF…'});
    let saved=await E.importAcademic(record,{select:false,...target}),item=await Zotero.Items.getAsync(saved.id);attachment=await E.library.localPDF(item);if(attachment)return{itemID:item.id,attachmentID:attachment.id,reused:true,...target};
-   const path=PathUtils.join(Zotero.getTempDirectory().path,'easysch-oa-'+Zotero.Utilities.randomString(12)+'.pdf');try{await IOUtils.write(path,bytes);attachment=await Zotero.Attachments.importFromFile({file:Zotero.File.pathToFile(path),parentItemID:item.id,contentType:'application/pdf',title:record.title});attachment.setField('url',record.pdf);await attachment.saveTx({skipSelect:true});}finally{await IOUtils.remove(path,{ignoreAbsent:true});}
+   attachment=await E.attachDiscoveryPDF(item,bytes,record);
    await E.clearDiscoveryPDFFailure?.(record.pdf);E.manuscripts.queueArticle(attachment.id);return{itemID:item.id,attachmentID:attachment.id,downloaded:true,...target};
   })();oaTasks.set(key,task);try{return await task;}finally{oaTasks.delete(key);}
  };
@@ -221,7 +224,14 @@
 		return result;
 	};
  const obtaining=new Map();
- let pdfReason=error=>{let text=String(error||'').replace(/[，,]\s*(?:请重试|未保存附件)$/,'');return /\p{Script=Han}/u.test(text)?text:'来源暂时无法访问';};
+ let pdfReason=error=>{let text=String(error||'').replace(/[，,]\s*(?:请重试|未保存为?附件)$/,'');return /\p{Script=Han}/u.test(text)?text:'来源暂时无法访问';};
+ // A failure that repeats on every attempt at this address: 404/410, a web or
+ // verification page, content that is not a PDF, or more than the 80 MB limit.
+ let lastingPDF=text=>/（HTTP 4(?:04|10)）|返回网页或验证页面|返回非 PDF|超过 80 MB/.test(text);
+ // One wording for a public PDF that could not be fetched; unchanged says what
+ // happened to the library. Only a failure that can pass says it can be retried;
+ // the error's lasting says which, for a caller that records the address.
+ E.discoveryPDFUnavailable=(error,unchanged)=>{let text=String(error?.message??error??''),lasting=lastingPDF(text),reason=pdfReason(text);return Object.assign(Error(lasting?reason+'；'+unchanged:'公开 PDF 暂不可用：'+reason+'；'+unchanged+'，可稍后重试'),{lasting});};
  E.obtainPaper=async(record,options={})=>{
   const{open=true,onProgress=()=>{},signal}=options,target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID,collectionID:options.collectionID},key=String(target.libraryID||'')+':'+(Ref.cleanDOI(record.doi)||record.url||record.id);
   let task=obtaining.get(key);
@@ -242,7 +252,7 @@
     }catch(error){if(error.message.includes('撤稿'))throw error;}
    }
    if(!/^https:\/\//i.test(candidate.pdf||''))throw Error('未找到公开 PDF；'+unchanged+'，可稍后重试');
-   if(E.verifyDiscoveryPDF){onProgress({stage:'verify',text:'正在检查公开 PDF…'});let check=await E.verifyDiscoveryPDF(candidate.pdf,{signal});if(!check?.available){if(!check?.transient)await E.markDiscoveryPDFFailure?.(candidate.pdf,check?.error);throw Error('公开 PDF 暂不可用：'+pdfReason(check?.error)+'；'+unchanged+'，可稍后重试');}}
+   if(E.verifyDiscoveryPDF){onProgress({stage:'verify',text:'正在检查公开 PDF…'});let check=await E.verifyDiscoveryPDF(candidate.pdf,{signal});if(!check?.available){if(!check?.transient)await E.markDiscoveryPDFFailure?.(candidate.pdf,check?.error);throw E.discoveryPDFUnavailable(check?.error,unchanged);}}
    const result=await E.obtainOpenPaper({...candidate,oa:true},{onProgress,signal,...target});
    const attachment=await E.library.localPDF(result.attachmentID);
    if(!attachment)throw Error('附件保存失败：本机文件不可用；题录已保留');

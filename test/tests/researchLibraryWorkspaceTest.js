@@ -57,8 +57,10 @@ describe('Native library integrated research workflows', function () {
   const original=ui.openPPTStudio;let release,entered=false;const gate=new Promise(resolve=>release=resolve);
   ui.openPPTStudio=async function(...args){entered=true;await gate;return original.apply(this,args);};
   try{
+   // The route title follows the interface language; the Chinese fallback shows until Fluent translates it.
+   const routeTitles=[await win.document.l10n?.formatValue('easysch-workspace-loading-title',{mode:'ppt'}).catch(()=>null),'正在打开组会 PPT'].filter(Boolean);
    const opening=workspace.show('ppt',{pptOptions:{newDraft:true,papers:[]}});await wait(()=>entered&&workspace.loading.dataset.state==='global','原生固定进度条');
-   const loading=workspace.loading,progress=win.document.getElementById('easysch-task-progress');assert.isTrue(loading.hidden,'原生有顶部进度时不再弹出居中蒙层');assert.equal(loading.dataset.mode,'ppt');assert.equal(progress.dataset.state,'busy');assert.exists(E.taskProgress.snapshot().tasks.find(row=>row.kind==='route'&&row.title.includes('组会')));assert.isAbove(progress.getBoundingClientRect().width,65);assert.isFalse(frame.inert,'缓存工作区继续可用');await snapshot('native-fixed-workspace-loading');
+   const loading=workspace.loading,progress=win.document.getElementById('easysch-task-progress');assert.isTrue(loading.hidden,'原生有顶部进度时不再弹出居中蒙层');assert.equal(loading.dataset.mode,'ppt');assert.equal(progress.dataset.state,'busy');assert.exists(E.taskProgress.snapshot().tasks.find(row=>row.kind==='route'&&routeTitles.includes(row.title)),'组会 PPT 路由任务：'+routeTitles.join(' / '));assert.isAbove(progress.getBoundingClientRect().width,65);assert.isFalse(frame.inert,'缓存工作区继续可用');await snapshot('native-fixed-workspace-loading');
    await workspace.show('writing');assert.isTrue(loading.hidden);release();await opening;assert.equal(workspace.mode,'writing','旧PPT加载不能抢回新页面');assert.equal(ui.activeView,'writing');assert.isTrue(loading.hidden);
   }finally{release?.();ui.openPPTStudio=original;await workspace.show('writing');}
  });

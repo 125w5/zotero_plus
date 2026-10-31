@@ -28,7 +28,7 @@ function renderPlan(state){
  const current=!v||N.assessmentCurrent(id,v,preparationDraft());
  if(v&&!current)localized($('continue-assembly'),'notebook-continue-review','继续装配，方案待更新');else{$('continue-assembly').removeAttribute('data-l10n-id');$('continue-assembly').textContent=v?'确认方案，进入素材装配':'保存结构，进入素材装配';}
  for(const node of $('plan-result-tabs').children){const selected=node.dataset.planPanel===selectedPlanPanel;node.id='plan-panel-'+node.dataset.planPanel;node.setAttribute('role','tab');node.setAttribute('aria-controls','plan');node.setAttribute('aria-selected',String(selected));node.tabIndex=selected?0:-1;}$('plan').setAttribute('aria-labelledby','plan-panel-'+selectedPlanPanel);
- if(planSearch){const matches=planSearchMatches([...state.versions].reverse(),planSearch);host.append(el('h3','方案搜索 · '+matches.length+' 个版本'));for(const {version,label,snippet}of matches){const card=el('article');card.className='plan-content-card';button('第 '+version.number+' 版 · '+(version.plan.title||'研究方案'),async()=>{planSearch='';$('plan-search').value='';await N.update(id,{selectedVersion:version.id});renderPlan(N.state(id));},card);card.append(el('small',label),el('p',snippet));host.append(card);}if(!matches.length)host.append(el('p','未找到相关方案，可换一个关键词。'));return;}
+ if(planSearch){const matches=planSearchMatches([...state.versions].reverse(),planSearch,{present:N.presentPlan,decisions:state.decisions});host.append(el('h3','方案搜索 · '+matches.length+' 个版本'));for(const {version,label,snippet}of matches){const card=el('article');card.className='plan-content-card';button('第 '+version.number+' 版 · '+(version.plan.title||'研究方案'),async()=>{planSearch='';$('plan-search').value='';await N.update(id,{selectedVersion:version.id});renderPlan(N.state(id));},card);card.append(el('small',label),el('p',snippet));host.append(card);}if(!matches.length)host.append(el('p','未找到相关方案，可换一个关键词。'));return;}
  if(!v){if(selectedPlanPanel==='history'&&planHistory(host,state))return;const copy={feasibility:['可行性 · 尚未评估','补充研究问题、文献范围与资源条件，再生成可行性方案。'],novelty:['创新点 · 尚未评估','生成方案后，在这里比较接近工作、差异与依据。'],suggestions:['建议 · 尚未生成','生成方案后，在这里查看验证步骤、实验安排与章节任务。'],history:['讨论与修改 · 暂无记录','研究问题的讨论、方案版本与确认决定会保存在这里。']}[selectedPlanPanel];const empty=el('div');empty.className='plan-empty-card';empty.append(localized(el('strong'),'notebook-empty-'+selectedPlanPanel+'-title',copy[0]),localized(el('p'),'notebook-empty-'+selectedPlanPanel+'-detail',copy[1]));host.append(empty);return;}
  const p=N.presentPlan(v);if(!current){const notice=localized(el('p'),'notebook-plan-review-notice','研究条件或来源已改变。可以继续已有装配；更新评估后才能应用这一版方案。');notice.className='plan-notice';host.append(notice);}
  if(selectedPlanPanel==='feasibility'){
@@ -64,6 +64,8 @@ async function run(fn,{propagate=false}={}){if(controller){if(propagate)throw Er
 function sourceEvidence(host,m){const raw=el('details');raw.append(el('summary','原文证据'));const quote=el('blockquote',m.sourceText);quote.className='source-quote';raw.append(quote);host.append(raw);}
 function detail(m){
  if(editing)return;selectedRendered=m?m.id+':'+m.revision:null;const host=$('detail');host.className='';host.replaceChildren();
+ // The exclusion marks these details show; refreshMaterialExclusionView compares them.
+ host.dataset.materialId=m?.id||'';host.dataset.exclusionSignature=m&&A.materialExclusionSignature?.([m])||'';
  if(!m){host.append(el('p','选择素材查看原文与中文说明。'));return;}
  host.append(el('h2',A.titleFor(m)));materialPreview(host,m,E);
  if(m.id.startsWith('passage-')&&!(A.assetLibraryView?A.assetLibraryView():A.assetLibrary())[m.id]){
@@ -100,7 +102,7 @@ for(const row of RESEARCH_DOMAINS){const option=el('option',row.label);option.va
 const domainPicker=installResearchDomainPicker($('research-domain'),{searchTopics:(query,options)=>E.findDiscoveryTopics?.(query,options),onChange:()=>saveScope()});
 domainPicker.setScope(scopeBase);$('primary-keyword').value=scopeBase.primaryKeyword;$('secondary-keyword').value=scopeBase.secondaryKeyword;$('scope-fuzzy').checked=scopeBase.fuzzy;
 const SCOPE_SAVE_MS=550;
-let scopeTimer;const saveScope=async()=>{clearTimeout(scopeTimer);if(scopeComposing)return;scopeEdited=true;scopeBase=scopeDraft();const change={scopeOrigin:'manual',researchScope:scopeBase};return (N.saveDraft?N.saveDraft(id,change):N.update(id,change)).catch(error=>status(error.message));};
+let scopeTimer;const saveScope=async()=>{clearTimeout(scopeTimer);if(scopeComposing)return;scopeEdited=true;scopeBase=scopeDraft();preparationTools?.setScope(scopeBase);const change={scopeOrigin:'manual',researchScope:scopeBase};return (N.saveDraft?N.saveDraft(id,change):N.update(id,change)).catch(error=>status(error.message));};
 for(const key of ['research-domain','primary-keyword','secondary-keyword','scope-fuzzy']){const field=$(key);field.addEventListener('compositionstart',()=>{scopeComposing=true;scopeEdited=true;clearTimeout(scopeTimer);});field.addEventListener('compositionend',()=>{scopeComposing=false;clearTimeout(scopeTimer);scopeTimer=setTimeout(saveScope,SCOPE_SAVE_MS);});field.addEventListener('input',()=>{scopeEdited=true;clearTimeout(scopeTimer);if(!scopeComposing)scopeTimer=setTimeout(saveScope,SCOPE_SAVE_MS);});field.addEventListener('change',saveScope);}
 window.addEventListener('pagehide',()=>{if(scopeEdited)saveScope();},{once:true});
 $('plan-result-tabs').setAttribute('role','tablist');$('plan').setAttribute('role','tabpanel');
@@ -131,7 +133,9 @@ $('evaluate').onclick=startAssessment;
 const discussion=$('plan-discussion');discussion.append(el('h3','继续完善观点'),el('p','在上方补充新的条件、质疑或修改目标，更新方案会保留此前版本。'));
 for(const [element,key] of [['idea','ideaDraft'],['question','questionDraft'],['constraints','constraints'],['structure','structureDraft']]){$(element).value=N.state(id)[key]||(key==='structureDraft'?N.project(id).sections.map(row=>row.title+(row.writingPurpose?'｜'+row.writingPurpose:'')).join('\n'):key==='ideaDraft'?N.project(id).researchGoal||N.project(id).title:key==='constraints'?N.project(id).researchPreparation?.resourceConstraints||'':'');let draftTimer;const saveDraft=()=>{clearTimeout(draftTimer);const change={[key]:$(element).value};(key!=='questionDraft'&&N.saveDraft?N.saveDraft(id,change):N.update(id,change)).catch(error=>status(error.message));};$(element).oninput=()=>{clearTimeout(draftTimer);draftTimer=setTimeout(saveDraft,500);};$(element).onchange=saveDraft;window.addEventListener('pagehide',saveDraft);}
 browser=notebookBrowser({E,N,A,id,$,el,button,status,run,onPaperScopeRefresh:()=>preparationTools?.refreshLocal()});installModePicker($('ai-mode'),$('question'),{value:N.state(id).aiMode,onChange:aiMode=>N.update(id,{aiMode})});
-preparationTools=installPreparationTools({E,N,A,id,$,el,button,status,run,refreshPapers:()=>browser.refreshPaperSelection(),beforeTask:async()=>{clearTimeout(scopeTimer);if(scopeEdited)await N.update(id,{scopeOrigin:'manual'});await N.savePreparation(id,preparationDraft());},onScope:researchScope=>{if(scopeEdited)return;scopeBase=normalizeResearchScope(researchScope);domainPicker.setScope(scopeBase);$('primary-keyword').value=scopeBase.primaryKeyword;$('secondary-keyword').value=scopeBase.secondaryKeyword;$('scope-fuzzy').checked=scopeBase.fuzzy;return N.savePreparation(id,{researchScope:scopeBase}).catch(error=>status(error.message));},onChange:()=>render()});
+// An inferred scope is only shown: opening or restoring the page writes nothing.
+// A scope edit saves through saveScope, and every task saves the draft first.
+preparationTools=installPreparationTools({E,N,A,id,$,el,button,status,run,refreshPapers:()=>browser.refreshPaperSelection(),beforeTask:async()=>{clearTimeout(scopeTimer);if(scopeEdited)await N.update(id,{scopeOrigin:'manual'});await N.savePreparation(id,preparationDraft());},onScope:researchScope=>{if(scopeEdited)return;scopeBase=normalizeResearchScope(researchScope);domainPicker.setScope(scopeBase);$('primary-keyword').value=scopeBase.primaryKeyword;$('secondary-keyword').value=scopeBase.secondaryKeyword;$('scope-fuzzy').checked=scopeBase.fuzzy;},onChange:()=>render()});
 browser.refreshPaperSelection().catch(error=>status(error.message));
 async function executeQuickAction(input,template,request){
  const goal=request.goal||$('idea').value.trim()||N.project(id).researchGoal||N.project(id).title;
@@ -154,12 +158,17 @@ async function executeQuickAction(input,template,request){
 }
 function scheduleRender(change){if(preparationTools?.isEditing())return;if(change&&Object.keys(change).every(key=>['ideaDraft','questionDraft','constraints','structureDraft','researchScope'].includes(key)))return;if(Object.hasOwn(change||{},'view'))renderNeedsView=true;if(renderFrame)return;renderFrame=requestAnimationFrame(()=>{renderFrame=0;if(!renderNeedsView&&(composing||document.activeElement?.matches('#idea,#constraints,#structure,#primary-keyword,#secondary-keyword')))return;renderNeedsView=false;render();});}
 function refreshMaterialExclusionView(){
- selectedRendered=null;if(N.state(id).view==='plan')return;
+ if(N.state(id).view==='plan'){selectedRendered=null;return;}
  // Refresh only the material list and selected excerpt; leave plan editors,
  // question drafts and the caret untouched during a native mark update.
  const materials=(N.materialsView||N.materials)(id),selectedID=N.state(id).selectedMaterial;
  $('count').textContent=materials.length+' 张';browser?.render();
- detail(materials.find(material=>material.id===selectedID)||N.passageResults(id).find(row=>row.m.id===selectedID)?.m);
+ const selected=materials.find(material=>material.id===selectedID)||N.passageResults(id).find(row=>row.m.id===selectedID)?.m;
+ // The first snapshot after native annotations load usually repeats the marks
+ // the details already show; rebuilding them would close the source drawer.
+ const shown=$('detail').dataset;
+ if(selected&&shown?.materialId===selected.id&&shown.exclusionSignature&&shown.exclusionSignature===A.materialExclusionSignature?.([selected]))return;
+ selectedRendered=null;detail(selected);
 }
 materialExclusionSubscription=A.onMaterialExclusionsChanged?.(refreshMaterialExclusionView,{attachmentIDs:N.materialAttachmentIDs?.(id)||[]});
 installPromptTemplates(document,E,{selector:'#question,#idea',onExecute:executeQuickAction});const unsubscribe=N.subscribe((projectID,change)=>{if(projectID===id)scheduleRender(change);}),assetBranchSubscription=E.store.subscribe?.(change=>{for(const key of change?.changedBranches||['*'])assetBranches.add(key);}),assets=A.onAssetsChanged(()=>{const branches=assetBranches;assetBranches=new Set();if(descriptionOnlyChange(branches)){const view=(N.stateView||N.state)(id);if(view.view!=='plan'&&!N.query(id)){const byID=new Map((N.materialsView||N.materials)(id).map(m=>[m.id,m]));if(refreshMaterialDescriptions($('source-list'),materialID=>byID.get(materialID),{E,selectedID:view.selectedMaterial}))return;}}selectedRendered=null;scheduleRender();});const dispose=()=>{unsubscribe();assets();assetBranchSubscription?.();materialExclusionSubscription?.();controller?.abort();clearTimeout(scopeTimer);clearTimeout(planSearchTimer);cancelAnimationFrame(renderFrame);preparationTools?.destroy();domainPicker.destroy();};window.addEventListener('pagehide',dispose);

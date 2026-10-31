@@ -65,11 +65,15 @@
  let liveCollection=collectionID=>{let collection=collectionID&&Zotero.Collections?.get?.(Number(collectionID));return collection&&!collection.deleted?collection:null;};
  // newFolder reuses the folder this project created (or a current folder with
  // the default name) instead of adding another collection with the same name.
- let projectCollection=async(id,{collectionID,newCollectionName,newFolder=false}={})=>{
+ // Before createdPaperCollectionID existed the create dialog named the folder
+ // after the title; null records a folder chosen when the project was created.
+ // create:false only reads: a project without a folder gets null and no write.
+ let projectCollection=async(id,{collectionID,newCollectionName,newFolder=false,create=true}={})=>{
   const p=N.project(id);if(!p)throw Error('论文项目已删除');const target=collectionID??(newFolder||newCollectionName?null:p.paperCollectionID);
+  if(!target&&create===false&&!newFolder&&!newCollectionName)return null;
   let folder,reused=false;
   if(target)folder=await N.paperFolderSelection(id,Number(target));
-  else{let name=newCollectionName?clipName(newCollectionName):defaultFolderName(p),current=liveCollection(p.paperCollectionID),own=liveCollection(p.createdPaperCollectionID)||(current?.name===name?current:null);
+  else{let name=newCollectionName?clipName(newCollectionName):defaultFolderName(p),current=liveCollection(p.paperCollectionID),own=liveCollection(p.createdPaperCollectionID)||(current&&(current.name===name||p.createdPaperCollectionID===undefined&&current.name===clipName(p.title))?current:null);
    if(own){folder=await N.paperFolderSelection(id,own.id);reused=true;}else{const created=await E.createDiscoveryCollection(name);folder=await N.paperFolderSelection(id,created.id);}
   }
   if(!target&&p.createdPaperCollectionID!==folder.collectionID||p.paperCollectionID!==folder.collectionID||!p.paperSelectionExplicit&&JSON.stringify(p.materialPaperIDs||[])!==JSON.stringify(folder.selectedPaperIDs))await N.catalog(id,value=>{value.paperCollectionID=folder.collectionID;value.materialPaperIDs=folder.selectedPaperIDs;value.paperSelectionExplicit=p.paperCollectionID===folder.collectionID&&!!p.paperSelectionExplicit;if(!target)value.createdPaperCollectionID=folder.collectionID;});
@@ -88,7 +92,7 @@
  N.setPaperScope=async(id,{collectionID,paperIDs}={})=>{
   const folder=await N.paperFolderSelection(id,collectionID??N.project(id).paperCollectionID),selected=paperIDs??folder.papers.map(row=>row.id);
   if(!Array.isArray(selected)||selected.some(paperID=>!Number.isInteger(paperID)||!folder.papers.some(row=>row.id===paperID)))throw Error('只能选择本项目文献文件夹中的论文');
-  await N.catalog(id,p=>{p.paperCollectionID=folder.collectionID;p.materialPaperIDs=[...new Set(selected)];p.paperSelectionExplicit=true;});return N.paperFolderSelection(id);
+  await N.catalog(id,p=>{p.paperCollectionID=folder.collectionID;p.materialPaperIDs=[...new Set(selected)];p.paperSelectionExplicit=true;});await settlePlanStatus(id);return N.paperFolderSelection(id);
  };
  N.preparationPaperSelection=async id=>{
   const project=N.project(id),selection=project.preparationSourceSelection;
@@ -119,7 +123,7 @@
   const known=new Set();for(const collectionID of [...new Set([N.project(id).paperCollectionID,...collectionIDs])])for(const paper of (await N.paperFolderSelection(id,collectionID)).papers)known.add(paper.id);
   if(paperIDs.some(paperID=>!known.has(paperID)))throw Error('所选论文已移出资料范围，请刷新后重新选择');
   const selection={collectionIDs:[...new Set(collectionIDs)],paperIDs:[...new Set(paperIDs)],featuredPaperIDs:[...new Set(featuredPaperIDs)].filter(paperID=>paperIDs.includes(paperID))};
-  await N.catalog(id,project=>{project.preparationSourceSelection=selection;project.materialPaperIDs=selection.paperIDs;project.paperSelectionExplicit=true;});return selection;
+  await N.catalog(id,project=>{project.preparationSourceSelection=selection;project.materialPaperIDs=selection.paperIDs;project.paperSelectionExplicit=true;});await settlePlanStatus(id);return selection;
  };
  // The corpus choice lives in its own field so paper saves never reset it and a
  // project without a paper selection keeps its folder-based paper scope.
@@ -128,7 +132,7 @@
   if(corpusIDs!==null&&(!Array.isArray(corpusIDs)||corpusIDs.some(value=>typeof value!=='string'||!value)))throw Error('请选择有效的语料库');
   const known=E.corpus?.allView?.()||E.corpus?.all?.()||{};if(corpusIDs?.some(value=>!known[value]))throw Error('所选语料库已删除，请刷新后重新选择');
   const selection=corpusIDs===null?null:{corpusIDs:[...new Set(corpusIDs)],at:new Date().toISOString()};
-  await N.catalog(id,project=>{if(selection)project.preparationCorpusSelection=selection;else delete project.preparationCorpusSelection;});return selection;
+  await N.catalog(id,project=>{if(selection)project.preparationCorpusSelection=selection;else delete project.preparationCorpusSelection;});await settlePlanStatus(id);return selection;
  };
  N.savePreparationMaterialSelection=async(id,materialIDs)=>{
   const suggestions=N.state(id).materialSuggestions||[];if(materialIDs.some(mid=>!suggestions.some(row=>row.materialID===mid)))throw Error('素材建议已变化，请重新选择');
@@ -141,10 +145,11 @@
   const inputs=preparationInputs(id,draft.idea);for(const key of ['constraints','structure'])if(draft[key]!==undefined)inputs[key]=draft[key];if(draft.researchScope!==undefined)inputs.researchScope=Domain.normalizeResearchScope(draft.researchScope);
   return !version.inputSignature||(version.inputs?inputSignature({...version.inputs,researchScope:Domain.normalizeResearchScope(version.inputs.researchScope)}):version.inputSignature)===inputSignature(inputs);
  };
- N.assessmentCurrent=(id,version,draft={})=>!N.stale(version).length&&(version.sourceExclusionSignature===undefined||version.sourceExclusionSignature===A.materialExclusionSignature?.(version.sources||[]))&&planInputsMatch(id,version,draft);
+ N.assessmentCurrent=(id,version,draft={})=>!N.stale(version,sourceRevisionLookup().project(id)).length&&(version.sourceExclusionSignature===undefined||version.sourceExclusionSignature===A.materialExclusionSignature?.(version.sources||[]))&&planInputsMatch(id,version,draft);
  // Home card states: running (a live job), needs-review (the applied or latest
  // plan no longer matches its inputs or sources), ready, none. Stored flags
- // only add needs-review; a 'running' left by a quit run is ignored. Material
+ // only add needs-review, and settlePlanStatus clears the flag once the applied
+ // plan matches again; a 'running' left by a quit run is ignored. Material
  // exclusions are left to assembly entry, which loads the attachments.
  N.assessmentRunning=id=>jobs.has(id)||assessmentJobs.has(id);
  N.planCardStatuses=ids=>{
@@ -154,35 +159,54 @@
    const state=stateView(id),versions=state.versions||[],adoptedID=p.researchPreparation?.planVersionID,version=adoptedID?versions.find(row=>row.id===adoptedID):versions.find(row=>row.id===state.selectedVersion)||versions.at(-1);
    if(adoptedID&&(p.researchPreparation.planStatus==='needs-review'||!version)){result[id]='needs-review';continue;}
    if(!version){result[id]='none';continue;}
-   const stale=N.stale(version,revisionOf,corpusRevisionOf).some(item=>!item.startsWith('pending-item:'));
+   const stale=N.stale(version,revisionOf.project(id),corpusRevisionOf).some(item=>!item.startsWith('pending-item:'));
    result[id]=stale||!planInputsMatch(id,version)?'needs-review':'ready';
   }
   return result;
  };
+ // The goal a draft question saves: an emptied question keeps the saved goal
+ // (the title when none is left), so the home card and project search never
+ // go blank. ideaDraft itself keeps what the user typed.
+ const savedGoal=(draft,p)=>[draft,p?.researchGoal,p?.title].find(value=>String(value||'').trim())??'';
  N.savePreparation=async(id,{idea,constraints,structure,researchScope}={})=>{
   const state=N.state(id),p=N.project(id),draft=structure??state.structureDraft??p.sections.map(row=>row.title+(row.writingPurpose?'｜'+row.writingPurpose:'')).join('\n');P.parseWritingStructure(draft);
   await N.update(id,{ideaDraft:idea??state.ideaDraft??p.researchGoal??p.title,constraints:constraints??state.constraints??'',structureDraft:draft,researchScope:Domain.normalizeResearchScope(researchScope??state.researchScope??Domain.researchScopeFromProject(p))});
-  await N.catalog(id,value=>{const current=N.state(id);value.researchGoal=current.ideaDraft;value.researchScope=M.clone(current.researchScope);value.memory||={};value.memory.goal=current.ideaDraft;value.researchPreparation||={};Object.assign(value.researchPreparation,{researchGoal:current.ideaDraft,resourceConstraints:current.constraints,structureDraft:draft,researchScope:M.clone(current.researchScope)});});return N.project(id);
+  // Saving the same preparation again leaves the project, its revision and
+  // updatedAt as they are.
+  const notebook=stateView(id),saved=projectView(id),goal=savedGoal(notebook.ideaDraft,saved),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),before=saved.researchPreparation||{};
+  if(saved.researchGoal===goal&&saved.memory?.goal===goal&&same(saved.researchScope,notebook.researchScope)&&before.researchGoal===goal&&before.resourceConstraints===notebook.constraints&&before.structureDraft===draft&&same(before.researchScope,notebook.researchScope))return N.project(id);
+  await N.catalog(id,value=>{const current=N.state(id),kept=savedGoal(current.ideaDraft,value);value.researchGoal=kept;value.researchScope=M.clone(current.researchScope);value.memory||={};value.memory.goal=kept;value.researchPreparation||={};Object.assign(value.researchPreparation,{researchGoal:kept,resourceConstraints:current.constraints,structureDraft:draft,researchScope:M.clone(current.researchScope)});});return N.project(id);
  };
  // Draft edits reach the project (home card, project search, researchPreparation)
  // without waiting for a task. An empty idea keeps the saved goal, and a
- // structure that does not parse keeps the last one that did.
+ // structure that does not parse keeps the last one that did. The write is the
+ // project alone: no material-library rebuild, and the change names the draft
+ // fields it mirrors, so the notebook page does not re-render behind the field.
  N.syncPreparation=async id=>{
   const p=projectView(id),state=stateView(id);if(!p)return;
-  const goal=String(state.ideaDraft||'').trim()?state.ideaDraft:p.researchGoal||p.title,scope=Domain.normalizeResearchScope(state.researchScope||Domain.researchScopeFromProject(p)),before=p.researchPreparation||{};
+  const goal=savedGoal(state.ideaDraft,p),scope=Domain.normalizeResearchScope(state.researchScope||Domain.researchScopeFromProject(p)),before=p.researchPreparation||{},same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
   let structureDraft=before.structureDraft;if(typeof state.structureDraft==='string'){try{P.parseWritingStructure(state.structureDraft);structureDraft=state.structureDraft;}catch{/* keep the last parsed structure */}}
   const next={researchGoal:goal,resourceConstraints:state.constraints??before.resourceConstraints??'',...(structureDraft===undefined?{}:{structureDraft}),researchScope:scope};
-  if(p.researchGoal===goal&&p.memory?.goal===goal&&JSON.stringify(p.researchScope)===JSON.stringify(scope)&&Object.entries(next).every(([key,value])=>JSON.stringify(before[key])===JSON.stringify(value)))return;
-  await N.catalog(id,value=>{value.researchGoal=goal;value.researchScope=M.clone(scope);value.memory||={};value.memory.goal=goal;value.researchPreparation||={};Object.assign(value.researchPreparation,M.clone(next));});
+  const change={...(p.researchGoal===goal&&p.memory?.goal===goal&&before.researchGoal===goal?{}:{ideaDraft:state.ideaDraft}),...(same(before.resourceConstraints,next.resourceConstraints)?{}:{constraints:state.constraints}),...(same(before.structureDraft,structureDraft)?{}:{structureDraft:state.structureDraft}),...(same(p.researchScope,scope)&&same(before.researchScope,scope)?{}:{researchScope:scope})};
+  if(!Object.keys(change).length)return;
+  await writeProject(id,value=>{value.researchGoal=goal;value.researchScope=M.clone(scope);value.memory||={};value.memory.goal=goal;value.researchPreparation||={};Object.assign(value.researchPreparation,M.clone(next));},{renderLibrary:false,change});
  };
- N.saveDraft=async(id,change)=>{await N.update(id,change);await N.syncPreparation(id);};
+ // needs-review on an applied plan: set when assembly is reopened while the plan
+ // no longer matches its inputs or sources (review:true), cleared whenever it
+ // matches them again, also after an input edit. Only the flag changes; the
+ // structure, chapter tasks, corpora and stage stay.
+ const settlePlanStatus=async(id,{review=false}={})=>{
+  const preparation=projectView(id)?.researchPreparation,versionID=preparation?.planVersionID,flagged=preparation?.planStatus==='needs-review';if(!versionID||!review&&!flagged)return;
+  await N.loadPlanSources(id);const version=N.state(id).versions.find(row=>row.id===versionID),current=!!version&&N.assessmentCurrent(id,version);
+  if(current?!flagged:flagged||!review)return;
+  await N.catalog(id,p=>{const value=p.researchPreparation;if(value?.planVersionID!==versionID||(value.planStatus==='needs-review')===!current)return;value.planStatus=current?'confirmed':'needs-review';});
+ };
+ N.saveDraft=async(id,change)=>{await N.update(id,change);await N.syncPreparation(id);await settlePlanStatus(id);};
  // Reopening existing work is not a second confirmation of its research plan.
  // Keep the author's stage, structure and text even when the plan needs review.
  N.resumeAssembly=async id=>{
   const project=N.project(id);if(!project)throw Error('论文项目已删除');
-  await N.loadPlanSources(id);
-  const preparation=project.researchPreparation,version=preparation?.planVersionID&&N.state(id).versions.find(row=>row.id===preparation.planVersionID);
-  if(preparation?.planVersionID&&(!version||!N.assessmentCurrent(id,version)))await N.catalog(id,p=>{p.researchPreparation.planStatus='needs-review';});
+  await settlePlanStatus(id,{review:true});
   await N.update(id,{workflowStage:'assembly',aiMode:'auto'});return A.open(id);
  };
  // What entering assembly would do, without side effects: 'enter' applies a
@@ -196,7 +220,7 @@
   const hasAssembly=adopted||state.workflowStage==='assembly'||!!project.blocks?.some(block=>block.text?.trim()||block.materials?.length||block.table||block.imagePath);
   if(!version)return {action:'enter',versionID:null,adopted,hasAssembly,planCurrent:false,reasons:[]};
   if(N.assessmentCurrent(id,version,draft))return {action:'enter',versionID:version.id,adopted,hasAssembly,planCurrent:true,reasons:[]};
-  const stale=N.stale(version),reasons=[...(stale.length?['sources']:[]),...(N.assessmentCurrent(id,{...version,sourceRevisions:{},sourceItemVersions:{},corpusRevisions:{},sourceExclusionSignature:undefined},draft)?[]:['inputs'])];
+  const stale=N.stale(version,sourceRevisionLookup().project(id)),reasons=[...(stale.length?['sources']:[]),...(N.assessmentCurrent(id,{...version,sourceRevisions:{},sourceItemVersions:{},corpusRevisions:{},sourceExclusionSignature:undefined},draft)?[]:['inputs'])];
   return {action:'choose',versionID:version.id,adopted,hasAssembly,planCurrent:false,reasons:reasons.length?reasons:['sources'],staleSources:stale.slice(0,20)};
  };
  N.openProject=async(id,options={})=>{
@@ -208,19 +232,29 @@
   if(!hasWork&&!hasPlan&&(state.workflowStage!=='assembly'||state.versions.length)){
    await N.update(id,{view:'plan',workflowStage:'feasibility',ideaDraft:state.ideaDraft||project.researchGoal||project.title});return N.open(id,options);
   }
-  // A current plan not yet applied enters through the feasibility page's own
-  // flow, so prepared materials get the same 应用准备素材 choice there.
-  if(!project.researchPreparation?.planVersionID&&hasPlan){
+  // Without authored work, an applied plan that went stale (or is gone) beside a
+  // current plan opens planning on that plan; applying it stays the user's
+  // 确认方案，进入素材装配.
+  const applied=project.researchPreparation?.planVersionID,appliedVersion=applied&&state.versions.find(row=>row.id===applied);
+  if(!hasWork&&applied&&hasPlan&&!(appliedVersion&&N.assessmentCurrent(id,appliedVersion))){await N.update(id,{view:'plan',workflowStage:'feasibility'});return N.open(id,options);}
+  // A current plan not yet applied to a project without authored work enters
+  // through the feasibility page's own flow, so prepared materials get the same
+  // 应用准备素材 choice there. The card returns once that flow has started: the
+  // flow waits for the user's choice and shows its own errors.
+  if(!hasWork&&!applied&&hasPlan){
    if(!(state.materialSuggestions||[]).length)return N.enterAssembly(id);
-   await N.update(id,{view:'plan'});const ui=await notebookUI(id,await N.open(id,options));
+   await N.update(id,{view:'plan'});const opened=await N.open(id,options);
+   // In the library workspace null means a later page replaced this one.
+   if(options.host==='library'&&!opened)return null;
+   const ui=await notebookUI(id,opened);
    if(!ui)throw Error('可行性页面尚未准备好，方案和素材选择已保留；请在该页点“确认方案，进入素材装配”');
-   return ui.enterAssembly();
+   Promise.resolve(ui.enterAssembly()).catch(error=>Zotero.logError(error));return opened;
   }
   return N.resumeAssembly(id);
  };
- // N.open returns before a new tab's page has run its module.
+ // N.open returns a new tab's window before its page has run its module.
  const notebookUI=async(id,opened)=>{
-  const doc=Zotero.getMainWindow?.()?.document,frameWindow=()=>(doc?.getElementById('research-notebook-'+id)||doc?.getElementById('research-library-notebook-'+id))?.contentWindow,find=()=>{for(const win of [opened,frameWindow()]){const ui=win?.NotebookUI||win?.wrappedJSObject?.NotebookUI;if(ui?.ready)return ui;}return null;};
+  const doc=Zotero.getMainWindow?.()?.document,frameWindow=()=>doc?.getElementById('research-notebook-'+id)?.contentWindow,find=()=>{for(const win of [opened,frameWindow()]){const ui=win?.NotebookUI||win?.wrappedJSObject?.NotebookUI;if(ui?.ready)return ui;}return null;};
   const delay=Zotero.Promise?.delay?ms=>Zotero.Promise.delay(ms):null;
   for(let attempt=0;attempt<200;attempt++){const ui=find();if(ui||!delay)return ui;await delay(50);}
   return null;
@@ -241,18 +275,19 @@
   const parsed=P.parseWritingStructure(N.state(id).structureDraft);const probe=M.clone(N.project(id));P.applyWritingStructure(probe,parsed,M.id);
   if(version&&version.status!=='confirmed')await N.confirm(id,version.id);
   const corpusIDs=eligibleCorpusIDs(id);
-  await N.catalog(id,p=>{const structure=P.applyWritingStructure(p,parsed,M.id),current=N.state(id);p.researchPreparation={...p.researchPreparation,researchGoal:current.ideaDraft,researchScope:M.clone(current.researchScope),resourceConstraints:current.constraints,structure,collectionID:p.paperCollectionID,paperIDs:[...(p.materialPaperIDs||[])],planVersionID:version?.id||null,planVersionNumber:version?.number||null,plan:version?M.clone(N.presentPlan(version)):null,confirmedDecisions:P.activePlanDecisions(current.decisions,version?.id),openQuestions:version?.plan.openQuestions||[],planStatus:version?'confirmed':'not-evaluated',at:new Date().toISOString()};planAssembly(p,version,corpusIDs);p.ui.left='materials';p.ui.step=0;});
+  await N.catalog(id,p=>{const structure=P.applyWritingStructure(p,parsed,M.id),current=N.state(id);p.researchPreparation={...p.researchPreparation,researchGoal:savedGoal(current.ideaDraft,p),researchScope:M.clone(current.researchScope),resourceConstraints:current.constraints,structure,collectionID:p.paperCollectionID,paperIDs:[...(p.materialPaperIDs||[])],planVersionID:version?.id||null,planVersionNumber:version?.number||null,plan:version?M.clone(N.presentPlan(version)):null,confirmedDecisions:P.activePlanDecisions(current.decisions,version?.id),openQuestions:version?.plan.openQuestions||[],planStatus:version?'confirmed':'not-evaluated',at:new Date().toISOString()};planAssembly(p,version,corpusIDs);p.ui.left='materials';p.ui.step=0;});
   if(options.applyMaterialIDs?.length){await N.applyMaterialRecommendations(id,options.applyMaterialIDs);await N.catalog(id,p=>{p.ui.materialResearchScope=Domain.normalizeResearchScope({fuzzy:true});p.ui.catalog={...C.materialCatalogState(p),topic:'',type:'',categoryID:null,filter:'',facets:{},sort:'relevance',sourceScope:'project'};});}
   await N.update(id,{workflowStage:'assembly',aiMode:'auto'});return A.open(id);
  };
  N.beginProject=async({title,idea,template='imrad',constraints='',skipAssessment=false,host,collectionID,newCollectionName,structure,researchScope,isCurrent=()=>true}={})=>{
   // A failed folder step leaves no project behind, so submitting again cannot
   // duplicate it. Later errors carry projectID: the project exists and its card
-  // continues the setup.
+  // continues the setup. The first save records the folder, created or chosen,
+  // so a kept project keeps it.
   const target=await N.newProjectFolder({title,collectionID,newCollectionName});
   const p=await A.create(title,template);
   try{
-   await N.catalog(p.id,value=>{value.researchGoal=idea||title;value.memory||={};value.memory.goal=idea||title;if(target.created)value.createdPaperCollectionID=target.id;});
+   await N.catalog(p.id,value=>{value.researchGoal=idea||title;value.memory||={};value.memory.goal=idea||title;Object.assign(value,{paperCollectionID:target.id,materialPaperIDs:[],paperSelectionExplicit:false,createdPaperCollectionID:target.created?target.id:null});});
    const explicitScope=researchScope!==undefined;
    const folder=await N.ensureProjectCollection(p.id,{collectionID:target.id});researchScope=explicitScope?Domain.normalizeResearchScope(researchScope):Domain.inferResearchScope({title,idea,folderName:folder.name});await N.savePreparation(p.id,{idea:idea||title,constraints,structure,researchScope});
    await N.update(p.id,{scopeOrigin:explicitScope?'manual':'inferred'});
@@ -299,7 +334,12 @@
  };
  N.query=id=>stateView(id).query;
  N.catalogChanged=id=>emit(id);
- N.catalog=(id,fn)=>{const task=(catalogJobs.get(id)||Promise.resolve()).catch(()=>{}).then(async()=>{const ui=live(id);if(ui){await ui.saving;fn(ui.p);ui.renderLibrary();await ui.persist();}else{const p=M.clone(A.get(id));fn(p);await A.save(p);}emit(id);});catalogJobs.set(id,task);task.finally(()=>{if(catalogJobs.get(id)===task)catalogJobs.delete(id);}).catch(()=>{});return task;};
+ // One queued project write per project. An open assembly editor takes it
+ // after its pending save and redraws its material library unless the write
+ // leaves the library as it is (renderLibrary:false); `change` names the
+ // changed keys for subscribers, and none means a full refresh.
+ const writeProject=(id,fn,{renderLibrary=true,change}={})=>{const task=(catalogJobs.get(id)||Promise.resolve()).catch(()=>{}).then(async()=>{const ui=live(id);if(ui){await ui.saving;fn(ui.p);if(renderLibrary)ui.renderLibrary();await ui.persist();}else{const p=M.clone(A.get(id));fn(p);await A.save(p);}emit(id,change);});catalogJobs.set(id,task);task.finally(()=>{if(catalogJobs.get(id)===task)catalogJobs.delete(id);}).catch(()=>{});return task;};
+ N.catalog=(id,fn)=>writeProject(id,fn);
  const materialScope=(id,library)=>{const p=N.project(id),all=[...new Map([...Object.values(library?library():A.assetLibrary()),...(p?.materials||[])].map(m=>[m.id,m])).values()],papers=new Set(p?.materialPaperIDs||[]),owned=new Set((p?.materials||[]).map(m=>m.id));return p?.paperCollectionID?all.filter(m=>papers.has(m.paperItemID||m.anchor?.paperItemID)||owned.has(m.id)&&(m.corpusEntryID||!(m.paperItemID||m.anchor?.paperItemID))):all;};
  N.materials=id=>{const scoped=materialScope(id);return A.filterAutomaticMaterials?.(scoped)||scoped;};
  // Shared frozen library cards for lists, search and source checks; never
@@ -437,7 +477,7 @@
   const sourceExclusionSignature=A.materialExclusionSignature?.(sources),excerpts=payload(sources).map((s,i)=>({...s,quoteID:'Q'+(i+1)}));
   const previousPlan=previous?M.clone(previous.plan):null;if(previousPlan){const sourceIDs=new Set(sources.map(s=>s.id));previousPlan.closest=(previousPlan.closest||[]).filter(work=>sourceIDs.has(work.sourceID));}
   const result=await E.studio.request(Prompts.PLAN_RULES+DISCUSSION_RULES,{idea,researchScope,sources:excerpts,discussionContext,retrieval,previous:previousPlan,confirmedDecisions:P.activePlanDecisions(N.state(id).decisions,previous?.id),openQuestions:previous?.plan.openQuestions||[],sourceSelection:{collectionID:folder.collectionID,collectionIDs:folder.collectionIDs||[folder.collectionID],name:folder.name,paperIDs},readingSelection:p.readingSelection||null,preparedMaterialIDs:selectedMaterials||[],retrievalScope:online?'online':'local-only',writingStructure:P.parseWritingStructure(inputs.structure),resourceConstraints:inputs.constraints||'用户尚未提供数据、代码、算力和时间预算，逐项标为待补'},status,signal,{fresh:true,maxTokens:11000,modelConfig,modelPurpose:'plan'});
-  if(signal?.aborted)throw Error('已取消');assertExclusionsCurrent(sources,sourceExclusionSignature);if(inputSignature(preparationInputs(id))!==inputVersion||N.stale({sourceRevisions,sourceItemVersions,corpusRevisions}).length)throw Error('评估期间研究问题、资源条件、结构、文献范围或来源已改变；本次过期方案未保存');const value=M.clone(result.value);value.closest=(value.closest||[]).map(work=>{const excerpt=excerpts.find(s=>s.quoteID===work.quoteID);if(!excerpt)throw Error('评估选择了不存在的证据编号，请重试');return {...work,sourceID:excerpt.id,quote:excerpt.text};});
+  if(signal?.aborted)throw Error('已取消');assertExclusionsCurrent(sources,sourceExclusionSignature);if(inputSignature(preparationInputs(id))!==inputVersion||N.stale({sourceRevisions,sourceItemVersions,corpusRevisions},sourceRevisionLookup().project(id)).length)throw Error('评估期间研究问题、资源条件、结构、文献范围或来源已改变；本次过期方案未保存');const value=M.clone(result.value);value.closest=(value.closest||[]).map(work=>{const excerpt=excerpts.find(s=>s.quoteID===work.quoteID);if(!excerpt)throw Error('评估选择了不存在的证据编号，请重试');return {...work,sourceID:excerpt.id,quote:excerpt.text};});
   // Manual corpus notes are the user's own text, never the closest prior work.
   if(value.closest.some(work=>manualCorpus.has(work.sourceID))){value.closest=value.closest.filter(work=>!manualCorpus.has(work.sourceID));value.validationNotes=[...(Array.isArray(value.validationNotes)?value.validationNotes:[]),'语料库手工条目不能作为最接近工作，已从比较中移除'];}
   // Chapter quote labels are per run; keep the stable source IDs instead.
@@ -506,7 +546,7 @@
    }catch(error){if(signal?.aborted||error.name==='AbortError')throw error;failures.push({paperID,attachmentID,title,error:error.message||String(error)});await N.update(id,{materialCollectionFailures:M.clone(failures)});status('整理未完成：'+title+' · '+(error.message||String(error))+'；继续整理其余论文');}
   }
   if(signal?.aborted)throw Error('已停止；已整理素材保留');await A.ensureArticleSectionMaterials?.();
-  const annotations=(await A.candidates(paperIDs)).filter(row=>paperIDs.includes(row.paperItemID||row.anchor?.paperItemID)),published=annotations.length?await A.publishMaterials(annotations):{cards:[]},all=await automaticMaterials([...new Map([...N.materials(id),...published.cards].filter(row=>row.kind!=='idea'&&!isDiscussion(row)&&row.sourceText?.trim()).map(row=>[row.id,row])).values()]);
+  const annotations=(await A.candidates(paperIDs)).filter(row=>paperIDs.includes(row.paperItemID||row.anchor?.paperItemID)||paperIDs.includes(row.attachmentID||row.anchor?.attachmentID)),published=annotations.length?await A.publishMaterials(annotations):{cards:[]},all=await automaticMaterials([...new Map([...N.materials(id),...published.cards].filter(row=>row.kind!=='idea'&&!isDiscussion(row)&&row.sourceText?.trim()).map(row=>[row.id,row])).values()]);
   if(signal?.aborted)throw Error('已停止；已整理素材保留');const project=N.project(id),priorSuggestions=new Map((N.state(id).materialSuggestions||[]).map(row=>[row.materialID,row])),suggestions=all.map(material=>{const previous=priorSuggestions.get(material.id);if(previous?.sourceRevision===material.revision&&project.sections.some(row=>row.id===previous.sectionID))return M.clone(previous);const match=ChromeUtils.importESModule('chrome://zotero/content/research/shared/material-section-matching.mjs').matchMaterialSection(project,material),kind=material.sectionType||material.section||material.anchor?.section||'';return {materialID:material.id,sectionID:match?.sectionID||null,reason:match?.reason||(material.kind==='annotation'?'原文批注已转为项目素材；写作用途待确认':'保留完整'+(kind||'上下文')+'；写作用途待确认'),sourceRevision:material.revision};});
   // The project corpus is no longer rebuilt on every collection; corpora are
   // read through E.corpus.projectRows, and 导入当前装配 stays explicit.
@@ -542,12 +582,19 @@
   const folder=await N.preparationPaperSelection(id),known=new Set(folder.papers.map(row=>row.id));if(closeReadingPaperIDs.some(paperID=>!known.has(paperID))||structurePaperID!==null&&!known.has(structurePaperID))throw Error('请从项目已下载的论文中选择');
   const readingSelection={closeReadingPaperIDs:[...new Set(closeReadingPaperIDs)],structurePaperID,structureOnly:true};await N.catalog(id,project=>{project.readingSelection=readingSelection;project.researchPreparation||={};project.researchPreparation.readingSelection=readingSelection;});return readingSelection;
  };
- // Papers and their 精选/精读/结构参考 marks in one call: the page also saves
- // them on pagehide, when it cannot wait between two writes.
- N.savePreparationChoice=async(id,choice)=>{
-  let {collectionIDs=[],paperIDs=[],featuredPaperIDs=[],closeReadingPaperIDs=[],structurePaperID=null}=M.clone(choice||{});
-  let sources=await N.setPreparationSources(id,{collectionIDs,paperIDs,featuredPaperIDs});
-  return {sources,readingSelection:await N.saveReadingSelection(id,{closeReadingPaperIDs,structurePaperID})};
+ // Papers and their 精选/精读/结构参考 marks in one call, queued per project in
+ // this window: the page also saves them on pagehide, when it cannot wait
+ // between two writes. The choice is copied before it waits for an earlier
+ // write, and a project without a paper folder gets one first.
+ let preparationChoiceJobs=new Map();
+ N.savePreparationChoice=(id,choice)=>{
+  let value=M.clone(choice||{}),task=(preparationChoiceJobs.get(id)||Promise.resolve()).catch(()=>{}).then(async()=>{
+   let {collectionIDs=[],paperIDs=[],featuredPaperIDs=[],closeReadingPaperIDs=[],structurePaperID=null}=value;
+   if(!N.project(id)?.paperCollectionID)await N.ensureProjectCollection(id);
+   let sources=await N.setPreparationSources(id,{collectionIDs,paperIDs,featuredPaperIDs});
+   return {sources,readingSelection:await N.saveReadingSelection(id,{closeReadingPaperIDs,structurePaperID})};
+  });
+  preparationChoiceJobs.set(id,task);task.finally(()=>{if(preparationChoiceJobs.get(id)===task)preparationChoiceJobs.delete(id);}).catch(error=>Zotero.logError(error));return task;
  };
  N.confirm=async(id,versionID)=>{await N.loadPlanSources(id);const state=N.state(id),v=state.versions.find(v=>v.id===versionID);if(!v)throw Error('方案版本不存在');if(!N.assessmentCurrent(id,v))throw Error('研究条件或来源已改变，请更新评估再确认方案');const artifactID='artifact-'+v.id;if(state.artifacts.some(a=>a.id===artifactID))return state.artifacts.find(a=>a.id===artifactID);const text=N.planMarkdown(v),material=M.material({kind:'idea',title:v.plan.title||'研究方案',summary:'已确认的实验计划；尚未运行实验，不代表实测结果。',sourceText:text,sourceRecordID:artifactID,artifactID,verification:'unverified',anchor:{sourceText:text}}),published=await A.publishMaterials([material]),artifact={id:artifactID,type:'experiment-plan',versionID:v.id,materialID:published.cards[0].id,sourceIDs:v.sources.map(s=>s.id),status:'confirmed',at:new Date().toISOString()};
   // Written against the committed notebook: a version or decision saved while
@@ -563,18 +610,49 @@
  };
  // Build revision lookups once. Reading the shared library for every source
  // copied all cached materials per entry and paused the window for seconds.
- const sourceRevisionLookup=()=>{const library=libraryView();let owned=null;return id=>{const shared=library[id];if(shared)return shared.revision;if(!owned){owned=new Map();for(const p of Object.values(A.allView?.()||A.all()))for(const m of p.materials||[])if(!owned.has(m.id))owned.set(m.id,m.revision);}return owned.get(id);};};
+ // A project's own materials keep their ids in a copy, so a plan reads its own
+ // project's materials through lookup.project(id). One scan builds the table of
+ // every project; the lookup itself keeps the first project holding an id, for
+ // callers that name no project.
+ const sourceRevisionLookup=()=>{const library=libraryView();let byProject=null,first=null;const owned=projectID=>{if(!byProject){byProject=new Map();first=new Map();for(const [pid,p] of Object.entries(A.allView?.()||A.all())){const map=new Map();for(const m of p.materials||[]){if(!map.has(m.id))map.set(m.id,m.revision);if(!first.has(m.id))first.set(m.id,m.revision);}byProject.set(pid,map);}}return projectID===undefined?first:byProject.get(projectID)||new Map();};const lookup=projectID=>id=>{const shared=library[id];if(shared)return shared.revision;return owned(projectID).get(id);};const revisionOf=lookup();revisionOf.project=lookup;return revisionOf;};
  // Corpus rows are keyed by their material ID ('corpus-'+entryID), so a changed
  // corpus entry invalidates artifacts like any other source. Built lazily and
  // only when a version used corpus rows and the corpus service is loaded.
  const corpusRevisionLookup=()=>{let lookup;return id=>(lookup||=E.corpus.revisionLookup())(id);};
  N.stale=(v,revisionOf=sourceRevisionLookup(),corpusRevisionOf)=>{const result=Object.entries(v.sourceRevisions||{}).filter(([id,revision])=>revisionOf(id)!==revision).map(([id])=>id);if(v.corpusRevisions&&E.corpus?.revisionLookup){corpusRevisionOf||=corpusRevisionLookup();for(const [id,revision]of Object.entries(v.corpusRevisions))if(corpusRevisionOf(id)!==revision)result.push(id);}for(const [id,modified]of Object.entries(v.sourceItemVersions||{})){try{const item=Zotero.Items.get(Number(id));if(!item||item.deleted||(item.dateModified||'')!==modified)result.push('item:'+id);}catch(error){if(error.name==='UnloadedDataException'||error.constructor?.name==='UnloadedDataException')result.push('pending-item:'+id);else throw error;}}return result;};
- N.invalidateArtifacts=async(id,hypothesisIDs=[],sourceIDs=[])=>{const state=N.state(id),changed=new Set(sourceIDs),itemChanged=v=>Object.keys(v.sourceItemVersions||{}).some(itemID=>changed.has('item:'+itemID)),affected=state.artifacts.filter(a=>a.status!=='needs-review'&&state.versions.some(v=>v.id===a.versionID&&(v.plan.hypotheses.some(h=>hypothesisIDs.includes(h.id))||v.sources.some(src=>changed.has(src.materialID))||itemChanged(v))));if(!affected.length)return [];
-  await E.store.update(store=>{for(const artifact of store.researchNotebooks?.[id]?.artifacts||[]){if(artifact.status==='needs-review'||!affected.some(a=>a.id===artifact.id))continue;artifact.status='needs-review';artifact.reviewReason=hypothesisIDs.length?'相关假设已有新版本':'证据素材已更新';const material=store.researchMaterials?.[artifact.materialID];if(material){material.verification='stale';material.revision++;}}});emit(id);A.notifyAssetsChanged?.();return affected.map(a=>a.materialID);};
- // A Zotero metadata edit of a source paper fires no asset change; the
- // notebook page re-checks its confirmed plans when it opens.
- N.reviewArtifacts=async id=>{const state=stateView(id),reviewed=new Set((state.artifacts||[]).filter(a=>a.status!=='needs-review').map(a=>a.versionID));if(!reviewed.size)return [];const revisionOf=sourceRevisionLookup(),changed=[...new Set((state.versions||[]).filter(v=>reviewed.has(v.id)).flatMap(v=>N.stale(v,revisionOf)).filter(item=>!item.startsWith('pending-item:')))];return changed.length?N.invalidateArtifacts(id,[],changed):[];};
- A.onAssetsChanged(()=>{const all=(E.store.peek?E.store.peek('researchNotebooks'):E.store.get('researchNotebooks'))||{},revisionOf=sourceRevisionLookup(),corpusRevisionOf=E.corpus?.revisionLookup?corpusRevisionLookup():undefined;for(const [id,state] of Object.entries(all)){const changed=[...new Set((state.versions||[]).flatMap(v=>N.stale(v,revisionOf,corpusRevisionOf)).filter(item=>!item.startsWith('pending-item:')))];if(changed.length)N.invalidateArtifacts(id,[],changed).catch(e=>Zotero.logError(e));}});
+ // What a review reason says about a changed Zotero item ('item:<id>').
+ const itemReviewReason=itemID=>{try{const item=Zotero.Items.get(Number(itemID));if(!item)return '来源条目已从 Zotero 删除';const label=item.isAnnotation?.()?'来源批注':item.isNote?.()?'来源笔记':item.isAttachment?.()?'来源附件':'来源论文';return label+(item.deleted?'已移入回收站':'在 Zotero 中已修改');}catch{return '来源条目在 Zotero 中已修改';}};
+ // A plan is marked when one of its hypotheses changed, or when a changed
+ // source is out of date for that plan itself (N.stale of its own version): a
+ // change an older plan predates never marks a plan made after it. Each card's
+ // reason names its own changes.
+ N.invalidateArtifacts=async(id,hypothesisIDs=[],sourceIDs=[])=>{
+  const state=N.state(id),changed=new Set(sourceIDs),revisionOf=changed.size?sourceRevisionLookup().project(id):null,corpusRevisionOf=changed.size&&E.corpus?.revisionLookup?corpusRevisionLookup():undefined,reasons=new Map();
+  for(const a of state.artifacts){
+   if(a.status==='needs-review')continue;const v=state.versions.find(row=>row.id===a.versionID);if(!v)continue;
+   if((v.plan?.hypotheses||[]).some(h=>hypothesisIDs.includes(h.id))){reasons.set(a.id,'相关假设已有新版本');continue;}
+   const own=changed.size?N.stale(v,revisionOf,corpusRevisionOf).filter(entry=>changed.has(entry)):[];if(!own.length)continue;
+   const items=own.filter(entry=>entry.startsWith('item:'));reasons.set(a.id,[...new Set([...(own.length>items.length?['证据素材已更新']:[]),...items.map(entry=>itemReviewReason(entry.slice(5)))])].join('；'));
+  }
+  const affected=state.artifacts.filter(a=>reasons.has(a.id));if(!affected.length)return [];
+  await E.store.update(store=>{for(const artifact of store.researchNotebooks?.[id]?.artifacts||[]){if(artifact.status==='needs-review'||!reasons.has(artifact.id))continue;artifact.status='needs-review';artifact.reviewReason=reasons.get(artifact.id);const material=store.researchMaterials?.[artifact.materialID];if(material){material.verification='stale';material.revision++;}}});emit(id);A.notifyAssetsChanged?.();return affected.map(a=>a.materialID);};
+ // The notebook page re-checks its confirmed plans when it opens, for changes
+ // made while the app was closed (a sync, another device).
+ N.reviewArtifacts=async id=>{const state=stateView(id),reviewed=new Set((state.artifacts||[]).filter(a=>a.status!=='needs-review').map(a=>a.versionID));if(!reviewed.size)return [];const revisionOf=sourceRevisionLookup().project(id),changed=[...new Set((state.versions||[]).filter(v=>reviewed.has(v.id)).flatMap(v=>N.stale(v,revisionOf)).filter(item=>!item.startsWith('pending-item:')))];return changed.length?N.invalidateArtifacts(id,[],changed):[];};
+ A.onAssetsChanged(()=>{const all=(E.store.peek?E.store.peek('researchNotebooks'):E.store.get('researchNotebooks'))||{},revisionOf=sourceRevisionLookup(),corpusRevisionOf=E.corpus?.revisionLookup?corpusRevisionLookup():undefined;for(const [id,state] of Object.entries(all)){const changed=[...new Set((state.versions||[]).flatMap(v=>N.stale(v,revisionOf.project(id),corpusRevisionOf)).filter(item=>!item.startsWith('pending-item:')))];if(changed.length)N.invalidateArtifacts(id,[],changed).catch(e=>Zotero.logError(e));}});
+ // A Zotero edit, trash or deletion of an item a confirmed plan cites fires no
+ // asset change. This observer re-checks the plans citing it, whether or not
+ // their page is open; a burst of notifications is handled once.
+ let changedItems=new Set(),itemReview=false,itemObserver=null;
+ const reviewChangedItems=()=>{itemReview=false;const ids=changedItems;changedItems=new Set();if(!itemObserver||!ids.size||!E.store)return;
+  const all=(E.store.peek?E.store.peek('researchNotebooks'):E.store.get('researchNotebooks'))||{};
+  for(const [id,state] of Object.entries(all)){const reviewed=new Set((state.artifacts||[]).filter(a=>a.status!=='needs-review').map(a=>a.versionID));if(!reviewed.size||!projectView(id))continue;if((state.versions||[]).some(v=>reviewed.has(v.id)&&Object.keys(v.sourceItemVersions||{}).some(itemID=>ids.has(itemID))))N.reviewArtifacts(id).catch(error=>Zotero.logError(error));}
+ };
+ // Registered only where it is also removed at shutdown.
+ if(Zotero.Notifier?.registerObserver&&Zotero.addShutdownListener){
+  itemObserver=Zotero.Notifier.registerObserver({notify(event,type,ids){if(type!=='item'||!['modify','trash','delete'].includes(event)||!itemObserver)return;for(const itemID of ids||[])changedItems.add(String(itemID));if(itemReview)return;itemReview=true;if(typeof E.setTimeout==='function')E.setTimeout(reviewChangedItems,500);else Promise.resolve().then(reviewChangedItems);}},['item'],'easysch-notebook-plan-sources');
+  Zotero.addShutdownListener(()=>{if(!itemObserver)return;Zotero.Notifier.unregisterObserver(itemObserver);itemObserver=null;});
+ }
  N.presentPlan=v=>{const plan=P.bindPlanCitations(v.plan,v.sources),labels=P.PLAN_FIELD_LABELS||{hypothesisID:'绑定假设',data:'数据',controls:'控制条件',comparison:'比较方法',metrics:'评价指标',support:'支持判据',refute:'否定判据',cost:'资源成本',outputs:'交付结果',preprocessing:'预处理',leakage:'数据泄漏检查',baselines:'公平比较',ablations:'组件检验',robustness:'稳健性',reliability:'可靠性',failureAnalysis:'失败分析',reproducibility:'复现材料',novelty:'创新点',significance:'研究价值',feasibility:'可行性',minimumValidation:'最小验证'};plan.pending=(plan.pending||[]).map(value=>String(value).replace(/\b(?:hypothesisID|data|controls|comparison|metrics|support|refute|cost|outputs|preprocessing|leakage|baselines|ablations|robustness|reliability|failureAnalysis|reproducibility|novelty|significance|feasibility|minimumValidation)\b/g,key=>labels[key]));return plan;};
  N.planMarkdown=v=>{const p=N.presentPlan(v),labels={novelty:'创新性依据（待核验判断）',significance:'学术意义',feasibility:'可行性与限制',minimumValidation:'最小验证'};let text='# '+(p.title||'研究与实验方案')+'\n\n实验计划 · 第 '+v.number+' 版 · 尚未运行实验\n';for(const [k,label] of Object.entries(labels))text+='\n## '+label+'\n'+p[k]+'\n';for(const h of p.hypotheses)text+='\n### 假设 '+h.id+'\n'+h.claim+'\n\n否定条件：'+h.falsification+'\n';for(const w of p.closest)text+='\n### 接近工作 ['+w.sourceID+']\n'+w.coverage+' · 比较为推断，需核验\n\n'+w.similarity+'\n\n差异：'+w.difference+'\n\n反证：'+w.counterevidence+'\n';const names={hypothesisID:'绑定假设',data:'输入数据',controls:'控制变量',comparison:'比较方法',metrics:'指标',support:'支持判据（计划）',refute:'否定判据（计划）',cost:'成本',outputs:'所需产物',preprocessing:'预处理',leakage:'防止数据泄漏',baselines:'公平基线',ablations:'消融',robustness:'鲁棒性',reliability:'可靠性检查',failureAnalysis:'失败分析',reproducibility:'复现材料'};for(const e of p.experiments){text+='\n## '+(e.title||e.id)+'（计划）\n';for(const [k,label] of Object.entries(names))if(e[k])text+='\n**'+label+'**：'+e[k]+'\n';}text+='\n## 待补项\n'+p.pending.map(s=>'- '+s).join('\n')+'\n## 未解决问题\n'+(p.openQuestions||[]).map(s=>'- '+s).join('\n');if(p.validationNotes?.length)text+='\n## 方案核对说明\n'+p.validationNotes.map(s=>'- '+s).join('\n');return text;};
 })(Zotero.Research);
