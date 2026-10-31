@@ -61,3 +61,11 @@ test('inline popup text uses the shared font token with a fallback instead of sy
 	}
 	assert.doesNotMatch(source, /var\(--ui-[\w-]+\)/, 'no workspace token is used without a fallback in the reader document');
 });
+
+test('the translation is primary text and its rows align with the native 保存批注 row', () => {
+	let {box, find} = render();
+	let output = find('quick-translation-output').style.cssText;
+	assert.match(output, /color:var\(--fill-primary\)/, 'the translation is the main content, not secondary grey');
+	assert.doesNotMatch(output, /fill-secondary/);
+	assert.match(box.style.cssText, /padding:10px 0;/, 'no extra inline inset beyond the popup padding that 保存批注 uses');
+});

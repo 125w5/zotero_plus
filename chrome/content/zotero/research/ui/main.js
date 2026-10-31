@@ -21,6 +21,8 @@ var EasySchUI = {
 	status(message, error = false) {
 		this.$('status').textContent = message;
 		this.$('status').parentElement.classList.toggle('error', error);
+		let dismiss = this.$('dismiss-status');
+		if (dismiss) dismiss.hidden = !error;
 	},
 	// A button stays disabled while any job holds it, so a job that ends first
 	// does not free a button another running job still holds.
@@ -149,6 +151,7 @@ var EasySchUI = {
 		});
 		this.bind('refresh', () => this.refresh());
 		this.bind('cancel', () => this.cancelLegacyJob());
+		this.bind('dismiss-status', () => this.status(''));
 		this.initResearch(); this.initWriting(); this.initSettings(); this.initMeetings(); this.initSearch(); this.initPaperSkills();
 		this.initPPTStudio(); this.initFlow();this.initDiscovery();this.initKnowledge();this.initWritingCards(); await this.initTasks();
 		this.initManuscriptProjects();await this.initSurface();

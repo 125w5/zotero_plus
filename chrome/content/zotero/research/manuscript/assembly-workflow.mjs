@@ -138,3 +138,22 @@ export function installAssemblyWorkflow(U,{el,button,persist,snapshot,changed,ap
  installDirectionWorkspace(U,{el,button,persist,snapshot,changed,status,setStep});
  return {render,setStep,refresh,assessWhole,executePlanStep,startTask,closePanel,get issues(){return issues;}};
 }
+// The stepper follows the canvas centre but stays between the title group and the export actions; with no room it takes its own row.
+export function assemblyStepsCenter({center,before,after,width,gap=8}){const low=before+gap+width/2,high=after-gap-width/2;return low>high?{wrap:true,center}:{wrap:false,center:Math.min(Math.max(center,low),high)};}
+const stepsLayouts=new WeakMap();
+export function placeAssemblySteps(doc,center){
+ const steps=doc.getElementById('steps'),header=steps?.parentElement;if(!header)return;
+ const view=doc.defaultView;let layout=stepsLayouts.get(doc);
+ if(!layout){layout={center:0,frame:0,observed:new WeakSet(),observer:null};stepsLayouts.set(doc,layout);
+  // Re-placed in the next frame: toggling the wrap inside the callback would resize #steps again in the same pass (ResizeObserver loop error).
+  if(view?.ResizeObserver){const place=()=>{layout.frame=0;placeAssemblySteps(doc);};layout.observer=new view.ResizeObserver(()=>{if(!layout.frame)layout.frame=view.requestAnimationFrame(place);});}}
+ for(const child of header.children)if(layout.observer&&!layout.observed.has(child)){layout.observed.add(child);layout.observer.observe(child);}
+ if(center!==undefined)layout.center=center;if(!layout.center)return;
+ const style=view.getComputedStyle(header),box=header.getBoundingClientRect(),middle=(box.left+box.right)/2,items=steps.children,gap=parseFloat(style.columnGap)||8;
+ let before=box.left+(parseFloat(style.paddingLeft)||0),after=box.right-(parseFloat(style.paddingRight)||0),width=0;
+ // Measured from the step buttons, not the nav, so a wrapped full-width row can still return to one line.
+ if(items.length){const own=view.getComputedStyle(steps);width=items[items.length-1].getBoundingClientRect().right-items[0].getBoundingClientRect().left+(parseFloat(own.paddingLeft)||0)+(parseFloat(own.paddingRight)||0)+(parseFloat(own.borderLeftWidth)||0)+(parseFloat(own.borderRightWidth)||0);}
+ for(const child of header.children){if(child===steps)continue;const rect=child.getBoundingClientRect();if(!rect.width)continue;if((rect.left+rect.right)/2<middle)before=Math.max(before,rect.right);else after=Math.min(after,rect.left);}
+ const placed=assemblyStepsCenter({center:layout.center,before,after,width,gap});
+ header.toggleAttribute('data-steps-wrap',placed.wrap);if(header.style.getPropertyValue('--assembly-steps-center')!==placed.center+'px')header.style.setProperty('--assembly-steps-center',placed.center+'px');
+}

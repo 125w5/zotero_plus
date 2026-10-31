@@ -134,8 +134,9 @@ item-details[data-easysch-navigation=paper] .research-metadata-menu button{borde
 item-details[data-easysch-navigation=paper] .research-metadata-menu button:hover{background:var(--easysch-reading-hover)}
 item-pane-sidenav[data-easysch-navigation=paper]{background:var(--material-sidepane,#fafaf9);border-inline-start:1px solid var(--fill-quinary,#e8e9e7);padding-top:8px;gap:5px}
 item-pane-sidenav[data-easysch-navigation=paper] .btn{width:28px;height:28px;border-radius:6px;color:var(--fill-secondary,#818a95);fill:var(--fill-secondary,#818a95)!important;stroke:var(--fill-secondary,#818a95)!important;transition:background-color 100ms}
-item-pane-sidenav[data-easysch-navigation=paper] .btn:hover,item-pane-sidenav[data-easysch-navigation=paper] .highlight{background:var(--easysch-hover);border-radius:6px}
-item-pane-sidenav[data-easysch-navigation=paper] .btn:active{background:var(--easysch-selection)}
+/* background-color only: the native rules draw each pane icon as background-image. */
+item-pane-sidenav[data-easysch-navigation=paper] .btn:hover,item-pane-sidenav[data-easysch-navigation=paper] .highlight{background-color:var(--easysch-hover);border-radius:6px}
+item-pane-sidenav[data-easysch-navigation=paper] .btn:active{background-color:var(--easysch-selection)}
 
 /* Conversation chrome is confined to one composer, with readable message roles. */
 .academic-chat [hidden]{display:none!important}
@@ -163,10 +164,13 @@ item-details[data-easysch-navigation=paper] .academic-chat form{position:sticky;
 item-details[data-easysch-navigation=paper] .academic-chat form:focus-within{border-color:#aab4c0;box-shadow:0 0 0 2px #aab4c014,0 2px 7px #0000000a}
 item-details[data-easysch-navigation=paper] .academic-chat textarea{flex-basis:100%;width:100%;height:60px;min-height:48px;max-height:126px;padding:1px 2px;border:0!important;border-radius:0;background:transparent!important;font:14px/1.6 system-ui,'Microsoft YaHei',sans-serif;color:var(--easysch-ink);outline:0;resize:none;box-shadow:none}
 item-details[data-easysch-navigation=paper] .academic-chat textarea::placeholder{color:var(--easysch-reading-muted);opacity:.8}
-item-details[data-easysch-navigation=paper] .academic-chat form>.primary{margin:0;margin-inline-start:auto;min-height:26px;height:26px;padding:3px 10px;border:1px solid color-mix(in srgb,var(--ui-primary-text) 16%,transparent);border-radius:6px;background:var(--ui-primary);color:var(--ui-primary-text);font:11px/1.5 system-ui,'Microsoft YaHei',sans-serif;box-shadow:var(--ui-control-shadow)}
+item-details[data-easysch-navigation=paper] .academic-chat form>.primary{margin:0;margin-inline-start:auto;min-height:34px;padding:6px 12px;border:1px solid color-mix(in srgb,var(--ui-primary-text) 16%,transparent);border-radius:var(--ui-radius-control,8px);background:var(--ui-primary);color:var(--ui-primary-text);font:13px/1.5 system-ui,'Microsoft YaHei',sans-serif;box-shadow:var(--ui-control-shadow)}
 item-details[data-easysch-navigation=paper] .academic-chat form>.primary:hover{background:var(--ui-primary-hover);border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent)}
 item-details[data-easysch-navigation=paper] .academic-chat form>.primary:active{transform:translateY(1px);box-shadow:none}
-item-details[data-easysch-navigation=paper] .academic-chat form>button:not(.primary){min-height:26px;padding:3px 7px;border:0;font-size:11px;color:var(--easysch-reading-muted);background:transparent}
+item-details[data-easysch-navigation=paper] .academic-chat form>button:not(.primary){min-height:34px;padding:6px 12px;border:0;font-size:13px;line-height:1.5;color:var(--easysch-reading-muted);background:transparent}
+/* background-color only: the toolkit draws the dropdown arrow as background-image and reserves padding-inline-end for it. */
+item-details[data-easysch-navigation=paper] .academic-chat form>select{margin:0;min-height:34px;padding-block:6px;padding-inline-start:10px;border:1px solid var(--easysch-reading-border);border-radius:var(--ui-radius-control,8px);background-color:transparent;color:var(--easysch-reading-muted);font-size:13px;font-weight:400;line-height:1.5}
+item-details[data-easysch-navigation=paper] .academic-chat form>select:hover{background-color:var(--easysch-reading-hover)}
 item-details[data-easysch-navigation=paper].academic-focus .academic-chat{height:calc(100vh - 230px);min-height:210px;max-height:none;display:flex;flex-direction:column;padding-bottom:4px}
 item-details[data-easysch-navigation=paper] .academic-chat.focused .academic-chat-messages{flex:1;min-height:0;max-height:none;overflow:auto;scrollbar-width:thin}
 item-details[data-easysch-navigation=paper] .academic-chat.focused .academic-chat-messages:empty{display:block;min-height:0}
@@ -178,7 +182,7 @@ item-details[data-easysch-navigation=paper] related-box[data-easysch-metadata=sh
 .academic-chat .academic-symbol{display:inline-block;width:18px;height:18px;flex:none;background:url('brand/easysch-symbol-black.png') center/contain no-repeat;opacity:.88}
 :root[data-easysch-appearance=dark] .academic-chat .academic-symbol,:root:not([data-easysch-appearance])[data-theme=dark] .academic-chat .academic-symbol{background-image:url('brand/easysch-symbol-white.png')}
 .academic-chat .academic-composer-brand{display:flex;align-items:center;gap:5px;margin-inline-end:auto;user-select:none;color:var(--fill-secondary,#818a95)}
-.academic-chat .academic-composer-brand small{font:10px/1.4 system-ui,'Microsoft YaHei',sans-serif;letter-spacing:.15px}
+.academic-chat .academic-composer-brand small{font:11px/1.4 system-ui,'Microsoft YaHei',sans-serif;letter-spacing:.15px}
 .academic-chat .academic-message-head .academic-symbol{width:16px;height:16px}
 /* Research images must not become the automatic minimum width of the native
    flex column. Constrain the HTML body before sizing its percent-width content. */
@@ -248,6 +252,8 @@ item-details[data-easysch-navigation=paper] .reference-pane .reference-row:hover
 :is(#zotero-items-tree,#zotero-collections-tree) .row.selected{
  box-shadow:inset 2px 0 #8796a6;
 }
+/* The research columns keep fixed flex bases; when they overflow a narrow tree, the other columns give up width before Title. */
+#zotero-items-tree .cell.title{flex-shrink:.2}
 /* Styling the toolbar surface leaves native row metrics and column hit areas
    untouched, so selection, resizing and list virtualization retain alignment. */
 :is(#zotero-toolbar-collection-tree,#zotero-toolbar-item-tree,#zotero-tabs-toolbar,#tab-bar-container){
@@ -393,7 +399,7 @@ item-pane-sidenav[data-easysch-navigation=paper] .btn{
  transition:background-color 130ms,box-shadow 130ms,color 130ms;
 }
 item-pane-sidenav[data-easysch-navigation=paper] .btn[aria-selected=true]{
- background:var(--easysch-selection);
+ background-color:var(--easysch-selection);
  color:var(--easysch-ink);
  box-shadow:0 1px 4px var(--easysch-shadow),inset 0 1px var(--easysch-highlight);
 }
@@ -542,7 +548,7 @@ item-details[data-easysch-navigation=paper] #easysch-asset-panel{
 :is(#zotero-items-tree,#zotero-collections-tree) .row.selected,
 #easysch-home-navigation button.active,
 item-details[data-easysch-navigation=paper] .reference-pane .reference-row[data-selected=true]{background:var(--easysch-selection)!important;box-shadow:none!important;outline:0;border-color:var(--easysch-line)}
-item-pane-sidenav[data-easysch-navigation=paper] .btn[aria-selected=true]{background:var(--easysch-selection)!important;box-shadow:none!important}
+item-pane-sidenav[data-easysch-navigation=paper] .btn[aria-selected=true]{background-color:var(--easysch-selection)!important;box-shadow:none!important}
 
 /* Native controls share reader colors; document frames retain their own style. */
 :root,:root[data-easysch-appearance=dark],:root:not([data-easysch-appearance])[data-theme=dark]{

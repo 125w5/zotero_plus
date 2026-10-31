@@ -11,7 +11,7 @@ item-details[data-easysch-navigation=paper] .zotero-view-item > [data-pane][data
 item-details[data-easysch-navigation=paper] .zotero-view-item > notes-box[data-easysch-selected=true] > collapsible-section > .head {display:flex!important;justify-content:flex-end;min-height:28px;padding:2px 3px!important;border:0!important;background:transparent!important;}
 item-details[data-easysch-navigation=paper] .zotero-view-item > notes-box[data-easysch-selected=true] > collapsible-section > .head > :is(.title-box,.twisty) {display:none!important;}
 item-details[data-easysch-navigation=paper] .zotero-view-item > [data-pane][data-easysch-selected=true] > collapsible-section > :is(.body,[data-type=body]) {padding:0!important;max-height:none!important;opacity:1!important;visibility:visible!important;overflow:visible!important;transition:none!important;}
-item-pane-sidenav[data-easysch-navigation=paper] .btn[aria-selected=true] {background:var(--easysch-selection,#e5e7eb);border-radius:6px;color:var(--fill-primary,#434c58);}
+item-pane-sidenav[data-easysch-navigation=paper] .btn[aria-selected=true] {background-color:var(--easysch-selection,#e5e7eb);border-radius:6px;color:var(--fill-primary,#434c58);}
 .paper-overview,.paper-overview *,.paper-abstract,.paper-abstract * {box-sizing:border-box;}
 .paper-overview {width:100%;min-width:0;padding:2px 2px 12px;font:13px/1.6 var(--ui-font,system-ui),"Microsoft YaHei",sans-serif;color:var(--easysch-reading-foreground,var(--text,var(--fill-primary,#303b48)));}
 .paper-overview-cover {display:flex;flex-direction:column;align-items:center;min-width:0;padding:2px 0 10px;}

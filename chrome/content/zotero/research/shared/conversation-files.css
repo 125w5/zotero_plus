@@ -127,12 +127,12 @@ html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research
 .conversation-files-subheading{flex-wrap:wrap;gap:8px}
 .conversation-files-filters{gap:3px}
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files-filters button{font-size:12px;min-height:29px;padding:4px 8px;white-space:nowrap;color:var(--muted)}
-.conversation-file{grid-template-columns:14px 15px minmax(0,1fr) 25px;grid-template-rows:auto;gap:0 4px;padding:9px 2px;min-height:64px;margin-bottom:5px;align-items:start}
+.conversation-file{grid-template-columns:14px 15px minmax(0,1fr) 25px;grid-template-rows:auto;gap:0 4px;padding:9px 2px;min-height:0;margin-bottom:5px;align-items:start}
 .conversation-file-check{align-self:start;margin:6px 0 0!important;padding:0!important;border-radius:3px}
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files .conversation-file-preview{display:grid;grid-template-columns:16px minmax(0,1fr);gap:6px;align-items:start;padding:2px 0;min-height:28px;border:0;border-radius:0;background:transparent;box-shadow:none;text-align:start}
 .conversation-file-name{min-width:0;font:400 13px/1.55 var(--ui-font,system-ui);-webkit-line-clamp:3;overflow-wrap:anywhere}
 .conversation-file-meta{display:none}
-html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files .conversation-file-star{display:grid;place-items:center;width:25px;min-height:29px;padding:0;border-color:transparent;background:transparent;box-shadow:none;color:var(--muted)}
+html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files .conversation-file-star{display:grid;place-items:center;width:25px;min-height:29px;margin-top:-2px;padding:0;border-color:transparent;background:transparent;box-shadow:none;color:var(--muted)}
 .conversation-file-grip{font-size:18px;min-height:29px;align-self:start}
 .conversation-file-detail-title h3{font-size:14px}.conversation-file-detail-tabs button{font-size:13px;min-height:36px;padding-inline:4px;white-space:nowrap}.conversation-file-detail-body{font-size:13px}.conversation-file-detail{background:linear-gradient(150deg,color-mix(in srgb,var(--surface) 86%,transparent),color-mix(in srgb,var(--soft) 75%,transparent))}
 /* Host panes reserve the same gutter. Earlier page-specific rules used full
@@ -151,7 +151,7 @@ html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files-subheading{padding:12px 0 0;margin-top:1px;border-top:1px solid var(--line);background:transparent;box-shadow:none}
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files-search-wrap{min-height:36px;border-radius:var(--ui-radius-control,8px);background:var(--soft);border-color:var(--line);box-shadow:none}
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files-session{padding:7px 9px;font-size:13px}
-html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-file{min-height:66px;padding:9px 2px;border-radius:var(--ui-radius-control,8px);margin-bottom:3px}
+html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-file{min-height:0;padding:9px 2px;border-radius:var(--ui-radius-control,8px);margin-bottom:3px}
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files :is(.conversation-files-new,.conversation-files-import){
  border-color:var(--line);background:var(--surface);box-shadow:0 1px 3px var(--es-read-shadow,#1625360a),inset 0 1px var(--ui-glint,#ffffff9c);
 }

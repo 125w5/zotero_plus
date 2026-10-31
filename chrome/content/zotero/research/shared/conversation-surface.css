@@ -18,7 +18,11 @@
 #easysch-conversation-surface[data-dragging=true]{cursor:grabbing;will-change:transform;}
 #easysch-conversation-surface[data-dragging=true] .clui-native-glass{backdrop-filter:none;}
 #easysch-conversation-surface[data-presentation=reader-bottom][data-dock=floating][data-expanded=false] .clui-native-shell{display:none;}
-#easysch-conversation-surface[data-presentation=reader-bottom][data-dock=floating][data-idle=true]{opacity:.5;transform:none;}
+/* Idle dims the whole entry. At .6 its text switches to the primary text colour, so the dimmed label and
+   placeholder keep at least 3:1 on white and black paper in both themes; .5 or the secondary colour does not. */
+#easysch-conversation-surface[data-presentation=reader-bottom][data-dock=floating][data-idle=true]{opacity:.6;transform:none;}
+#easysch-conversation-surface[data-presentation=reader-bottom][data-dock=floating][data-idle=true]>.clui-native-reveal{color:var(--clui-text-primary);}
+#easysch-conversation-surface[data-presentation=reader-bottom][data-dock=floating][data-idle=true] .conversation-surface-input::placeholder{color:var(--ui-text,#24282f)!important;}
 .conversation-surface-move{cursor:grab!important;touch-action:none;flex:none;width:28px;height:28px;}
 .conversation-surface-move:active{cursor:grabbing!important;}
 .conversation-surface button{appearance:none;border:1px solid transparent;border-radius:9px;padding:5px 7px;background:transparent;color:var(--ui-secondary,#74808e);font:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;transition:background 130ms,box-shadow 130ms,border-color 130ms,color 130ms;}
@@ -160,9 +164,10 @@
 #easysch-conversation-surface[data-tab=original] .clui-native-shell{margin:0;width:100%;}
 .conversation-surface-dock-target{position:fixed;z-index:2147482997;pointer-events:none;display:flex;align-items:center;justify-content:center;border:2px dashed #8a9bae;border-radius:12px;background:#c5d1de44;color:#52657b;font:12px var(--ui-font,system-ui);backdrop-filter:blur(3px);}
 .conversation-preferences-popover{position:fixed;z-index:2147483001;max-width:calc(100vw - 16px);color:var(--ui-text,#283541);font:12px/1.6 var(--ui-font,system-ui);animation:conversation-control-enter 140ms ease-out;}
-.conversation-preferences-popover{overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;}
+/* The outer popover scrolls, so it owns the frame: an inner shadow or radius would be clipped by it. */
+.conversation-preferences-popover{overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;box-sizing:border-box;border:1px solid var(--ui-border,#d2dbe5);border-radius:12px;background:var(--ui-glass,#fffffff5);box-shadow:var(--ui-float-shadow,0 10px 28px #16253822);backdrop-filter:blur(24px);}
 .conversation-preferences-popover[data-embedded=true]{z-index:2147483011;}
-.conversation-preferences-popover :is(.conversation-surface-controls,.conversation-surface-session-menu){position:static;inset:auto;width:100%;max-width:none;box-sizing:border-box;max-height:none;overflow:visible;margin:0;}
+.conversation-preferences-popover :is(.conversation-surface-controls,.conversation-surface-session-menu){position:static;inset:auto;width:100%;max-width:none;box-sizing:border-box;max-height:none;overflow:visible;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;animation:none;}
 .conversation-surface-execution-menu{display:flex;flex-direction:column;gap:3px;}
 .conversation-surface-execution-menu button{justify-content:flex-start;min-height:38px;font-size:12px;white-space:normal;text-align:left;}
 .conversation-surface-execution-menu [aria-checked=true]{background:var(--ui-selection,#e8f1ff);color:var(--ui-text,#32465a);}
@@ -175,5 +180,8 @@
 .conversation-preferences-popover .conversation-surface-model-options::before{content:'模型';display:block;font-size:11px;color:var(--ui-secondary,#6c7b8a);padding:0 5px 5px;}
 .conversation-preferences-popover .conversation-surface-strength-options{margin-top:9px;padding-top:8px;border-top:1px solid var(--ui-border,#d4dee9);}
 .conversation-preferences-popover .conversation-surface-strength-options::before{content:'思考强度';grid-column:1 / -1;font-size:11px;color:var(--ui-secondary,#6c7b8a);padding:0 5px 4px;}
-@container(max-width:360px){.conversation-surface-toolbar :is(.conversation-surface-model-button,.conversation-surface-mode) .conversation-control-label,.conversation-surface-mode>svg:last-child{display:none;}.conversation-surface-sessions>svg:first-child{display:none;}.conversation-surface-toolbar{gap:1px;}.conversation-surface-preferences{margin-left:0;}.conversation-surface-pin{width:26px;}#easysch-conversation-surface .conversation-surface-footer{padding-inline:8px;}#easysch-conversation-surface .conversation-surface-log{padding-inline:8px;}}
+@container(max-width:360px){.conversation-surface-toolbar :is(.conversation-surface-model-button,.conversation-surface-mode) .conversation-control-label,.conversation-surface-mode>svg:last-child{display:none;}.conversation-surface-sessions>svg:first-child{display:none;}.conversation-surface-toolbar{gap:1px;}.conversation-surface-preferences{margin-left:0;}.conversation-surface-pin{width:26px;}#easysch-conversation-surface .conversation-surface-footer{padding-inline:8px;}#easysch-conversation-surface .conversation-surface-log{padding-inline:8px;}.conversation-surface-input:placeholder-shown{white-space:nowrap;text-overflow:ellipsis;--moz-text-control-overflow:hidden;}}
+/* A narrow dock gives the conversation name its own row under the tabs. Only the AI tab wraps:
+   the original tab reserves a one-row header, and the first row keeps its buttons in place. */
+@container(max-width:280px){#easysch-conversation-surface[data-dock]:not([data-dock=floating])[data-tab=ai] .conversation-surface-header:has(>.conversation-surface-tabs:not([hidden])){flex-wrap:wrap;}#easysch-conversation-surface[data-dock]:not([data-dock=floating])[data-tab=ai] .conversation-surface-header:has(>.conversation-surface-tabs:not([hidden]))>.conversation-surface-tabs{margin-right:auto;}#easysch-conversation-surface[data-dock]:not([data-dock=floating])[data-tab=ai] .conversation-surface-header:has(>.conversation-surface-tabs:not([hidden]))>.conversation-surface-sessions{order:1;flex:1 0 100%;}}
 @media(prefers-reduced-motion:reduce){#easysch-conversation-surface.conversation-surface,.conversation-surface *,.conversation-preferences-popover,.conversation-preferences-popover *{transition:none!important;animation:none!important;}}

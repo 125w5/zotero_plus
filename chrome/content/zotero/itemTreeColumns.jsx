@@ -436,9 +436,10 @@ for (let [key, label] of [
   defaultIn: ['impact_factor', 'cas_large_category', 'reading'].includes(key) ? ['default'] : [],
   zoteroPersist: ['width', 'hidden', 'sortDirection'] });
 }
+// Journal tags repeat the IF and CAS badges of the default metric columns, so they start hidden.
 for (let [key, label] of [['tags', '#标签'], ['journalTags', '期刊标签']]) {
  COLUMNS.push({ dataKey: 'research_' + key, label, showInColumnPicker: true,
-  enabledTreeIDs: ['main'], flex: 2, width: 190, defaultIn: ['default'],
+  enabledTreeIDs: ['main'], flex: 1, width: 110, defaultIn: key === 'tags' ? ['default'] : [],
   zoteroPersist: ['width', 'hidden', 'sortDirection'] });
 }
 for (let key of ['research_tags', 'research_journalTags', 'research_impact_factor']) {

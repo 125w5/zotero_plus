@@ -384,7 +384,7 @@
   quickJobs.get(reader)?.close();if(!selection?.text?.trim())return;
   const Deadline=ChromeUtils.importESModule('chrome://zotero/content/research/shared/request-deadline.mjs');
   const Feedback=ChromeUtils.importESModule('chrome://zotero/content/research/shared/translation-feedback.mjs');
-  const box=doc.createElement('div');box.className='easysch-quick-translation';box.style.cssText='padding:10px 12px;margin-top:8px;border-top:1px solid #8b929833;line-height:1.65;color:inherit;max-width:480px;user-select:text';
+  const box=doc.createElement('div');box.className='easysch-quick-translation';box.style.cssText='padding:10px 0;margin-top:8px;border-top:1px solid #8b929833;line-height:1.65;color:inherit;max-width:480px;user-select:text';
   const selectionActions=doc.createElement('div');selectionActions.className='easysch-selection-actions';selectionActions.style.cssText='display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px';
   const selectionStatus=doc.createElement('div');selectionStatus.className='selection-action-status';selectionStatus.setAttribute('role','status');selectionStatus.style.cssText='display:none;font:12px/1.6 var(--ui-font,Bahnschrift,"Noto Sans SC","Microsoft YaHei UI","PingFang SC",sans-serif);color:var(--fill-secondary,#576675);overflow-wrap:anywhere;margin-bottom:8px';
   let completedTranslation;
@@ -392,7 +392,7 @@
   const saveNote=selectionAction('保存为笔记','easysch-reader-note',async()=>{let saved=await E.saveSelectionTranslation(selection,completedTranslation,{reader});selectionStatus.textContent=E.readerNoteSavedText(saved);selectionStatus.style.display='block';});saveNote.title='保存当前选区、已完成的机翻和原文位置，在右侧打开笔记';
   const strike=selectionAction('划掉文字','easysch-reader-strikeout',()=>E.annotateSelection(reader,selection,'strikeout'));strike.title='在原 PDF 的选中文字上添加红色删除线';
   const readOnly=!!reader._internalReader?._state?.readOnly;if(readOnly){saveNote.disabled=true;strike.disabled=true;saveNote.title=strike.title='当前文库只读';}
-  const output=doc.createElement('div');output.className='quick-translation-output';output.setAttribute('role','status');output.setAttribute('aria-live','polite');output.lang='zh-CN';output.style.cssText='display:block;min-height:22px;max-height:220px;overflow:auto;overflow-wrap:anywhere;white-space:pre-wrap;visibility:visible;opacity:1;color:var(--fill-secondary,#576675);font:13px/1.65 var(--ui-font,Bahnschrift,"Noto Sans SC","Microsoft YaHei UI","PingFang SC",sans-serif)';output.textContent='正在翻译…';
+  const output=doc.createElement('div');output.className='quick-translation-output';output.setAttribute('role','status');output.setAttribute('aria-live','polite');output.lang='zh-CN';output.style.cssText='display:block;min-height:22px;max-height:220px;overflow:auto;overflow-wrap:anywhere;white-space:pre-wrap;visibility:visible;opacity:1;color:var(--fill-primary);font:13px/1.65 var(--ui-font,Bahnschrift,"Noto Sans SC","Microsoft YaHei UI","PingFang SC",sans-serif)';output.textContent='正在翻译…';
   const actions=doc.createElement('div');actions.className='quick-translation-actions';actions.style.cssText='display:flex;justify-content:flex-end;gap:6px;margin-top:5px';
   // Translation actions share the native .selection-popup .wide-button family
   // (30px, 7px radius, button material and shadow) with the selection actions;

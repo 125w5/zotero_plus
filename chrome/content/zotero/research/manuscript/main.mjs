@@ -19,10 +19,10 @@ import {materialAnchors} from '../shared/material-clues.mjs';
 import {installAssemblyAIOrb} from './assembly-orb.mjs';
 import {installAssemblyConversation} from './assembly-conversation.mjs';
 import {pendingPlanEditMessage} from '../shared/plan-edit-proposal.mjs';
-import {installAssemblyWorkflow} from './assembly-workflow.mjs';
+import {installAssemblyWorkflow,placeAssemblySteps} from './assembly-workflow.mjs';
 import {associateProjectMaterials} from '../shared/material-section-matching.mjs';
 import {isCurrentAssessment} from '../shared/manuscript-assessment.mjs';
-import {renderAssemblyNavigation} from './assembly-navigation.mjs';
+import {renderAssemblyNavigation,syncAssemblyLeftTabs} from './assembly-navigation.mjs';
 import {installAssemblyChatContext} from './assembly-chat-context.mjs';
 import {assemblyTaskRequest} from './assembly-task-context.mjs';
 import {installAssemblyComposer} from './assembly-composer.mjs';
@@ -152,7 +152,7 @@ export function applyPanels(){
  $('left').hidden=!s.leftOpen;document.body.dataset.leftPane=s.leftOpen?'open':'closed';$('right').hidden=!s.rightOpen;$('left').style.width=s.leftWidth+'px';$('right').style.width=s.rightWidth+'px';
  U.selectionAssistant?.sync();
  $('toggle-ai').replaceChildren();const logo=el('span',undefined,'easysch-symbol');logo.setAttribute('aria-hidden','true');$('toggle-ai').append(logo,el('span',s.aiOpen?'收起对话':'研究助手'));$('toggle-ai').title=s.aiOpen?'收起对话，保留输入栏':'展开研究助手';$('toggle-ai').setAttribute('aria-expanded',String(!!s.aiOpen));
- const main=$('workspace').querySelector('main').getBoundingClientRect();document.body.style.setProperty('--assembly-canvas-center',((main.left+main.right)/2)+'px');
+ const main=$('workspace').querySelector('main').getBoundingClientRect();placeAssemblySteps(document,(main.left+main.right)/2);document.body.style.setProperty('--assembly-canvas-center',((main.left+main.right)/2)+'px');
  // The conversation occupies the article column. Its reference cards overlay
  // only the lower portions of the existing material and details columns.
  document.body.style.setProperty('--assembly-console-sessions',main.left+'px');document.body.style.setProperty('--assembly-console-evidence',Math.max(0,innerWidth-main.right)+'px');document.body.style.setProperty('--assembly-main-width',main.width+'px');
@@ -170,6 +170,7 @@ export function renderNavigation(){
 export function attachMaterial(b,id,role='primary'){b.hideMaterialFrame=false;let m=U.p.materials.find(m=>m.id===id);if(!m){const shared=libraryAsset(U.A,id);if(!shared)return;m=M.clone(shared);U.p.materials.push(m);}if(!b.materials.some(x=>x.id===id))b.materials.push({id,role,revision:m.revision});if(!b.text.trim()&&['paragraph','placeholder'].includes(b.type)){if(m.imagePath){b.type='image';b.imagePath=m.imagePath;}else if(m.data?.rows?.length){b.type='table';M.bindTable(U.p,b,m);}}if(m.artifactID)b.artifactID=m.artifactID;b.review='missing';}
 export function renderLibrary(){
  if(U.p.ui.left==='files')U.p.ui.left='materials';
+ syncAssemblyLeftTabs($('left-tabs'),U.p.ui.left);
  if(U.p.ui.left==='materials'){renderMaterialLibrary();return;}
  renderAssemblyNavigation(U,{el,button,snapshot,changed,persist,selectBlock,attachMaterial,materialDetails,openMaterial,modal,field,verifyBlock});
 }
@@ -364,7 +365,7 @@ export function showDiff(d,{reveal=true}={}){
 function renderAssessment(){
  const a=U.E.notebook.state(U.p.id).assessment;let box=$('assessment-inline');
  if(!a||!['ready','running','failed'].includes(a.status)){if(box)box.hidden=true;return;}
- if(!box){box=el('div');box.id='assessment-inline';$('steps').after(box);}box.hidden=false;box.replaceChildren();
+ if(!box){box=el('div');box.id='assessment-inline';$('steps').after(box);placeAssemblySteps(document);}box.hidden=false;box.replaceChildren();
  if(a?.status==='ready')button('可行性方案',()=>U.directionWorkspace?.togglePlan(),box).title='固定或取消固定可行性方案，在右栏对照当前章节';
  if(a?.status==='running'){const cancel=button('评估中 · 停止',()=>U.E.notebook.cancelAssessment(U.p.id),box);cancel.title='正在评估研究可行性，可以继续写作';}
  if(a?.status==='failed')button('重试评估',()=>U.E.notebook.startAssessment(U.p.id),box).title=a.message||'可行性评估未完成';

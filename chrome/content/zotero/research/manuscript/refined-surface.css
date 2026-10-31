@@ -110,7 +110,8 @@ html[data-appearance] :is(body,.assembly-clui-surface)>footer{grid-template-colu
 html[data-appearance] footer #ai-form{grid-column:2;grid-row:1;width:calc(100% - 30px);max-width:none;margin-inline:15px;border-radius:15px;border:1px solid color-mix(in srgb,var(--assembly-border) 90%,transparent);background:color-mix(in srgb,var(--assembly-control) 97%,transparent);box-shadow:0 2px 9px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);transition:border-color 160ms,box-shadow 160ms;}
 footer #ai-session-tools{padding-inline:10px;}footer #footer-actions{padding-inline:10px;}
 body[data-chat-left-visible=false] #ai-session-context,body[data-chat-left-visible=false] #ai-session-tools{display:none!important;}
-body[data-chat-right-visible=false] #ai-evidence,body[data-chat-right-visible=false] #footer-actions{display:none!important;}
+body[data-chat-right-visible=false] #ai-evidence{display:none!important;}
+html[data-appearance] body[data-chat-right-visible=false]>footer,html[data-appearance] body[data-chat-right-visible=false] .assembly-clui-surface>footer{grid-template-columns:var(--assembly-console-sessions) minmax(0,1fr) max-content;}
 html[data-appearance] footer #ai-form:focus-within{border-color:color-mix(in srgb,var(--muted) 45%,var(--assembly-border));box-shadow:0 0 0 2px #718aa311,0 4px 13px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
 html[data-appearance] footer #ask-ai{border-radius:50%;width:31px;height:31px;box-shadow:0 2px 5px var(--assembly-shadow),inset 0 1px #ffffff26;transition:transform 120ms,background 120ms,box-shadow 120ms;}
 html[data-appearance] footer #ask-ai:hover{transform:translateY(-1px);box-shadow:0 3px 7px var(--assembly-shadow);}

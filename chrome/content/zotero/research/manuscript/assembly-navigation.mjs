@@ -49,6 +49,7 @@ export function outlineLabel(project,block,titleFor=material=>material.title){
  const label=!block.title&&block.type==='formula'&&block.text?mathText(block.text):readableMath(block.title||block.text||block.table?.caption||source||({formula:'公式',table:'表格',image:'图片'})[block.type]||'空白段落');
  return label.replace(/\s+/g,' ').slice(0,70);
 }
+export function syncAssemblyLeftTabs(tabs,view){for(const tab of tabs.children){const selected=tab.dataset.view===view;tab.classList.toggle('active',selected);if(tab.getAttribute('aria-selected')!==String(selected))tab.setAttribute('aria-selected',String(selected));}}
 export function updateNavigationLabels(U){for(const row of U.$('library').querySelectorAll('[data-outline-block]')){const block=U.p.blocks.find(value=>value.id===row.dataset.outlineBlock);if(block)row.querySelector('.outline-label').textContent=outlineLabel(U.p,block,material=>U.A.titleFor(material));}}
 export function renderAssemblyNavigation(U,{el,button,snapshot,changed,persist,selectBlock,attachMaterial,materialDetails,openMaterial,modal,field,verifyBlock}){
  const host=U.$('library');host.querySelector('#material-results')?._endOff?.();host.querySelector('#material-search-history')?._historyOff?.();host.replaceChildren();

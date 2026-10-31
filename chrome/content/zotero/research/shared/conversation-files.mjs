@@ -46,7 +46,7 @@ export function mountConversationFiles({host,E,getSessionID,getSessions=()=>[],g
  const context=node(doc,'div','conversation-files-context');root.append(context);
  const filters=node(doc,'div','conversation-files-filters'),list=node(doc,'div','conversation-files-list'),status=node(doc,'p','conversation-files-status');status.setAttribute('role','status');
  const notice=node(doc,'p','conversation-files-status');notice.setAttribute('role','status');notice.hidden=true;
- let filter='all',busy=false,creating=false,disposed=false,historySignature='',listSignature='',contextSignature='',selectionRevision=0,noticeText='';const filterButtons=[];
+ let filter='all',busy=false,creating=false,disposed=false,historySignature='',listSignature='',contextSignature='',selectionRevision=0,noticeText='',revealedID='';const filterButtons=[];
  const fail=error=>{if(!disposed){status.textContent=error.message||String(error);onError(error);}};
  const action=fn=>()=>Promise.resolve().then(fn).catch(fail);
  const sessionActions=mountSessionActions({root,history,getSession:id=>getSessions().find(row=>row.id===id)||E.workbenchConversations?.get(id),onSelect:onSession,onRename:async(id,title)=>{const store=E.workbenchConversations;if(!store?.rename)throw Error('当前对话暂不支持重命名。');await store.rename(id,title);render();},onRemove:onRemoveSession?async session=>{await onRemoveSession(session);render();}:undefined,onError:fail});
@@ -84,6 +84,7 @@ export function mountConversationFiles({host,E,getSessionID,getSessions=()=>[],g
    sessionActions.bind(button,session);button.ondragover=event=>over(event,button,session.id);button.ondragleave=()=>delete button.dataset.drop;button.ondrop=event=>{droppedOn(event,session.id).catch(fail);};
   }
   history.scrollTop=historyScroll;}
+  reveal();
   for(const button of filterButtons)button.setAttribute('aria-pressed',String(button.dataset.fileFilter===filter));
   const nextList=JSON.stringify([id,files,words,filter,getRevision()]);if(nextList===listSignature)return;listSignature=nextList;
   const scroll=list.scrollTop;list.replaceChildren();
@@ -111,7 +112,13 @@ export function mountConversationFiles({host,E,getSessionID,getSessions=()=>[],g
   noticeText=text;notice.textContent=text;notice.hidden=false;
   if(choice?.label&&choice.run){const button=node(doc,'button','',choice.label);button.type='button';button.onclick=action(async()=>{button.disabled=true;try{const result=await choice.run();if(!disposed&&result)status.textContent=result;}finally{button.disabled=false;}});notice.append(button);}
  };
- render();return {root,render,notify,setFilter(value){if(!fileFilters.some(([key])=>key===value))return false;filter=value;render();return true;},destroy(){disposed=true;outputList?.destroy();sessionActions.destroy();root.remove();}};
+ // Bring the current conversation into the history list once per selection, then
+ // leave the user's scrolling alone. Only the list scrolls: scrollIntoView would also
+ // move the sticky rail's scrolling main. A rail mounted on a hidden page has no
+ // height yet, so the size observer reveals it when the page is shown.
+ function reveal(){const id=getSessionID();if(disposed||!id||id===revealedID||!history.clientHeight)return;const row=history.querySelector('.conversation-files-session[aria-current=true]');if(!row?.getClientRects().length)return;const box=history.getBoundingClientRect(),rect=row.getBoundingClientRect();if(rect.top<box.top)history.scrollTop-=box.top-rect.top;else if(rect.bottom>box.bottom)history.scrollTop+=rect.bottom-box.bottom;revealedID=id;}
+ const Observer=doc.defaultView?.ResizeObserver,sizer=Observer&&new Observer(()=>reveal());sizer?.observe(history);
+ render();return {root,render,notify,setFilter(value){if(!fileFilters.some(([key])=>key===value))return false;filter=value;render();return true;},destroy(){disposed=true;sizer?.disconnect();outputList?.destroy();sessionActions.destroy();root.remove();}};
 }
 
 /** A lightweight detail surface, never a second PDF reader. Generation guards

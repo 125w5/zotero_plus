@@ -27,7 +27,7 @@ html[data-appearance] #steps .assembly-step{font:12px/1.4 var(--ui-font,system-u
 @media(max-width:620px){html[data-appearance] #steps .assembly-step{padding:5px;font-size:11px;gap:3px}.assembly-step-number{width:17px;height:17px}}
 .direction-workspace{margin:18px;min-height:0;max-height:100%;overflow:auto;padding:24px;border:1px solid var(--ui-border);border-radius:var(--ui-radius,10px);background:var(--ui-card);box-shadow:var(--ui-shadow);color:var(--ui-text);font:14px/1.75 var(--ui-font);flex:1}
 .direction-workspace[hidden],#canvas[hidden]{display:none!important}
-.direction-workspace:focus{outline:none}
+.direction-workspace:focus,#workflow-panel:focus{outline:none}
 .direction-workspace.direction-compact{flex:none;margin:0;padding:8px 16px;border:0;border-bottom:1px solid var(--ui-border);border-radius:0;box-shadow:none;background:var(--ui-tray)}
 .direction-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border:0;padding:0;background:transparent;height:auto;position:static}
 .direction-heading small,.direction-intro,.direction-count{color:var(--ui-secondary)}

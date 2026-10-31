@@ -38,7 +38,9 @@ html[data-appearance] .agent-sources { display:flex; flex-direction:column; min-
 .agent-source-tabs { display:flex; gap:2px; padding:3px; border-radius:8px; background:var(--soft); }
 .agent-source-tabs button { flex:1; min-height:28px; border:0; border-radius:6px; padding:3px 4px; font-size:12px; background:transparent!important; color:var(--muted); }
 html[data-appearance] .agent-source-tabs button[aria-selected=true] { color:var(--text); background:var(--surface)!important; box-shadow:0 1px 3px #0001; }
-.agent-sources>input { margin:12px 2px 8px; width:calc(100% - 4px); min-height:32px; border-radius:8px; font-size:12px; }
+html[data-appearance] #view-agent .agent-library-browser>input[type=search] { margin:8px 0; min-height:36px; padding-inline-start:31px; border:1px solid var(--line); border-radius:var(--ui-radius-control,8px); background:var(--ui-tray,var(--soft)) url('chrome://global/skin/icons/search-glass.svg') no-repeat 10px center / 14px; -moz-context-properties:fill; fill:var(--muted); box-shadow:none; }
+html[data-appearance] #view-agent .agent-source-tabs button { font-size:12px; font-weight:400; }
+html[data-appearance] #view-agent .agent-source-tabs button:not([aria-selected=true]) { color:var(--muted); }
 .agent-source-list { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
 .agent-session-list { max-height:150px; overflow:auto; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--line); scrollbar-width:thin; }
 html[data-appearance] .agent-session-row { display:block; width:100%; border:0; border-radius:7px; background:transparent; padding:7px 9px; font-size:11px; line-height:1.55; text-align:left; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
@@ -179,7 +181,9 @@ html[data-appearance] .agent-workbench .agent-clui .agent-messages{margin:0;padd
 html[data-appearance] .agent-workbench .agent-conversation .agent-clui .agent-composer{width:100%;margin:0;align-self:stretch;border-radius:18px;padding:8px 12px 9px 16px;background:var(--ui-glass,var(--surface));backdrop-filter:blur(24px) saturate(1.12);box-shadow:0 3px 14px #1830440c,inset 0 1px #ffffff60;}
 html[data-appearance] .agent-workbench .agent-clui .agent-composer::before{display:none;}
 html[data-appearance] .agent-workbench .agent-clui .agent-composer>textarea{height:42px;min-height:42px;padding:7px 7px 3px 0;font-size:13px;border-radius:0;}
-html[data-appearance] .agent-workbench .agent-clui .agent-composer-footer{padding:3px 0 0;gap:5px;flex-wrap:wrap;}
+html[data-appearance] .agent-workbench .agent-clui .agent-composer-footer{padding:3px 0 0;gap:5px;flex-wrap:wrap;container:agent-composer-footer / inline-size;}
+/* The composer narrows with the preview column, which the window-width query at the end cannot see. */
+@container agent-composer-footer (max-width:420px){html[data-appearance] .agent-workbench .agent-clui .agent-run-status{flex-basis:100%;order:-1;}html[data-appearance] .agent-workbench .agent-clui .agent-run-status:empty{display:none;}html[data-appearance] .agent-workbench .agent-clui .agent-send{margin-inline-start:auto;}}
 html[data-appearance] .agent-clui .agent-message{font:13px/1.85 var(--ui-font);margin-bottom:20px;}
 .agent-clui-label{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px;font-weight:550;color:var(--muted);padding-inline:3px;}
 html[data-appearance] .agent-clui :is(.agent-clui-pin,.agent-clui-collapse){flex:none;width:30px;min-height:30px;border:0;border-radius:50%;padding:0;background:transparent;color:var(--muted);font-size:16px;}
@@ -232,4 +236,8 @@ html[data-appearance] .agent-clui[data-clui-persistent=true] .agent-message{font
 html[data-appearance] .agent-workspace-starter{padding:8px 13px;min-height:36px;border:1px solid var(--line);border-radius:12px;background:var(--ui-glass,var(--surface));box-shadow:0 2px 6px #18304406,inset 0 1px #ffffff80;font-size:12px;color:var(--text);}
 html[data-appearance] .agent-workspace-starter:hover{background:var(--ui-selection,var(--soft));border-color:color-mix(in srgb,var(--accent) 25%,var(--line));}
 @media(max-width:1100px){.agent-grid{grid-template-columns:210px minmax(280px,1fr) minmax(230px,28%);}.agent-grid:has(>.agent-preview[hidden]){grid-template-columns:210px minmax(0,1fr);}html[data-appearance] .agent-workbench .agent-conversation{margin:9px;}.agent-clui .agent-messages{padding-inline:16px!important;}}
+html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files>.conversation-files-discuss { padding:5px 8px; white-space:nowrap; border-color:var(--line); background:var(--surface); box-shadow:0 1px 3px var(--es-read-shadow,#1625360a),inset 0 1px var(--ui-glint,#ffffff9c); }
+/* The search rail has no spare height at 1280x800: the PDF card keeps its heading and empty-state line, and the conversation list scrolls instead. */
+html[data-appearance] #view-search .workspace-output-section { min-height:86px; }
+html[data-appearance] #view-search .conversation-files-history { flex:0 1 auto; min-height:36px; }
 @media (max-width:870px) { .agent-active .rail { width:150px; } .agent-grid { grid-template-columns:minmax(90px,20%) minmax(120px,1fr) minmax(160px,32%); } .agent-preview { grid-column:auto; max-height:none; } .agent-preview-header { padding-inline:9px; } .agent-session-title { max-width:26%; } .agent-topbar select { max-width:155px; } .agent-topbar button { padding-inline:4px; } .agent-composer { margin-inline:9px; } .agent-composer-footer { gap:3px; padding-inline:6px; flex-wrap:wrap; } .agent-composer-footer .easysch-symbol { width:16px; height:16px; } html[data-appearance] .agent-composer-footer select { max-width:95px; font-size:10px; padding-right:12px; } .agent-run-status { flex-basis:100%; order:-1; } .agent-run-status:empty { display:none; } .agent-sources { padding-inline:4px!important; } .agent-source-tabs button { font-size:11px; } .workbench-home-filters[open] { flex-wrap:wrap; max-width:140px; } }

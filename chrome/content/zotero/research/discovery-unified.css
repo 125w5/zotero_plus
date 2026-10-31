@@ -16,7 +16,7 @@
 .discovery-scope-options{display:flex;align-items:center;gap:20px;margin-top:10px}
 .discovery-scope-options input:not([type=checkbox]){flex:1;background:var(--ui-tray)}
 .discovery-scope-options label,.discovery-journal-panel label{display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:13px;color:var(--ui-secondary)}
-.discovery-scope-options input[type=checkbox],.discovery-journal-panel input[type=checkbox],.discovery-unified .compact-check input{width:16px;height:16px;accent-color:#537a9c}
+.discovery-scope-options input[type=checkbox],.discovery-journal-panel input[type=checkbox],.discovery-unified .compact-check input{width:16px;height:16px;accent-color:var(--ui-primary-text,#405e82)}
 .discovery-scope-note{font-size:12px;color:var(--ui-secondary);margin:8px 1px 14px;min-height:20px}
 .discovery-unified .discovery-feed-filters{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:12px 0;border-top:1px solid var(--ui-border)}
 .discovery-unified .discovery-feed-filters select{height:34px;font-size:13px;flex:1;min-width:110px;max-width:250px;background:var(--ui-tray);border-color:transparent}
@@ -148,9 +148,9 @@ html body #view-search.discovery-unified .discovery-page-controls button{min-wid
 @media(max-width:580px){html body #view-search.discovery-unified .discovery-page-heading{flex-wrap:wrap;gap:4px}html body #view-search.discovery-unified .discovery-search-card{padding:12px}html body #view-search.discovery-unified>.research-file-workspace-content{padding:18px 14px 30px}html body #view-search.discovery-unified .card.discovery-paper{padding:16px}}
 
 /* Retrieval status stays in one stable slot; updates do not reflow the cards. */
-html body #view-search.discovery-unified .discovery-results-state{display:flex;align-items:center;gap:10px;box-sizing:border-box;flex:0 0 32px;height:32px;min-height:32px;max-height:32px;margin:2px 0 10px;min-width:0;overflow:hidden}
+html body #view-search.discovery-unified .discovery-results-state{display:flex;align-items:center;gap:10px;box-sizing:border-box;flex:0 0 40px;height:40px;min-height:40px;max-height:40px;margin:2px 0 10px;min-width:0;overflow:hidden}
 html body #view-search.discovery-unified .discovery-results-state>.discovery-results-status{flex:1;min-width:0;max-height:24px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:24px}
-html body #view-search.discovery-unified .discovery-results-state>button{flex:none;min-height:26px;padding:3px 9px;font-size:12px;background:var(--ui-card);box-shadow:var(--ui-control-shadow)}
+html body #view-search.discovery-unified .discovery-results-state>button{flex:none;min-height:34px;padding:6px 12px;font-size:13px;line-height:1.5;background:var(--ui-card);box-shadow:var(--ui-control-shadow)}
 html body #view-search.discovery-unified .discovery-results-state>button[hidden]{display:none}
 html body #view-search.discovery-unified .discovery-actions>.discovery-select-all{display:inline-flex;align-items:center;gap:8px;flex:none;width:auto;min-width:0;margin:0;white-space:nowrap;font-size:13px;line-height:24px}
 html body #view-search.discovery-unified :is(.discovery-title,.discovery-select-all)>input[type=checkbox]{box-sizing:border-box;width:16px;height:16px;min-height:16px;padding:0;flex:0 0 16px;box-shadow:none;align-self:start;margin:5px 0 0}

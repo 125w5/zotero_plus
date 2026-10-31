@@ -48,7 +48,7 @@ function surface(){
 	let icon=(_doc,name)=>{let value=new FakeElement(doc,'svg');value.dataset.icon=name;return value;};
 	let button=(_doc,text,title,kind)=>{let value=new FakeElement(doc,'button');value.title=title||text;if(kind)value.append(icon(doc,kind));if(text){let label=node('span','conversation-control-label',value);label.textContent=text;}return value;};
 	let root=node('div','conversation-surface'),footer=node('form','conversation-surface-footer',root),composer=node('div','conversation-surface-composer',footer),input=node('textarea','conversation-surface-input',composer),toolbar=node('div','conversation-surface-toolbar',composer);
-	let modeButton=button(doc,'自动','选择研究任务 · 在输入框按 Tab 切换','auto'),executionButton=button(doc,'Auto','应用操作权限','shield'),modelButton=button(doc,'模型','选择已配置模型','model'),strengthButton=button(doc,'标准','调整思考强度','strength');
+	let modeButton=button(doc,'自动','选择研究任务 · 在输入框按 Tab 切换','auto'),executionButton=button(doc,'直接执行','应用操作权限','shield'),modelButton=button(doc,'模型','选择已配置模型','model'),strengthButton=button(doc,'标准','调整思考强度','strength');
 	toolbar.append(modeButton,executionButton,modelButton,strengthButton);
 	let modeMenu=node('div','conversation-surface-mode-menu',footer),more=node('div','conversation-surface-more-menu',footer),executionMenu=node('div','conversation-surface-execution-menu',footer),sessionMenu=node('div','conversation-surface-session-menu',root);
 	modeMenu.hidden=more.hidden=executionMenu.hidden=sessionMenu.hidden=true;

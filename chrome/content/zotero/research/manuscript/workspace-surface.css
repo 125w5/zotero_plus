@@ -48,8 +48,11 @@ html[data-appearance] #steps button.active {
  color: var(--text);
  box-shadow: inset 0 1px 2px var(--assembly-shadow);
 }
-#steps {position:absolute;left:var(--assembly-canvas-center,50%);transform:translateX(-50%);margin:0;gap:0;align-items:center;white-space:nowrap;}
+#steps {position:absolute;left:var(--assembly-steps-center,var(--assembly-canvas-center,50%));transform:translateX(-50%);margin:0;gap:0;align-items:center;white-space:nowrap;}
 html[data-appearance] body > header {position:relative;}
+html[data-appearance] body > header[data-steps-wrap] {height:auto;flex-wrap:wrap;}
+html[data-appearance] body > header[data-steps-wrap] > #steps {position:static;transform:none;max-width:none;flex:1 0 100%;order:3;justify-content:center;padding-block:2px;}
+html[data-appearance] body > header #assessment-inline {padding:0;border:0;background:transparent;}
 .assembly-export-actions {display:flex;align-items:center;gap:6px;margin-left:auto;}
 html[data-appearance] #steps .assembly-step {position:relative;display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 11px;border-radius:8px;border-color:transparent;background:transparent;box-shadow:none;line-height:1;}
 #steps .assembly-step+.assembly-step::before {content:'';position:absolute;width:10px;height:1px;left:-5px;top:50%;background:var(--assembly-border);}

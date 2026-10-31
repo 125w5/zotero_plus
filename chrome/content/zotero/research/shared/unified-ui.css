@@ -34,8 +34,6 @@ html[data-appearance] :is(.agent-execution,.agent-message-sources) {color:var(--
 .agent-message-actions {display:flex;align-items:center;gap:4px;margin-top:8px;}
 html[data-appearance] .agent-message-actions button {font-size:11px;color:var(--ui-secondary);padding:3px 6px;min-height:24px;border:0;background:transparent;box-shadow:none;}
 .agent-message-actions .agent-message-grip {cursor:grab;}
-.agent-message-actions .agent-message-save {opacity:0;transition:opacity var(--ui-motion);}
-.agent-message:is(:hover,:focus-within) .agent-message-save {opacity:1;}
 html[data-appearance] .agent-composer {width:min(calc(100% - var(--agent-transcript-gutter) - var(--agent-transcript-gutter)),var(--agent-transcript-width));align-self:flex-start;margin-inline:var(--agent-transcript-gutter);border-radius:14px;border-color:var(--ui-border);background:var(--ui-card);box-shadow:0 4px 16px rgba(28,38,53,.065);margin-bottom:16px;}
 html[data-appearance] .agent-composer>textarea {font:14px/1.65 var(--ui-font);}
 html[data-appearance] .agent-composer-footer select {font:12px/1.5 var(--ui-font);}

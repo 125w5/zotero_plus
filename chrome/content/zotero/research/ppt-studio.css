@@ -55,7 +55,6 @@ html[data-appearance] .ppt-setup-card,html[data-appearance] .ppt-selected-papers
 html[data-appearance] .ppt-paper-card{display:grid;grid-template-columns:30px minmax(0,1fr);gap:4px 12px;padding:16px;border:1px solid var(--ui-border);border-radius:11px;background:var(--ui-tray);box-shadow:inset 0 1px #ffffff80}
 .ppt-paper-index{grid-row:1/3;align-self:start;color:var(--ui-secondary);font-size:12px;padding-top:3px}
 .ppt-paper-card strong{font-size:14px;line-height:1.65;font-weight:550;overflow-wrap:anywhere}.ppt-paper-card small{grid-column:2;color:var(--ui-secondary);font-size:11px;line-height:1.7}
-.ppt-paper-empty{display:grid;place-items:center;min-height:150px;margin:0;border:1px dashed var(--ui-border);border-radius:11px;color:var(--ui-secondary);font-size:13px;text-align:center;padding:20px}
 html[data-appearance] #ppt-stage .ppt-select-action{width:100%;min-height:40px;border-radius:9px;background:transparent;border-style:dashed;color:var(--ui-secondary)}
 html[data-appearance] .ppt-next{max-width:1060px;width:calc(100% - 48px);margin:0 auto 24px;gap:12px;padding:0}
 html[data-appearance] .ppt-next button{min-height:40px;border-radius:9px;padding:9px 20px;font-size:13px;box-shadow:0 2px 5px #16253614}
@@ -324,7 +323,7 @@ html[data-appearance] :is(.ppt-template.chosen,.ppt-theme.chosen,.ppt-slide-thum
 #view-ppt :is(.ppt-setup-card,.ppt-selected-papers){padding:22px;border-radius:var(--ui-radius-panel,14px)}
 #view-ppt .ppt-card-heading{flex-wrap:wrap;justify-content:flex-start;gap:10px}
 #view-ppt .ppt-card-heading .muted{margin-right:auto}
-#view-ppt #ppt-stage .ppt-select-action{width:auto;min-height:36px;border-style:solid;padding-inline:14px;background:var(--ppt-tray);color:var(--ppt-ink)}
+#view-ppt #ppt-stage .ppt-select-action{width:auto;min-height:36px;border-style:solid;padding-inline:14px;border-radius:var(--ui-radius-control,8px);background:var(--ui-control-bg,var(--ppt-card));color:var(--ppt-ink)}
 #view-ppt #ppt-material-list{max-height:none;overflow:visible;margin:20px 0 0}
 #view-ppt .ppt-paper-card{padding:16px 0;grid-template-columns:30px minmax(0,1fr);gap:8px 14px}
 #view-ppt .ppt-paper-card strong{font-size:14px;line-height:1.7;font-weight:600}

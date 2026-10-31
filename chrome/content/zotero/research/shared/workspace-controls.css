@@ -20,7 +20,8 @@ html[data-appearance] body[data-workspace-chrome] :is(
 	.preparation-actions,.preparation-source-selection,.source-actions,
 	.resource-actions,.resource-toolbar,.direction-actions,
 	.workflow-insert-actions,.assembly-export-actions,
-	.ppt-actions,.ppt-contribution-actions,.ppt-data-actions
+	.ppt-actions,.ppt-contribution-actions,.ppt-data-actions,
+	.preparation-paper-actions,:where(#view-settings),:where(#view-settings)>.actions
 ) > button {
 	min-height:34px;
 	padding:6px 12px;
@@ -37,14 +38,15 @@ html[data-appearance] body[data-workspace-chrome] :is(
 	.project-create-actions,.preparation-actions,.source-actions,
 	.resource-actions,.resource-toolbar,.direction-actions,
 	.workflow-insert-actions,.assembly-export-actions,
-	.ppt-actions,.ppt-contribution-actions,.ppt-data-actions
+	.ppt-actions,.ppt-contribution-actions,.ppt-data-actions,
+	.preparation-paper-actions,:where(#view-settings),:where(#view-settings)>.actions
 ) > button:hover:not(:disabled) {
 	background:var(--ui-card);
 	border-color:color-mix(in srgb,var(--ui-secondary) 20%,var(--ui-border));
 }
 html[data-appearance] body[data-workspace-chrome] :is(
 	button.primary,button.ppt-primary,button.direction-primary,
-	#continue-assembly,#send-question,.project-new-button
+	#send-question,.project-new-button
 ) {
 	background:var(--ui-primary);
 	color:var(--ui-primary-text);
@@ -53,7 +55,7 @@ html[data-appearance] body[data-workspace-chrome] :is(
 }
 html[data-appearance] body[data-workspace-chrome] :is(
 	button.primary,button.ppt-primary,button.direction-primary,
-	#continue-assembly,#send-question,.project-new-button
+	#send-question,.project-new-button
 ):hover:not(:disabled) {
 	background:var(--ui-primary-hover);
 	border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent);
@@ -73,6 +75,14 @@ html[data-appearance] body[data-workspace-chrome] :is(.project-create-dialog,.pr
 	font-size:13px;
 	font-weight:500;
 	color:var(--ui-secondary);
+}
+/* The old inline .project-create button margin would push the domain trigger below the 40px select. */
+html[data-appearance] body[data-workspace-chrome] .project-create-dialog .research-domain-picker>.research-domain-trigger {
+	margin:0;
+	align-self:stretch;
+}
+html[data-appearance] body[data-workspace-chrome] #view-settings .settings-grid {
+	margin-top:24px;
 }
 html[data-appearance] body[data-workspace-chrome] :is(button,input,select,textarea,summary):focus-visible {
 	outline:2px solid #829cb5;

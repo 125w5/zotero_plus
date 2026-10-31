@@ -39,7 +39,10 @@ body.library-discovery .workbench-recommendation.expanded .recommendation-abstra
 /* Native navigation supplies the outer shell and conversations. Keep the
    complete local workflows in the remaining width, without a second rail. */
 html[data-appearance] body.library-embedded .workbench-home{max-width:none;width:100%;margin:0;padding:18px 24px;box-sizing:border-box}
-body.library-embedded .workspace>.statusbar.error{display:flex!important}
+/* Errors float over the page instead of taking a row, so the embedded grid does not move when one appears or clears. Clicks pass through to the controls underneath, except the cancel button. */
+body.library-embedded .workspace>.statusbar.error{display:flex!important;position:fixed;top:8px;left:50%;z-index:60;transform:translateX(-50%);box-sizing:border-box;width:max-content;max-width:min(560px,calc(100% - 32px));min-height:0;padding:6px 14px;border:1px solid color-mix(in srgb,var(--ui-danger,#aa413d) 34%,var(--ui-border,var(--line)));border-inline-start:3px solid var(--ui-danger,#aa413d);border-radius:var(--ui-radius-card,10px);background:var(--ui-glass,var(--surface));box-shadow:var(--ui-float-shadow);pointer-events:none}
+body.library-embedded .workspace>.statusbar.error :is(#cancel,#dismiss-status){pointer-events:auto}
+.workspace>.statusbar #dismiss-status{min-height:0;padding:0 6px;border:0;background:transparent;box-shadow:none;color:inherit;font-size:15px;line-height:1}
 body.library-embedded .workspace main>.view{max-width:none}
 body.library-embedded :is(#view-writing,#view-ppt,#view-settings,#view-schedule){padding:18px 24px;box-sizing:border-box}
 body.library-embedded #manuscript-projects{max-width:none;margin:0}
