@@ -30,10 +30,12 @@
  // rendered nodes depend only on the text: no citation buttons, no handlers and
  // no state from earlier renders. Material cards repeat the same descriptions on
  // every canvas render, so those renders are kept per document and cloned.
- const renderedContent=new WeakMap(),RENDER_CACHE_SIZE=500,RENDER_CACHE_TEXT=20000;
+ // Plain text (renderer.isPlain) is built directly, which costs about what a
+ // copy does, so it is not kept and leaves the cache to Markdown and TeX.
+ const renderedContent=new WeakMap(),RENDER_CACHE_SIZE=500,RENDER_CACHE_TEXT=20000;let Evidence;
  E.renderContent=(target,text,options)=>{
-  const Evidence=ChromeUtils.importESModule(base+'shared/chat-evidence.mjs'),value=Evidence.evidenceCitationText(text,options?.sources),doc=target.ownerDocument,renderer=E.contentRenderer(doc);
-  if(options!==undefined||value.length>RENDER_CACHE_TEXT)return renderer.render(target,value,options);
+  Evidence||=ChromeUtils.importESModule(base+'shared/chat-evidence.mjs');const value=Evidence.evidenceCitationText(text,options?.sources),doc=target.ownerDocument,renderer=E.contentRenderer(doc);
+  if(options!==undefined||value.length>RENDER_CACHE_TEXT||renderer.isPlain?.(value))return renderer.render(target,value,options);
   let cache=renderedContent.get(doc);if(!cache){cache=new Map();renderedContent.set(doc,cache);}
   let rendered=cache.get(value);
   if(rendered)cache.delete(value);

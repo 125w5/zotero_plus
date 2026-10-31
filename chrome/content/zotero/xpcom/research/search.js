@@ -15,6 +15,22 @@
   name=String(name||'').trim();if(!name||name.length>200)throw Error('文件夹名称需要为 1–200 个字符');const target=await R.resolveAcademicTarget({libraryID,collectionID:parentID}),collection=new Zotero.Collection();collection.libraryID=target.libraryID;collection.name=name;if(target.collectionID)collection.parentID=target.collectionID;await collection.saveTx();return collectionInfo(collection);
  };
  R.placeAcademicInCollection=async function(itemID,options={}){const target=await R.resolveAcademicTarget(options);if(!target.collectionID)return target;let item=await Zotero.Items.getAsync(itemID);if(item?.parentID)item=await Zotero.Items.getAsync(item.parentID);if(!item||item.deleted||item.libraryID!==target.libraryID)throw Error('论文与目标文件夹不在同一个文库');if(!item.getCollections().includes(target.collectionID)){item.addToCollection(target.collectionID);await item.saveTx({skipSelect:true});}return target;};
+ // The library list a top-level item is shown in: 论文 or 未关联资料 (project
+ // rows, standalone notes and files). Children follow their top-level item.
+ let ItemScope;const libraryItemScope=itemID=>{const get=id=>{try{return Zotero.Items.get(Number(id));}catch{return null;}};let item=get(itemID);for(let depth=0;item&&depth<4&&(item.parentItemID||item.parentID);depth++)item=get(item.parentItemID||item.parentID);if(!item)return null;ItemScope||=ChromeUtils.importESModule('chrome://zotero/content/research/shared/library-item-scope.mjs');const projects=new Set(Object.values(R.store?.get('manuscriptLibrary')||{}).map(ref=>ref.itemID));return ['papers','unlinked'].find(scope=>ItemScope.belongsToLibraryScope(item,scope,get,row=>projects.has(row.id)))||'papers';};
+ // A notebook, writing, search, PPT or agent page hides the native list and item
+ // pane. Selecting there shows nothing, focuses the hidden tree and can move the
+ // folder those pages read their sources from, so return to the list first; the
+ // pages keep their content (writing and agent drafts are saved on the way).
+ R.showLibraryItem=async(itemID,options={})=>{
+  const pane=Zotero.getActiveZoteroPane();let win,workspace;try{win=Zotero.getMainWindow?.();workspace=win?._researchLibraryWorkspace;}catch{}
+  const scope=workspace?.showItemScope&&libraryItemScope(itemID);if(!scope||workspace.mode==='local'&&workspace.itemScope===scope)return pane.selectItem(itemID,options);
+  // A caller in another tab (noTabSwitch) must not bring the library forward.
+  if(options.noTabSwitch&&win.Zotero_Tabs?.selectedID!=='zotero-pane')return false;
+  let failure;try{await workspace.showItemScope(scope);}catch(error){failure=error;Zotero.logError(error);}
+  const result=await pane.selectItem(itemID,options);
+  if(failure)throw Object.assign(Error('已在文库中选中条目，但切换到文库列表时出错：'+(failure?.message||failure)),{cause:failure});return result;
+ };
  R.screenPaper=Screen.screenPaper;
  R.duplicatePaperSuggestions=async()=>{const groups=new Map(),items=await Zotero.Items.getAll(Zotero.Libraries.userLibraryID,true,false);for(const item of items){if(!item.isRegularItem()||item.deleted)continue;const key=Screen.paperIdentity({doi:item.getField('DOI'),url:item.getField('url')});if(!key)continue;const identity=key.replace(/^(arxiv:.*)v\d+$/,'$1');if(!groups.has(identity))groups.set(identity,[]);groups.get(identity).push({id:item.id,title:item.getField('title')});}return [...groups.entries()].filter(([,items])=>items.length>1).map(([identity,items])=>({identity,items}));};
 	const cached = new Map();
@@ -73,8 +89,8 @@
 	}
 	R.findAcademicItem=async function(record,options={}){let target=await R.resolveAcademicTarget(options);return findRecord(record,target.libraryID);};
 	async function importRecord(record, options = {}) {
-		const {select=true}=options,target=await R.resolveAcademicTarget(options);let pane=Zotero.getActiveZoteroPane(),libraryID=target.libraryID;
-		const reuse=async found=>{await R.placeAcademicInCollection(found.id,{libraryID,collectionID:target.collectionID});if(select)await pane.selectItem(found.id,{noTabSwitch:true});return{id:found.id,existing:true,...target};};
+		const {select=true}=options,target=await R.resolveAcademicTarget(options);let libraryID=target.libraryID;
+		const reuse=async found=>{await R.placeAcademicInCollection(found.id,{libraryID,collectionID:target.collectionID});if(select)await R.showLibraryItem(found.id,{noTabSwitch:true});return{id:found.id,existing:true,...target};};
 		let found=await findRecord(record,libraryID);if(found)return reuse(found);
 		if(!Screen.doiKey(record.doi)&&!record.url)throw Error('缺少 DOI 或可核验来源网址，无法判重入库');
 		let item = new Zotero.Item(record.source === 'arXiv' ? 'preprint' : 'journalArticle'); item.libraryID = libraryID;
@@ -83,7 +99,7 @@
 		else { item.setField('repository', 'arXiv'); item.setField('archiveID', record.id); }
 		item.setCreators((record.authors||[]).map(a => ({ ...a, creatorType: 'author' })));
 		if(target.collectionID)item.setCollections([target.collectionID]);
-		await item.saveTx({skipSelect:!select});if(select)await pane.selectItem(item.id,{noTabSwitch:true});return{id:item.id,existing:false,...target};
+		await item.saveTx({skipSelect:!select});if(select)await R.showLibraryItem(item.id,{noTabSwitch:true});return{id:item.id,existing:false,...target};
 	};
  R.importAcademic=async function(record,options={}){const target=await R.resolveAcademicTarget(options),key=target.libraryID+':'+Screen.paperIdentity(record);let task=imports.get(key);if(!task){task=importRecord(record,{...options,...target});imports.set(key,task);task.finally(()=>imports.delete(key)).catch(()=>{});}const result=await task;await R.placeAcademicInCollection(result.id,target);return{...result,...target};};
 })(Zotero.Research);

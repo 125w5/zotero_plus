@@ -188,7 +188,7 @@
    const content=el('div');content.className='academic-message-content';R.renderContent(content,message.text||'',{sources:message.sources||[],onSource:s=>R.library.openSource({...s,...s.anchor})});
    const more=el('details');more.className='academic-message-actions';const moreTitle=el('summary','⋯');moreTitle.title='保存回答或研究决策';moreTitle.setAttribute('aria-label',moreTitle.title);more.append(moreTitle);
    let noteID=message.savedNoteID;const noteButton=button(noteID?'打开笔记':'保存为笔记',async()=>{
-    more.open=false;const saved=noteID&&Zotero.Items.get(noteID);if(saved&&!saved.deleted){await Zotero.getActiveZoteroPane().selectItem(noteID);return;}
+    more.open=false;const saved=noteID&&Zotero.Items.get(noteID);if(saved&&!saved.deleted){await R.showLibraryItem(noteID);return;}
     const current=state(),result=await R.saveResearchMessageNote(message,{sessionID:current.id,projectID:current.projectID||''});noteID=result.noteID;await S.update(current.id,{messages:[{id:message.id,savedNoteID:noteID}]},{origin:'academic'});noteButton.textContent='打开笔记';status.textContent='已保存为笔记';
    },more);
    button('记为研究决策',async()=>{more.open=false;await R.confirmPaperDecision(item.id,message.text);status.textContent='已保存研究决策';},more);

@@ -49,7 +49,7 @@
   for(const hit of C.searchMaterials(twins,query,{tags:[...EXPERIMENT_TAGS,...C.TAGS]})){if(out.length>=limit)break;const key=hit.m.attachmentID+':'+hit.m.pageIndex+':'+C.normalize(hit.m.sourceText);if(seen.has(key))continue;seen.add(key);out.push({...hit,m:detachPassage(byID.get(hit.m.id))});}
   return out;
  };
- E.materializePassage=async m=>(await E.manuscripts.publishMaterials([E.manuscripts.model.material(m)])).cards[0];
+ E.materializePassage=async m=>{const {projectAnnotationProjectID,projectHighlights,highlights,annotationRevision,passageID,...source}=m;return (await E.manuscripts.publishMaterials([E.manuscripts.model.material(source)])).cards[0];};
  E.paperConversation=id=>E.store.get('paperConversations',id)||{turns:[],decisions:[],questions:[]};
  // All live surfaces read the same transcript. The old paper record remains a
  // migration source and a home for explicitly confirmed research decisions.

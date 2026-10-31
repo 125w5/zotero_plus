@@ -17,9 +17,34 @@
    return '**'+cleaned+'**'+(/[\p{P}\p{S}]$/u.test(cleaned)&&/[\p{L}\p{N}]/u.test(next)?' ':'');
   })).join('');
  }
- function render(target,value,{sources=[],onSource=()=>{},original, bilingual=false}={}){
+ // Plain text: letters, marks, numbers, punctuation, symbols, single spaces and
+ // line breaks only, with none of the characters that start Markdown, HTML, TeX,
+ // a citation or an autolink, and no line that could open a block. For such text
+ // marked gives one <p> per run of lines, a <br> per line break and "\n" after
+ // each </p>; DOMPurify, the citation and link passes and KaTeX change nothing.
+ const PLAIN_TEXT=/^[\p{L}\p{M}\p{N}\p{P}\p{S} \n]*$/u,PLAIN_SYNTAX=/[#$&*<>@[\\\]^_`{|}~]|  |:\/\/|www\./i,PLAIN_LINE_START=/^(?:[\p{P}\p{S} ]|\d+[.)])|[ ]$/u;
+ function plainParagraphs(text){
+  if(!PLAIN_TEXT.test(text)||PLAIN_SYNTAX.test(text))return null;
+  const paragraphs=[];let lines=[];
+  for(const line of text.split('\n')){if(!line){if(lines.length)paragraphs.push(lines);lines=[];continue;}if(PLAIN_LINE_START.test(line))return null;lines.push(line);}
+  if(lines.length)paragraphs.push(lines);
+  return paragraphs.length?paragraphs:null;
+ }
+ function bilingualContent(target,original,bilingual){
+  if(!bilingual||!original)return;const doc=target.ownerDocument,wrap=doc.createElementNS(NS,'div'),source=doc.createElementNS(NS,'blockquote'),answer=doc.createElementNS(NS,'div');source.textContent=original;answer.append(...target.childNodes);wrap.className='bilingual-content';wrap.append(source,answer);target.append(wrap);
+ }
+ function renderPlain(target,paragraphs,{original, bilingual=false}={}){
+  const doc=target.ownerDocument,nodes=[];
+  for(const lines of paragraphs){const p=doc.createElementNS(NS,'p');lines.forEach((line,index)=>{if(index)p.append(doc.createElementNS(NS,'br'));p.append(line);});nodes.push(p,'\n');}
+  target.replaceChildren(...nodes);target.classList.add('easysch-content');target.style.whiteSpace='normal';
+  bilingualContent(target,original,bilingual);
+  return target;
+ }
+ function render(target,value,options){const text=normalize(value),paragraphs=plainParagraphs(text);return paragraphs?renderPlain(target,paragraphs,options):renderMarkdown(target,text,options);}
+ // The full path. text is normalize()d already: render normalizes once.
+ function renderMarkdown(target,text,{sources=[],onSource=()=>{},original, bilingual=false}={}){
   const doc=target.ownerDocument,make=(tag,text)=>{const e=doc.createElementNS(NS,tag);if(text!==undefined)e.textContent=text;return e;};
-  let text=normalize(value),math=[],prefix='EASYMATH'+Math.random().toString(36).slice(2)+'TOKEN';
+  let math=[],prefix='EASYMATH'+Math.random().toString(36).slice(2)+'TOKEN';
   text=text.replace(/\$\$[\s\S]*?\$\$|(?<!\\)\$(?:\\.|[^$\\\n])+\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)/g,v=>{math.push(v);return prefix+(math.length-1)+'END';});
   text=normalizeStrong(text);
   const safe=root.DOMPurify.sanitize(root.marked.parse(text,{async:false,breaks:true}),{RETURN_DOM_FRAGMENT:true,ALLOWED_TAGS:['p','br','strong','em','del','h1','h2','h3','h4','h5','h6','ul','ol','li','blockquote','pre','code','table','thead','tbody','tr','th','td','hr','a'],ALLOWED_ATTR:['href','title'],ALLOWED_URI_REGEXP:/^(?:https?:|zotero:)/i});
@@ -39,10 +64,12 @@
   }
   const mathWalker=doc.createTreeWalker(target,4);while(mathWalker.nextNode()){const node=mathWalker.currentNode;node.nodeValue=node.nodeValue.replace(new RegExp(prefix+'(\\d+)END','g'),(_,i)=>math[+i]);}
   root.renderMathInElement(target,{trust:false,throwOnError:false,delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}]});
-  if(bilingual&&original){const wrap=make('div'),source=make('blockquote',original),answer=make('div');answer.append(...target.childNodes);wrap.className='bilingual-content';wrap.append(source,answer);target.append(wrap);}
+  bilingualContent(target,original,bilingual);
   return target;
  }
+ // True when render takes the plain path. The caller passes the raw value, as to render.
+ function isPlain(value){return !!plainParagraphs(normalize(value));}
  function stream(target,options){let value='';return {append(chunk){value+=chunk;render(target,value,options);},replace(text){value=text;render(target,value,options);},get text(){return value;}};}
  function plainText(target){const copy=target.cloneNode(true),doc=target.ownerDocument;for(const math of copy.querySelectorAll('.katex'))math.replaceWith(doc.createTextNode(math.querySelector('annotation')?.textContent||math.textContent));for(const row of copy.querySelectorAll('tr'))row.replaceWith(doc.createTextNode([...row.children].map(c=>c.textContent.trim()).join('\t')+'\n'));for(const node of copy.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,blockquote,pre'))node.append(doc.createTextNode('\n'));for(const br of copy.querySelectorAll('br'))br.replaceWith(doc.createTextNode('\n'));return copy.textContent.replace(/\n{3,}/g,'\n\n').trim();}
- root.EasySchContent={render,stream,normalize,plainText};
+ root.EasySchContent={render,renderMarkdown,isPlain,stream,normalize,plainText};
 })(globalThis);

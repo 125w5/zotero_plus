@@ -386,7 +386,7 @@
   const old=win.document.getElementById('research-notebook-'+id);if(old){if(select)win.Zotero_Tabs.select(old.parentElement.id);return old.contentWindow;}const frame=win.document.createElementNS('http://www.w3.org/1999/xhtml','iframe');frame.id='research-notebook-'+id;frame.projectID=id;frame.style.cssText='width:100%;height:100%;border:0;flex:1';const {container}=win.Zotero_Tabs.add({type:'research-notebook',title:(N.state(id).workflowStage==='feasibility'?'可行性讨论 · ':'素材库 · ')+A.get(id).title,data:{projectID:id},select,onClose:()=>{frame.id='closing-notebook-'+id;frame.contentWindow?.NotebookUI?.dispose?.();}});container.style.display='flex';container.append(frame);frame.src='chrome://zotero/content/research/notebook.html';return frame.contentWindow;
  };
  N.openSource=async s=>{
-  if(s.materialID){const m=asset(s.materialID)||Object.values(A.all()).flatMap(p=>p.materials).find(m=>m.id===s.materialID);if(m){if(m.imagePath&&!(m.attachmentID||m.anchor?.attachmentID))return Zotero.launchFile(m.imagePath);if(m.anchor?.url&&!m.anchor?.attachmentID){const url=m.anchor.url;if(/arxiv\.org\/(abs|pdf)\//i.test(url)){const record=await E.arxivMetadata(url);return E.obtainPaper(record);}return Zotero.launchURL(url);}if(!m.anchor?.attachmentID&&m.paperItemID)return Zotero.getActiveZoteroPane().selectItem(m.paperItemID);return A.openAnchor(m);}}
+  if(s.materialID){const m=asset(s.materialID)||Object.values(A.all()).flatMap(p=>p.materials).find(m=>m.id===s.materialID);if(m){if(m.imagePath&&!(m.attachmentID||m.anchor?.attachmentID))return Zotero.launchFile(m.imagePath);if(m.anchor?.url&&!m.anchor?.attachmentID){const url=m.anchor.url;if(/arxiv\.org\/(abs|pdf)\//i.test(url)){const record=await E.arxivMetadata(url);return E.obtainPaper(record);}return Zotero.launchURL(url);}if(!m.anchor?.attachmentID&&m.paperItemID)return E.showLibraryItem(m.paperItemID);return A.openAnchor(m);}}
   if(s.anchor?.attachmentID)return A.openAnchor({anchor:s.anchor});
   if(Number.isInteger(s.attachmentID)){
    const item=await Zotero.Items.getAsync(s.attachmentID);if(!item||item.deleted)throw Error('来源附件已不存在');
@@ -395,8 +395,8 @@
    const path=await item.getFilePathAsync();if(path&&await IOUtils.exists(path))return Zotero.launchFile(path);
    throw Error('来源附件尚未下载');
   }
-  if(s.paperItemID)return Zotero.getActiveZoteroPane().selectItem(s.paperItemID);
-  if(s.kind==='paper'&&Number.isInteger(s.id))return Zotero.getActiveZoteroPane().selectItem(s.id);
+  if(s.paperItemID)return E.showLibraryItem(s.paperItemID);
+  if(s.kind==='paper'&&Number.isInteger(s.id))return E.showLibraryItem(s.id);
   const url=s.url||s.uri;if(url&&/^https:\/\//.test(url))return Zotero.launchURL(url);
  };
  const discussionIDs=()=>new Set(Object.values(E.store.get('researchMessageNotes')||{}).map(record=>record?.materialID).filter(Boolean));
