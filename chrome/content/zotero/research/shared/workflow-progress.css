@@ -34,6 +34,8 @@ html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .
 }
 html[data-appearance] body #evaluation .workflow-progress .step-connector{display:none}
 html[data-appearance] body :is(#evaluation .workflow-progress,#steps,#view-ppt .ppt-steps)>button:disabled{opacity:.48;cursor:default}
+/* The current PPT step is disabled while materials are stale or a task runs; it still reads as current. */
+html[data-appearance] body #view-ppt .ppt-steps>button.active:disabled{opacity:1}
 /* A blocked assembly stage stays clickable to explain its reason, but reads as blocked. */
 html[data-appearance] body #steps>button[aria-disabled=true]:not(.active){opacity:.52;cursor:default;color:var(--workflow-muted)}
 html[data-appearance] body #steps>button[aria-disabled=true]:not(.active):hover{background:transparent;color:var(--workflow-muted)}

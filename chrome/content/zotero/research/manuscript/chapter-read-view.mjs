@@ -144,7 +144,9 @@ export function installChapterReadView(U, { el, button, status = () => {}, rende
 		for (let part of node.pendingUpdate.diff || []) diff.append(el(part.kind === 'delete' ? 'del' : part.kind === 'insert' ? 'ins' : 'span', part.text));
 		box.append(diff);
 		let actions = el('div', undefined, 'easysch-rapid-edit-actions');
-		button('采用更新', () => U.chapterReads.acceptUpdate(chapter.sectionID, node.id), actions).dataset.action = 'accept-read-update';
+		// Accepting the update is the primary action; it uses the shared primary
+		// button (workspace-controls.css), not the white secondary row style.
+		button('采用更新', () => U.chapterReads.acceptUpdate(chapter.sectionID, node.id), actions, 'primary').dataset.action = 'accept-read-update';
 		button('保留我的版本', () => U.chapterReads.dismissUpdate(chapter.sectionID, node.id), actions).dataset.action = 'dismiss-read-update';
 		box.append(actions); host.append(box);
 	}

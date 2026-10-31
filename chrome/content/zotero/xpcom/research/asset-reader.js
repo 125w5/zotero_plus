@@ -160,7 +160,7 @@
 					renderReaderEvidenceExplanation(full,material,{renderText,classPrefix:'asset-inline'});
 					if(!full.childElementCount)el('p',material?.generationError?'图表解读暂未完成':'图表说明待整理',full);
 				};
-				card.setExplanationExpanded=(open)=>{if(disposed)return;if(open&&card.dataset.expanded!=='true')card.toggleExpanded(true);card.dataset.explanationExpanded=String(!!open);brief.setAttribute('aria-expanded',String(!!open));brief.hidden=!!open;full.hidden=!open;explanationRevision=undefined;card.refreshExplanation();};
+				card.setExplanationExpanded=(open)=>{if(disposed)return;if(open&&card.dataset.expanded!=='true')card.toggleExpanded(true);card.dataset.explanationExpanded=String(!!open);brief.setAttribute('aria-expanded',String(!!open));const briefFocused=open&&doc.activeElement===brief;brief.hidden=!!open;full.hidden=!open;explanationRevision=undefined;card.refreshExplanation();if(briefFocused)full.focus({preventScroll:true});};
 				full.tabIndex=0;full.title='点击返回简要说明';full.setAttribute('aria-label','详细说明；点击或按 Enter 返回摘要');
 				full.onclick=event=>{event.stopPropagation();if(event.defaultPrevented||event.target.closest('button,a,input,textarea,select,[contenteditable="true"]')||doc.getSelection()?.toString().trim())return;card.setExplanationExpanded(false);};
 				full.onkeydown=event=>{if(event.target===full&&event.key==='Enter'){event.preventDefault();card.setExplanationExpanded(false);brief.focus();}};

@@ -134,7 +134,7 @@ html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research
 .conversation-file-meta{display:none}
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files .conversation-file-star{display:grid;place-items:center;width:25px;min-height:29px;padding:0;border-color:transparent;background:transparent;box-shadow:none;color:var(--muted)}
 .conversation-file-grip{font-size:18px;min-height:29px;align-self:start}
-.conversation-file-detail-title h3{font-size:14px}.conversation-file-detail-tabs button{font-size:13px;min-height:36px}.conversation-file-detail-body{font-size:13px}.conversation-file-detail{background:linear-gradient(150deg,color-mix(in srgb,var(--surface) 86%,transparent),color-mix(in srgb,var(--soft) 75%,transparent))}
+.conversation-file-detail-title h3{font-size:14px}.conversation-file-detail-tabs button{font-size:13px;min-height:36px;padding-inline:4px;white-space:nowrap}.conversation-file-detail-body{font-size:13px}.conversation-file-detail{background:linear-gradient(150deg,color-mix(in srgb,var(--surface) 86%,transparent),color-mix(in srgb,var(--soft) 75%,transparent))}
 /* Host panes reserve the same gutter. Earlier page-specific rules used full
    bleed edges in search, a rounded card in research, and a second white tray
    in PPT. The shared rail now owns its one visible boundary in all three. */
@@ -143,7 +143,10 @@ html[data-appearance] #view-ppt .ppt-discussion-rail:has(>.conversation-files){
  padding:8px!important;border:0;background:transparent;box-shadow:none;gap:0;overflow:hidden;
 }
 html[data-appearance] .research-file-workspace>.conversation-files{margin:8px;border-right:1px solid var(--line);height:calc(100vh - 126px);top:8px}
-html[data-appearance] body.library-embedded .research-file-workspace>.conversation-files{height:calc(100vh - 16px)}
+/* Embedded, main is the scroller and the error status bar sits above it, so
+   the sticky rail and detail take main's height, not the viewport's. */
+html[data-appearance] body.library-embedded .workspace>main{container-type:size}
+html[data-appearance] body.library-embedded .research-file-workspace>.conversation-files{height:calc(100cqh - 16px)}
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files-heading{padding:0 0 5px;min-height:34px;background:transparent;border:0;box-shadow:none}
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files-subheading{padding:12px 0 0;margin-top:1px;border-top:1px solid var(--line);background:transparent;box-shadow:none}
 html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files-search-wrap{min-height:36px;border-radius:var(--ui-radius-control,8px);background:var(--soft);border-color:var(--line);box-shadow:none}
@@ -156,12 +159,17 @@ html[data-appearance] .agent-workbench .agent-grid>.agent-conversation{border-ra
 html[data-appearance] :is(.agent-workbench .agent-preview,.research-file-workspace>.conversation-file-detail){border-radius:var(--ui-radius-panel,14px);border:1px solid var(--ui-border);background:var(--ui-card);background-clip:padding-box;box-shadow:none}
 html[data-appearance] .agent-workbench .agent-preview{margin:8px 8px 8px 0;overflow:hidden}
 html[data-appearance] .research-file-workspace>.conversation-file-detail{margin:8px 8px 8px 0;height:calc(100vh - 126px)}
-html[data-appearance] body.library-embedded .research-file-workspace>.conversation-file-detail{height:calc(100vh - 16px)}
+html[data-appearance] body.library-embedded .research-file-workspace>.conversation-file-detail{height:calc(100cqh - 16px)}
 @container research-workspace (max-width:1100px){
  .research-file-workspace,.agent-workbench,#view-ppt,#workspace>#left{--conversation-rail-width:248px}
+ /* Five two-character filters stay on one row in the narrower rail; wrap remains for longer sets. */
+ .conversation-files-filters{gap:2px}
+ html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files-filters button{padding-inline:6px}
 }
 @container research-workspace (max-width:820px){
  .research-file-workspace,.agent-workbench,#view-ppt,#workspace>#left{--conversation-rail-width:236px}
+ html[data-appearance] :is(#library,.agent-sources,.ppt-discussion-rail,.research-file-workspace) .conversation-files-filters button{padding-inline:5px}
+ .conversation-file-detail-tabs button{font-size:12px}
  html[data-appearance] :is(#view-home.workbench-home,#view-search).research-file-workspace[data-detail-open=true]{grid-template-columns:var(--conversation-rail-width) minmax(0,1fr)}
  html[data-appearance] .agent-workbench .agent-grid{grid-template-columns:var(--conversation-rail-width) minmax(120px,1fr) minmax(160px,32%)}
 }

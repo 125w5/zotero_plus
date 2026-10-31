@@ -139,7 +139,10 @@ export function installAssemblyChatContext(U,{el,button,status,persist}){
   disposeMediaPreviews(evidenceHost);evidenceHost.replaceChildren();renderPins(evidenceHost,'right');renderPinnedEvidence(evidenceHost,'right');const sources=answerEvidence(session);
   evidenceCount.hidden=!sources.length;evidenceCount.textContent=String(sources.length);evidenceCount.title='当前回答引用了 '+sources.length+' 份依据';
   for(const source of sources)renderEvidenceCard(evidenceHost,source);
-  renderPapers(evidenceHost,linked);syncRails();
+  renderPapers(evidenceHost,linked);
+  // The user opened this card; say why it is empty instead of showing a blank panel.
+  if(!evidenceHost.childElementCount)evidenceHost.append(el('p',session.messages?.some(m=>m.role==='assistant')?'当前回答没有引用来源。':'回答引用的来源会显示在这里，也可拖入消息或素材固定。','chat-evidence-empty'));
+  syncRails();
  };
  const pinTypes=['application/x-easysch-research-message',EVIDENCE_MIME,'application/x-manuscript-material','application/x-manuscript-evidence'];
  const hasMessage=event=>Array.from(event.dataTransfer?.types||[]).some(type=>pinTypes.includes(type));

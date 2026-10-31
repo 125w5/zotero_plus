@@ -1,4 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Material overview, canvas material and margin rules load with the page, at the
+   same cascade position the runtime link used (after reader-workspace.css), so
+   the first render of a restored material is never unstyled. */
+@import url("material-overview.css");
 /* Quiet outer trays, raised content, and translucent controls have distinct roles. */
 html[data-appearance] body>header,html[data-appearance] :is(body,.assembly-clui-surface)>footer,html[data-appearance] #tools,html[data-appearance] #left-tabs {
  background:color-mix(in srgb,var(--assembly-bar) 78%,transparent);backdrop-filter:blur(18px) saturate(1.12);
@@ -18,7 +22,7 @@ html[data-appearance] #tools{min-height:44px;grid-template-columns:28px minmax(0
 .writing-format-separator{height:17px;width:1px;margin:0 3px;background:var(--assembly-border);}
 .writing-color{margin:0!important;display:flex;align-items:center;padding:2px;}
 .writing-color input{width:22px;height:22px;min-height:0;padding:1px;border:0;border-radius:5px;background:transparent;}
-.writing-format-button[aria-pressed=true]{background:var(--assembly-pressed)!important;box-shadow:inset 0 1px 3px var(--assembly-shadow)!important;}
+.writing-format-button[aria-pressed=true]{background:var(--ui-selection)!important;box-shadow:inset 0 1px 3px var(--assembly-shadow)!important;}
 html[data-appearance] #manual-writing-tools button{min-width:27px;padding:5px 6px;background:transparent;box-shadow:none;border-color:transparent;}
 #manual-writing-tools select{max-width:105px;min-height:27px;font-size:12px;border-radius:6px;}
 .navigation-summary{display:flex;align-items:center;justify-content:space-between;gap:7px;font-size:11px;color:var(--muted);padding:5px 1px 9px;}
@@ -67,7 +71,7 @@ html[data-appearance] #library .material-search-history button:hover{background:
 #material-view-controls{flex-wrap:nowrap;padding:4px 0 0!important;gap:5px;}
 html[data-appearance] #library .material-view-switch{order:1;display:flex;gap:2px;margin:0;padding:2px;background:var(--assembly-bar);border:1px solid color-mix(in srgb,var(--assembly-border) 65%,transparent);border-radius:8px;box-shadow:inset 0 1px 2px var(--assembly-shadow);}
 html[data-appearance] #library .material-view-switch button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:27px;padding:4px 8px;font:12px/1.5 var(--ui-font);color:var(--muted);border:0;border-radius:6px;background:transparent;box-shadow:none;transition:background var(--ui-motion),box-shadow var(--ui-motion),color var(--ui-motion);}
-html[data-appearance] #library .material-view-switch button[aria-pressed=true]{background:var(--assembly-control);color:var(--text);box-shadow:var(--ui-shadow),inset 0 1px var(--assembly-highlight);}
+html[data-appearance] #library .material-view-switch button[aria-pressed=true]{background:var(--ui-selection);color:var(--ui-text);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ui-primary-text) 12%,transparent);}
 html[data-appearance] #library .material-view-switch button:hover:not([aria-pressed=true]){background:var(--assembly-hover);color:var(--text);}
 html[data-appearance] #material-view-controls :is(.material-expand,.material-management>summary){display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;min-height:0;padding:6px;flex:none;border:1px solid color-mix(in srgb,var(--assembly-border) 65%,transparent);border-radius:8px;background:var(--assembly-control);color:var(--muted);box-shadow:var(--ui-shadow),inset 0 1px var(--assembly-highlight);transition:background var(--ui-motion),box-shadow var(--ui-motion),transform var(--ui-motion);}
 html[data-appearance] #material-view-controls :is(.material-expand,.material-management>summary):hover{color:var(--text);background:var(--assembly-hover);box-shadow:0 3px 7px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
@@ -124,7 +128,6 @@ html[data-appearance] #ai-session-context .chat-context-session{white-space:nowr
 #ai-session-context .chat-context-icon{position:absolute;left:9px;top:10px;width:14px;height:14px;color:var(--muted);}
 #ai-session-context .chat-context-new svg{width:14px;height:14px;}
 html[data-appearance] #ai-session-context :is(.chat-context-session,.chat-context-file):hover{background:var(--assembly-control);border-color:var(--assembly-border);box-shadow:0 3px 8px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
-html[data-appearance] #ai-session-context .chat-context-session[aria-current=true]{border-color:color-mix(in srgb,var(--assembly-border) 70%,transparent);background:var(--assembly-control);box-shadow:0 2px 6px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);}
 #ai-session-context :is(.chat-context-muted,.chat-context-file small){display:block;color:var(--muted);font-size:11px;line-height:1.5;}
 .chat-context-muted{padding:4px 3px;}
 .chat-context-materials{display:flex;flex-direction:column;gap:4px;margin-top:14px;padding:8px 0 0;}
@@ -149,7 +152,7 @@ html[data-appearance] #ai :is(.chat-pin-remove,.chat-pin-expand){display:grid;pl
 :is(.chat-pin-remove,.chat-pin-expand) svg{width:13px;height:13px;}html[data-appearance] #ai :is(.chat-pin-remove,.chat-pin-expand):hover{background:var(--assembly-hover);color:var(--text);}
 .chat-pin-expand svg{transition:transform 160ms;}.chat-pin-expand[aria-expanded=true] svg{transform:rotate(180deg);}
 .chat-pinned-question{font:11px/1.65 var(--ui-font);margin:0 0 6px;padding:0 0 6px;border-bottom:1px solid color-mix(in srgb,var(--assembly-border) 70%,transparent);color:var(--muted);}
-.chat-pinned-content{max-height:200px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;font:12px/1.7 var(--ui-font);user-select:text;}
+.chat-pinned-content{max-height:200px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding-inline-end:8px;font:12px/1.7 var(--ui-font);user-select:text;}
 .chat-pinned-content .easysch-content{font:inherit;}.chat-pinned-content .easysch-content>:first-child{margin-top:0;}.chat-pinned-content .easysch-content>:last-child{margin-bottom:0;}
 .chat-pinned-content .katex-display{overflow:auto;margin:6px 0;}
 html[data-appearance] #ai .chat-paper-card{padding:10px;border:1px solid color-mix(in srgb,var(--assembly-border) 55%,transparent);border-radius:9px;background:color-mix(in srgb,var(--assembly-bar) 76%,transparent);box-shadow:inset 0 1px var(--assembly-highlight);}
@@ -190,6 +193,7 @@ html[data-appearance] #ai .chat-side-controls{display:flex;align-items:center;ju
 html[data-appearance] #ai .chat-side-close{display:grid;place-items:center;width:24px;height:24px;min-height:0;padding:4px;border:0;border-radius:50%;background:transparent;box-shadow:none;color:var(--muted);}
 .chat-side-close svg{width:12px;height:12px;}.chat-side-close:hover{background:var(--assembly-hover)!important;}
 html[data-appearance] #ai-evidence{position:relative;width:100%;height:auto;flex:1;min-height:0;padding:8px 9px 23px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;border:0;border-radius:0;background:transparent;box-shadow:none;}
+#ai-evidence .chat-evidence-empty{margin:6px 5px;color:var(--muted);font:12px/1.6 var(--ui-font,system-ui,'Microsoft YaHei',sans-serif);}
 #ai-evidence[hidden]{display:none;}
 .chat-evidence-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px;margin-bottom:5px;padding:0 5px;font-size:12px;color:var(--muted);}.chat-evidence-heading small{font-size:10px;border:1px solid var(--assembly-border);border-radius:5px;padding:0 4px;line-height:1.6;}
 html[data-appearance] #ai .chat-evidence-card{position:relative;min-width:0;margin:0 0 8px;padding:10px;border:1px solid color-mix(in srgb,var(--assembly-border) 70%,transparent);border-radius:10px;background:var(--assembly-control);box-shadow:0 2px 7px var(--assembly-shadow),inset 0 1px var(--assembly-highlight);transition:border-color 140ms,box-shadow 140ms;}

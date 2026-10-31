@@ -13,6 +13,16 @@ function icon(doc,name){
  for(const d of EXTRA_ICONS[name]){const path=doc.createElementNS(ns,'path');path.setAttribute('d',d);svg.append(path);}return svg;
 }
 
+// Task strip geometry: the active tab must clear the edge fades (22px wide).
+// A left fade exists only once the strip has scrolled away from its start.
+export const TASK_TAB_FADE=24;
+export function taskTabScroll({view,rect,scrollLeft=0,fade=TASK_TAB_FADE}){
+ if(!view?.width||!rect)return scrollLeft;const start=view.left+(scrollLeft>0?fade:0),end=view.right-fade;
+ if(rect.left<start||rect.width>end-start)return Math.max(0,scrollLeft-(start-rect.left));
+ return rect.right>end?scrollLeft+rect.right-end:scrollLeft;
+}
+export function taskTabOverflow({scrollLeft=0,clientWidth=0,scrollWidth=0}){return {start:scrollLeft>1,end:scrollLeft+clientWidth<scrollWidth-1};}
+
 export function installAssemblyComposer(U,{status,persist}){
  const doc=U.$('ai-form').ownerDocument,win=doc.defaultView,form=U.$('ai-form'),input=U.$('ai-prompt'),S=U.conversations,scope={projectID:U.p.id},pending=new Set();
  const node=(tag,cls,text)=>{const n=doc.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -108,28 +118,34 @@ export function installAssemblyComposer(U,{status,persist}){
  // Keep real task positions stable while answers stream and while an existing
  // tab is selected. Recreating every tab on each token drops keyboard focus.
  const taskNodes=new Map(),taskStates=new Map();let taskOrder=[],lastSessionID=U.conversationSession.id;
+ const syncTaskEdges=()=>{const edge=taskTabOverflow(tabs);tabs.dataset.overflowStart=String(edge.start);tabs.dataset.overflowEnd=String(edge.end);};
+ const revealTask=()=>{const tab=taskNodes.get(U.conversationSession?.id);if(tab){const next=taskTabScroll({view:tabs.getBoundingClientRect(),rect:tab.getBoundingClientRect(),scrollLeft:tabs.scrollLeft});if(next!==tabs.scrollLeft)tabs.scrollLeft=next;}syncTaskEdges();};
+ // The strip is measured again when it is shown after being hidden, when the
+ // active title grows after the first question, or when the pane resizes.
+ // Scrolling never resizes, so a user's own horizontal scroll is kept.
+ const tabResize=new win.ResizeObserver(entries=>{if(entries.some(entry=>entry.target===tabs||entry.target===taskNodes.get(U.conversationSession?.id)))revealTask();else syncTaskEdges();});tabResize.observe(tabs);tabs.addEventListener('scroll',syncTaskEdges,{passive:true});
  const paintTaskStates=()=>{for(const [id,tab]of taskNodes)tab.dataset.state=taskStates.get(id)||'idle';taskbar.dataset.state=taskStates.get(U.conversationSession?.id)||'idle';};
- const removeTask=async id=>{if(U.activeResearchSessionID===id)throw Error('请先停止这条对话的任务。');await S.remove(id);taskStates.delete(id);if(!S.getForScope(scope))await S.open({...scope,origin:'assembly',title:'新研究对话'});tabs.querySelector('[aria-selected=true]')?.focus({preventScroll:true});};
+ const removeTask=async id=>{if(U.activeResearchSessionID===id){status('请先停止这条对话的任务。');return;}await S.remove(id);taskStates.delete(id);if(!S.getForScope(scope))await S.open({...scope,origin:'assembly',title:'新研究对话'});tabs.querySelector('[aria-selected=true]')?.focus({preventScroll:true});};
  const taskKey=event=>{const target=event.target.closest('.assembly-task-select');if(!target||event.isComposing)return;const controls=[...tabs.querySelectorAll('.assembly-task-select')],index=controls.indexOf(target);let next;
   if(event.key==='ArrowRight')next=(index+1)%controls.length;else if(event.key==='ArrowLeft')next=(index-1+controls.length)%controls.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=controls.length-1;else if(event.key==='Delete'){event.preventDefault();event.stopPropagation();run(()=>removeTask(target.dataset.sessionId));return;}else return;
-  event.preventDefault();event.stopPropagation();const id=controls[next].dataset.sessionId;run(async()=>{await S.select(id,{scope,summary:true});taskNodes.get(id)?.querySelector('.assembly-task-select').focus({preventScroll:true});taskNodes.get(id)?.scrollIntoView({block:'nearest',inline:'nearest'});});
+  event.preventDefault();event.stopPropagation();const id=controls[next].dataset.sessionId;run(async()=>{await S.select(id,{scope,summary:true});taskNodes.get(id)?.querySelector('.assembly-task-select').focus({preventScroll:true});revealTask();});
  };taskbar.addEventListener('keydown',taskKey);
  const update=value=>{const session=U.conversationSession;if(!session)return;const selectionChanged=lastSessionID!==session.id;if(selectionChanged){for(const cancel of [...pending])cancel();interactionHost.replaceChildren();lastSessionID=session.id;closePopups();if(clui.mode==='detail')clui.setConversation();}
   execution.replaceChildren(icon(doc,'shield'),node('span','',session.executionMode==='ask'?'询问':'Auto'));for(const row of executionMenu.children)row.setAttribute('aria-checked',String(row.dataset.value===(session.executionMode||'auto')));
   const snapshot=value?.sessions?value:S.snapshot({summary:true}),sessions=snapshot.sessions.filter(item=>!item.isDraft),running=U.activeResearchSessionID&&snapshot.sessions.find(item=>item.id===U.activeResearchSessionID),available=new Map([...sessions,...(running?[running]:[]),session].map(item=>[item.id,item]));if(!taskOrder.length)taskOrder=sessions.slice(-4).map(item=>item.id);taskOrder=taskOrder.filter(id=>available.has(id));if(running&&!taskOrder.includes(running.id))taskOrder.push(running.id);if(!taskOrder.includes(session.id))taskOrder.push(session.id);while(taskOrder.length>4)taskOrder.splice(taskOrder.findIndex(id=>id!==session.id&&id!==U.activeResearchSessionID),1);
   for(const id of taskStates.keys())if(!available.has(id)&&id!==U.activeResearchSessionID)taskStates.delete(id);
-  for(const [id,tab]of taskNodes)if(!taskOrder.includes(id)){tab.remove();taskNodes.delete(id);}
+  for(const [id,tab]of taskNodes)if(!taskOrder.includes(id)){tabResize.unobserve(tab);tab.remove();taskNodes.delete(id);}
   for(const [index,id]of taskOrder.entries()){const item=available.get(id),active=id===session.id;let tab=taskNodes.get(id);
-   if(!tab){tab=node('div','assembly-task-tab');tab.setAttribute('role','presentation');const select=node('button','assembly-task-select');select.type='button';select.setAttribute('role','tab');select.dataset.sessionId=id;select.append(node('i','assembly-task-dot'),node('span'));select.onclick=()=>run(()=>S.select(id,{scope,summary:true}));tab.append(select,control('删除这条对话，素材和笔记保留','close',()=>removeTask(id),'assembly-task-remove'));taskNodes.set(id,tab);}
+   if(!tab){tab=node('div','assembly-task-tab');tab.setAttribute('role','presentation');const select=node('button','assembly-task-select');select.type='button';select.setAttribute('role','tab');select.dataset.sessionId=id;select.append(node('i','assembly-task-dot'),node('span'));select.onclick=()=>run(()=>S.select(id,{scope,summary:true}));tab.append(select,control('删除这条对话，素材和笔记保留','close',()=>removeTask(id),'assembly-task-remove'));taskNodes.set(id,tab);tabResize.observe(tab);}
    tab.dataset.active=String(active);const select=tab.querySelector('.assembly-task-select'),label=item.currentTask||item.title||'新研究对话';select.setAttribute('aria-selected',String(active));select.tabIndex=active?0:-1;select.title=label;const title=select.querySelector('span');if(title.textContent!==label)title.textContent=label;if(tabs.children[index]!==tab)tabs.insertBefore(tab,tabs.children[index]||null);
   }
   // Reveal a newly chosen task within this strip only; never scroll the paper
   // or reposition the conversation while its reply is streaming.
-  if(selectionChanged){const tab=taskNodes.get(session.id),rect=tab?.getBoundingClientRect(),view=tabs.getBoundingClientRect();if(rect&&view.width){if(rect.right>view.right-24)tabs.scrollLeft+=rect.right-view.right+24;else if(rect.left<view.left)tabs.scrollLeft-=view.left-rect.left;}}
+  if(selectionChanged)revealTask();else syncTaskEdges();
   paintTaskStates();
  };const unsubscribe=S.subscribe(update,{summary:true});update();U.updateAssemblyTaskState=(state,sessionID=U.conversationSession?.id)=>{if(!sessionID)return;taskStates.set(sessionID,state);paintTaskStates();};
  const outside=event=>{if(!form.contains(event.target))closePopups();};doc.addEventListener('pointerdown',outside);
  U.assemblyComposer={openSources,capture,activate,commands:ASSEMBLY_COMMANDS,refresh:update,clui};
- win.addEventListener('pagehide',()=>{clui.destroy();for(const cancel of [...pending])cancel();unsubscribe();input.removeEventListener('input',inputChanged);form.removeEventListener('keydown',onKey,true);taskbar.removeEventListener('keydown',taskKey);doc.removeEventListener('pointerdown',outside);stack.removeEventListener('pointerenter',stackEnter);stack.removeEventListener('pointerleave',stackLeave);stack.removeEventListener('focusin',syncStack);stack.removeEventListener('focusout',stackFocusOut);taskNodes.clear();taskStates.clear();},{once:true});
+ win.addEventListener('pagehide',()=>{clui.destroy();for(const cancel of [...pending])cancel();unsubscribe();input.removeEventListener('input',inputChanged);form.removeEventListener('keydown',onKey,true);taskbar.removeEventListener('keydown',taskKey);doc.removeEventListener('pointerdown',outside);stack.removeEventListener('pointerenter',stackEnter);stack.removeEventListener('pointerleave',stackLeave);stack.removeEventListener('focusin',syncStack);stack.removeEventListener('focusout',stackFocusOut);tabResize.disconnect();tabs.removeEventListener('scroll',syncTaskEdges);taskNodes.clear();taskStates.clear();},{once:true});
  return U.assemblyComposer;
 }

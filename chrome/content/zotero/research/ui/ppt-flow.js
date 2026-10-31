@@ -90,8 +90,9 @@ Object.assign(EasySchUI,{
   body.append(panel);
  },
  pptVisuals(body){
-  const d=this.pptDraft,heading=this.el('div',undefined,'ppt-stage-heading ppt-visual-heading'),completed=d.slides.filter(s=>['generated','user','user_edited'].includes(s.status)).length;heading.append(this.el('small','图文编排 · '+d.slides.length+' 页'),this.el('h2','编排观点与证据'),this.el('p',`已完成 ${completed}/${d.slides.length} 页`,'muted'));
-  const toolbar=this.el('div',undefined,'ppt-stage-actions');this.pptButton('补齐未完成页面',()=>this.pptTask((status,signal)=>this.E.studio.generateRemaining(d.id,status,signal)),toolbar,'primary');heading.append(toolbar);body.append(heading);
+  const d=this.pptDraft,heading=this.el('div',undefined,'ppt-stage-heading ppt-visual-heading'),completed=d.slides.filter(s=>['generated','user','user_edited'].includes(s.status)).length,remaining=d.slides.some(s=>['pending','failed'].includes(s.status));heading.append(this.el('small','图文编排 · '+d.slides.length+' 页'),this.el('h2','编排观点与证据'),this.el('p',`已完成 ${completed}/${d.slides.length} 页`,'muted'));
+  // One primary action: filling pages while any is pending or failed (the pages generateRemaining runs), otherwise the next stage.
+  const toolbar=this.el('div',undefined,'ppt-stage-actions');this.pptButton('补齐未完成页面',()=>this.pptTask((status,signal)=>this.E.studio.generateRemaining(d.id,status,signal)),toolbar,remaining?'primary':undefined);heading.append(toolbar);body.append(heading);
   const pages=this.el('div',undefined,'ppt-slide-grid');body.append(pages);
   for(const [i,s] of d.slides.entries()){
    const card=this.el('article',undefined,'ppt-progress-page');card.dataset.pageId=s.id;const preview=this.el('button',undefined,'ppt-page-preview'),asset=d.assets.find(a=>(s.assetIDs||[]).includes(a.id)),rendered=this.pptCurrentPreview?.(d,s),path=rendered||asset?.thumbnail||asset?.path,edit=async()=>{this.pptSelected=i;await this.pptPatch(x=>x.step=5);this.renderPPT();};preview.type='button';preview.setAttribute('aria-label','编辑第 '+(i+1)+' 页：'+s.title);preview.onclick=()=>edit().catch(error=>this.status(error.message,true));
@@ -108,6 +109,6 @@ Object.assign(EasySchUI,{
   const assets=this.el('section',undefined,'ppt-asset-drawer');assets.append(this.el('h3',`原图与图表 · ${d.assets.length}`));const grid=this.el('div');grid.className='ppt-assets';assets.append(grid);body.append(assets);
   for(const a of d.assets.slice(0,40)){const card=this.el('div'),img=this.el('img');img.alt=a.label;this.E.previewImage(a.thumbnail||a.path).then(src=>img.src=src).catch(()=>{});card.append(img,this.el('small',`${a.label}${a.page?' · PDF '+a.page:a.kind==='user_image'?' · '+this.E.studio.model.assetSourceLabel(a):''}`));grid.append(card);import('../shared/media-preview.mjs').then(({installMediaPreview})=>{if(img.isConnected)installMediaPreview(img,{src:()=>img.src,alt:a.label,onError:e=>this.status(e.message,true)});});}
   for(const warning of d.materialWarnings||[])body.append(this.el('p',warning));
-  const next=this.pptNext(body,'加入我的理解或实验',async()=>{await this.pptPatch(x=>x.step=4);this.renderPPT();});toolbar.append(next.parentElement);
+  const next=this.pptNext(body,'加入我的理解或实验',async()=>{await this.pptPatch(x=>x.step=4);this.renderPPT();});if(remaining)next.classList.remove('primary');toolbar.append(next.parentElement);
  }
 });

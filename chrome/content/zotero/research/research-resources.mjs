@@ -5,6 +5,8 @@ import {installResearchDomainPicker} from './shared/research-domain-picker.mjs';
 const E=window.parent.Zotero.Research,$=id=>document.getElementById(id),el=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 let options=window.frameElement.resourceOptions||{},current='',selected=new Set(),editing=null,scopeEditing=null,busy=false,corpora=[],index=new Map(),visible=60,timer,collecting=null;
 const notice=text=>$('status').textContent=text;
+// A collapsed card shows 180 characters; a cut preview ends in … so it does not read as the whole text.
+const corpusPreview=text=>{const flat=String(text||'').replace(/\s+/g,' ').trim();return flat.length>180?flat.slice(0,180).replace(/[，,、;；:：。\s]+$/u,'')+'…':flat;};
 const project=()=>options.projectID&&(E.notebook?.project(options.projectID)||E.manuscripts.get(options.projectID));
 const corpus=()=>corpora.find(row=>row.id===current);
 const paperIDs=()=>options.paperIDs??project()?.preparationSourceSelection?.paperIDs??project()?.materialPaperIDs;
@@ -34,7 +36,7 @@ function renderEntries(){
  const rows=filtered(),host=$('entries'),owner=current;host.replaceChildren();$('result-count').textContent=rows.length+' 份';$('clear-filters').hidden=!$('query').value&&!$('section').value;
  for(const row of rows.slice(0,visible)){
   const card=el('article'),head=el('header'),label=el('label'),check=el('input');check.type='checkbox';check.checked=selected.has(row.id);check.setAttribute('aria-label','选择 '+row.title);check.onchange=()=>{check.checked?selected.add(row.id):selected.delete(row.id);syncSelection();};label.append(check,el('strong',row.title));head.append(label,el('small',row.section));card.append(head);
-  const details=el('details'),summary=el('summary',row.text.replace(/\s+/g,' ').slice(0,180));details.append(summary);details.ontoggle=()=>{if(details.open){summary.textContent='完整语料';if(!details.querySelector('p'))details.append(el('p',row.text));}else summary.textContent=row.text.replace(/\s+/g,' ').slice(0,180);};card.append(details);
+  const details=el('details'),summary=el('summary',corpusPreview(row.text));details.append(summary);details.ontoggle=()=>{if(details.open){summary.textContent='完整语料';if(!details.querySelector('p'))details.append(el('p',row.text));}else summary.textContent=corpusPreview(row.text);};card.append(details);
   // F10: an edited source entry is the user's text; the original stays readable.
   const origin=row.materialID?(E.manuscripts.assetLibraryView?.()||{})[row.materialID]:null,provenance=corpusEntryProvenance(row,origin);card.dataset.provenance=provenance;
   if(provenance==='edited'){const original=row.originalText||(origin?.sourceText&&origin.sourceText!==row.text?origin.sourceText:'');if(original){const before=el('details');before.className='resource-entry-original';before.append(el('summary','编辑前的原文'));before.ontoggle=()=>{if(before.open&&!before.querySelector('p'))before.append(el('p',original));};card.append(before);}}

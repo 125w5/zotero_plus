@@ -154,8 +154,9 @@ html[data-appearance] .agent-workbench .agent-conversation .agent-composer>texta
 html[data-appearance] .agent-workbench .agent-composer-footer {font-family:var(--ui-font);gap:6px;}
 html[data-appearance] .agent-workbench .agent-composer-footer select {border-radius:6px;transition:background var(--ui-motion);}
 html[data-appearance] .agent-workbench .agent-composer-footer select:hover {background:var(--ui-hover);}
-html[data-appearance] .agent-workbench .agent-send {display:flex;align-items:center;justify-content:center;border-radius:8px;background:linear-gradient(150deg,#435365,#2d3b4b);color:#fff;border:1px solid #354558;box-shadow:0 2px 5px #1625382b,inset 0 1px #ffffff28;transition:background var(--ui-motion),box-shadow var(--ui-motion),transform var(--ui-motion);}
-html[data-appearance] .agent-workbench .agent-send:hover {background:linear-gradient(150deg,#53657a,#35485f);color:#fff;filter:none;box-shadow:0 3px 8px #16253832,inset 0 1px #ffffff35;}
+/* Send/stop is the primary action: the same light-blue primary tokens as workspace-controls.css. */
+html[data-appearance] .agent-workbench .agent-send {display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--ui-primary);color:var(--ui-primary-text);border:1px solid color-mix(in srgb,var(--ui-primary-text) 16%,transparent);box-shadow:var(--ui-control-shadow);transition:background var(--ui-motion),box-shadow var(--ui-motion),transform var(--ui-motion);}
+html[data-appearance] .agent-workbench .agent-send:hover {background:var(--ui-primary-hover);color:var(--ui-primary-text);border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent);filter:none;box-shadow:var(--ui-control-shadow);}
 html[data-appearance] .agent-workbench .agent-send:active {transform:translateY(1px);box-shadow:inset 0 1px 3px #0002;}
 @keyframes agent-enter { from { opacity:0; transform:translateY(-18px); } to { opacity:1; transform:translateY(0); } }
 .agent-returning { animation:agent-return .2s cubic-bezier(.2,.7,.3,1); }

@@ -6,6 +6,13 @@ export function taskProgressUpdate(value){
  if(!value||typeof value!=='object')return {};
  return {detail:value.text||value.message||value.stage||'',...(knownProgress(value)?{done:value.done,total:value.total}:{})};
 }
+// A settled rail names the task that failed; the reason stays in the tooltip and accessible value.
+export function taskOutcomeText(value={}){
+ if(value.state==='cancelled')return {label:'已停止',detail:''};
+ if(value.state!=='error')return {label:'就绪',detail:''};
+ const name=String(value.outcome?.title||'').replace('正在','').replace(/\s+/g,' ').trim();
+ return {label:name&&name!=='处理'?'未完成：'+name:'任务未完成',detail:String(value.outcome?.message||'')};
+}
 // Leases represent actual asynchronous work. Shared keys join the same job;
 // settling a route or child request cannot clear another operation's lease.
 export function createTaskProgress(){

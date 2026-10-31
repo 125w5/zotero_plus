@@ -16,8 +16,11 @@ describe('Stable paper reader navigation', function () {
   E.ensurePaperMetrics = async () => {};
   win = await loadZoteroPane(); await E.attachWindow(win);
   folder = PathUtils.join(Zotero.DataDirectory.dir, 'reader-navigation-acceptance'); await IOUtils.makeDirectory(folder,{ignoreExisting:true});
-  for (const item of await Zotero.Items.getAll(Zotero.Libraries.userLibraryID)) if (item.isPDFAttachment() && !item.isInTrash() && await item.fileExists()) { pdf=item; break; }
-  assert.exists(pdf,'隔离文库需要真实 PDF');
+  // Import the article fixture: Items.getAll() has no ORDER BY, so the first
+  // leftover PDF follows random item keys and may be test.pdf, whose single
+  // paragraph crops to a strip rather than an article homepage.
+  pdf = await importFileAttachment('recognizePDF_test_arXiv.pdf');
+  assert.isTrue(pdf.isPDFAttachment() && await pdf.fileExists(),'隔离文库需要真实 PDF');
   reader = await E.openReaderReady(pdf.id);
   win.ZoteroContextPane.collapsed = false; win.ZoteroContextPane.context.mode = 'item';
   await wait(() => { details=[...win.document.querySelectorAll('item-details')].find(node=>node.tabID===reader.tabID);return details?.dataset.easyschNavigation==='paper'; }, '论文阅读侧栏');
@@ -26,12 +29,14 @@ describe('Stable paper reader navigation', function () {
  after(async () => {
   E.manuscripts.prepareTranslation=prior.prepare;E.renderPaperOverview=prior.overview;E.completePaperMetadata=prior.metadata;E.ensurePaperMetrics=prior.metrics;
   await E.store.flush();
-  if(win&&!win.closed){
-   try{
-    await win.Zotero_Tabs.closeAll();
-    await wait(()=>!Zotero.Reader._readers.some(value=>value._window===win),'原生论文阅读器清理');
-   }finally{win.close();}
-  }
+  try{
+   if(win&&!win.closed){
+    try{
+     await win.Zotero_Tabs.closeAll();
+     await wait(()=>!Zotero.Reader._readers.some(value=>value._window===win),'原生论文阅读器清理');
+    }finally{win.close();}
+   }
+  }finally{await pdf?.eraseTx();}
  });
 
  it('keeps one note destination and hides duplicate metadata shortcuts without losing native sections', async () => {

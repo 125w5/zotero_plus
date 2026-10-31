@@ -9,7 +9,8 @@ import {renderTranslationFeedback} from '../shared/translation-feedback.mjs';
 
 const thumbnails = new WeakMap();
 function installStyles(document) {
- if (document.querySelector('link[data-material-overview]')) return;
+ // refined-surface.css imports this sheet on the assembly page; keep the runtime link for other hosts.
+ if (document.querySelector('link[data-material-overview],link[href$="refined-surface.css"]')) return;
  const link = document.createElement('link');link.rel = 'stylesheet';link.href = 'chrome://zotero/content/research/manuscript/material-overview.css';link.dataset.materialOverview = 'true';document.head.append(link);
 }
 function excerptMaterial(material, anchor) {

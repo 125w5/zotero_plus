@@ -145,8 +145,9 @@
 .conversation-surface[data-attaching=true] .conversation-surface-attach{animation:conversation-attachment-pulse 700ms ease-in-out infinite alternate;pointer-events:none;}
 @keyframes conversation-attachment-pulse{to{opacity:.35}}
 .conversation-surface-measure{position:absolute;left:-10000px;top:0;visibility:hidden;pointer-events:none;white-space:pre-wrap;overflow-wrap:anywhere;}
-.conversation-surface-send{flex:none;width:30px;height:30px;background:linear-gradient(150deg,#435365,#2d3b4b)!important;color:#fff!important;border:1px solid #354558!important;border-radius:50%!important;box-shadow:0 2px 5px #1625382b,inset 0 1px #ffffff28;}
-.conversation-surface-send:hover{background:linear-gradient(150deg,#53657a,#35485f)!important;box-shadow:0 3px 8px #16253832,inset 0 1px #ffffff35!important;}
+/* Send is the primary action: the same light-blue primary tokens as workspace-controls.css. */
+.conversation-surface-send{flex:none;width:30px;height:30px;background:var(--ui-primary,#e8f0fb)!important;color:var(--ui-primary-text,#405e82)!important;border:1px solid color-mix(in srgb,var(--ui-primary-text,#405e82) 16%,transparent)!important;border-radius:50%!important;box-shadow:var(--ui-control-shadow,0 2px 4px #20354b0a);}
+.conversation-surface-send:hover{background:var(--ui-primary-hover,#dce8f8)!important;border-color:color-mix(in srgb,var(--ui-primary-text,#405e82) 22%,transparent)!important;box-shadow:var(--ui-control-shadow,0 2px 4px #20354b0a)!important;}
 .conversation-surface-status{position:absolute;left:12px;right:12px;bottom:calc(100% + 5px);padding:6px 9px;background:var(--ui-glass,#fffffff5);color:var(--ui-secondary,#738091);font-size:12px;border:1px solid var(--ui-border,#d8e0e9);border-radius:10px;box-shadow:0 3px 10px #16253810;pointer-events:none;}
 .conversation-surface-resize{position:absolute;bottom:-3px;left:25%;right:25%;height:8px;cursor:ns-resize;border-radius:4px;}
 .conversation-surface-resize:hover{background:#90a4b966;}

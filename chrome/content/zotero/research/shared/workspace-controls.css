@@ -44,7 +44,7 @@ html[data-appearance] body[data-workspace-chrome] :is(
 }
 html[data-appearance] body[data-workspace-chrome] :is(
 	button.primary,button.ppt-primary,button.direction-primary,
-	#continue-assembly,.project-new-button
+	#continue-assembly,#send-question,.project-new-button
 ) {
 	background:var(--ui-primary);
 	color:var(--ui-primary-text);
@@ -53,7 +53,7 @@ html[data-appearance] body[data-workspace-chrome] :is(
 }
 html[data-appearance] body[data-workspace-chrome] :is(
 	button.primary,button.ppt-primary,button.direction-primary,
-	#continue-assembly,.project-new-button
+	#continue-assembly,#send-question,.project-new-button
 ):hover:not(:disabled) {
 	background:var(--ui-primary-hover);
 	border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent);
@@ -77,6 +77,12 @@ html[data-appearance] body[data-workspace-chrome] :is(.project-create-dialog,.pr
 html[data-appearance] body[data-workspace-chrome] :is(button,input,select,textarea,summary):focus-visible {
 	outline:2px solid #829cb5;
 	outline-offset:2px;
+}
+/* The assembly canvas takes keyboard focus after Delete/cut; draw the shared
+   ring inside its scroll box so the side rails and footer cannot cover it. */
+html[data-appearance] body[data-workspace-chrome] #canvas:focus-visible {
+	outline:2px solid #829cb5;
+	outline-offset:-2px;
 }
 html[data-appearance] body[data-workspace-chrome] #view-ppt :is(.ppt-slide-thumb,.ppt-template,.ppt-theme):focus-visible {
 	outline:2px solid #829cb5;

@@ -1,6 +1,14 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {orbBounds,clampOrb,normalizeOrb,positionFromNormalized,isOrbDrag,contentOrbArea,snapOrb} from '../shared/reader-ai-orb.mjs';
 const installations=new WeakMap();
+// An open bottom conversation owns the lower canvas and its control column.
+// The logo's resting snap stays above that shell (below the tool row), and the
+// logo hides when no row is left. Dragging still uses the whole window.
+export function assemblyOrbArea(area,{chatTop=null,toolsBottom=null,size=36,padding=4}={}){
+ if(chatTop==null)return {area,hidden:false};
+ const next={...area,top:toolsBottom==null?area.top:Math.max(area.top,toolsBottom),bottom:Math.min(area.bottom,chatTop-8)};
+ return next.bottom-next.top<size+padding*2?{area,hidden:true}:{area:next,hidden:false};
+}
 
 // A viewport layer spans all assembly panes and the bottom composer. It never
 // inherits the clipping or scrolling of the material list or manuscript paper.
@@ -11,7 +19,7 @@ export function installAssemblyAIOrb(U,{open,close}){
  layer.id='assembly-ai-layer';button.id='assembly-ai-orb';button.type='button';button.title=hintText;button.setAttribute('aria-label',hintText);button.setAttribute('aria-controls','ai');
  hint.id='assembly-ai-orb-hint';hint.className='assembly-ai-orb-hint';hint.hidden=true;hint.setAttribute('role','tooltip');hint.append(doc.createTextNode('研究助手'));const help=doc.createElement('small');help.textContent='点击对话 · 拖动移动';hint.append(help);button.setAttribute('aria-describedby',hint.id);
  logo.className='easysch-symbol';logo.setAttribute('aria-hidden','true');button.append(logo);layer.append(button,hint);doc.documentElement.append(layer);
- let position,bounds,contentBounds,drag,suppressClick=false,disposed=false,frame,hintTimer,dragFrame=null,dragPoint;
+ let position,bounds,contentBounds,drag,suppressClick=false,disposed=false,frame,hintTimer,dragFrame=null,dragPoint;const observed=new WeakSet();
  const placeHint=()=>{if(hint.hidden||!position)return;const r=hint.getBoundingClientRect(),right=position.x+bounds.size+9,left=right+r.width<innerWidth-5?right:position.x-r.width-9;hint.style.left=Math.max(5,Math.min(left,innerWidth-r.width-5))+'px';hint.style.top=Math.max(5,Math.min(position.y+(bounds.size-r.height)/2,innerHeight-r.height-5))+'px';};
  const hideHint=()=>{clearTimeout(hintTimer);hintTimer=null;hint.hidden=true;button.title=hintText;};
  const showHint=()=>{clearTimeout(hintTimer);hintTimer=setTimeout(()=>{if(disposed||drag)return;hint.hidden=false;button.removeAttribute('title');placeHint();},260);};
@@ -21,8 +29,11 @@ export function installAssemblyAIOrb(U,{open,close}){
   frame=null;if(disposed)return;
   const header=doc.querySelector('body>header').getBoundingClientRect();
   bounds=orbBounds({width:innerWidth,height:innerHeight},{top:header.bottom,right:innerWidth,bottom:innerHeight},{size:36,padding:4,toolbar:0});
-  const area=contentOrbArea({left:0,right:innerWidth,top:header.bottom,bottom:innerHeight},{leftPane:U.$('left').hidden?null:U.$('left').getBoundingClientRect(),rightPane:U.$('right').hidden?null:U.$('right').getBoundingClientRect()});
-  contentBounds=orbBounds({width:innerWidth,height:innerHeight},area,{size:36,padding:4,toolbar:0});
+  const base=contentOrbArea({left:0,right:innerWidth,top:header.bottom,bottom:innerHeight},{leftPane:U.$('left').hidden?null:U.$('left').getBoundingClientRect(),rightPane:U.$('right').hidden?null:U.$('right').getBoundingClientRect()});
+  const ai=U.$('ai'),chat=U.p.ui.aiOpen&&ai&&!ai.hidden?ai.getBoundingClientRect():null,master=doc.getElementById('assembly-clui-surface')?.dataset.expanded==='true'?ai?.querySelector('.ai-center-master'):null;
+  let chatTop=chat?.height?chat.top:null;if(master){if(!observed.has(master)){observed.add(master);observer.observe(master);}const shell=master.getBoundingClientRect();if(shell.height)chatTop=chatTop==null?shell.top:Math.min(chatTop,shell.top);}
+  const placed=assemblyOrbArea(base,{chatTop,toolsBottom:chatTop==null?null:U.$('tools')?.getBoundingClientRect().bottom});layer.hidden=placed.hidden;
+  contentBounds=orbBounds({width:innerWidth,height:innerHeight},placed.area,{size:36,padding:4,toolbar:0});
   if(drag||U.conversationSurface?.root?.dataset.dragging==='true')position=clampOrb(position,bounds);else{const snapped=snapOrb(positionFromNormalized(U.p.ui.aiOrbPosition||{x:.98,y:.84},contentBounds),contentBounds);position=snapped;if(snapped.edge)button.dataset.edge=snapped.edge;else delete button.dataset.edge;}
   button.style.width=button.style.height=bounds.size+'px';button.setAttribute('aria-expanded',String(!!U.p.ui.aiOpen));draw();placeHint();
  };
@@ -56,7 +67,7 @@ export function installAssemblyAIOrb(U,{open,close}){
   if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();event.stopPropagation();const step=event.shiftKey?20:8;position=clampOrb({x:position.x+({ArrowLeft:-step,ArrowRight:step}[event.key]||0),y:position.y+({ArrowUp:-step,ArrowDown:step}[event.key]||0)},bounds);draw();placeHint();save();}
  };
  const movedSurface=event=>{const detail=event.detail,point=detail?.orbPosition;if(!point||drag||!contentBounds)return;position=detail.movement==='move'?clampOrb(point,bounds):snapOrb(point,contentBounds);if(position.edge)button.dataset.edge=position.edge;else delete button.dataset.edge;draw();U.p.ui.aiOrbPosition=normalizeOrb(position,contentBounds);if(detail.persistOrb!==false)save();};doc.addEventListener('easysch-conversation-statechange',movedSurface);
- const observer=new ResizeObserver(schedule);observer.observe(doc.body);window.addEventListener('resize',schedule);
+ const observer=new ResizeObserver(schedule);observer.observe(doc.body);if(U.$('ai'))observer.observe(U.$('ai'));window.addEventListener('resize',schedule);
  const onPageHide=event=>{if(event.target===doc)dispose();};
  const dispose=()=>{if(disposed)return;disposed=true;hideHint();if(frame)cancelAnimationFrame(frame);cancel();observer.disconnect();doc.removeEventListener('easysch-conversation-statechange',movedSurface);window.removeEventListener('resize',schedule);window.removeEventListener('pagehide',onPageHide);installations.delete(doc);layer.remove();};
  window.addEventListener('pagehide',onPageHide);refresh();

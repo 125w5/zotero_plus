@@ -45,6 +45,8 @@
 #easysch-asset-panel .asset-row-summary :is(table,pre,.katex-display) {max-inline-size:100%;overflow-x:auto;}
 #easysch-asset-panel .asset-row-summary>:last-child,#easysch-asset-panel .asset-row-summary .research-content>:last-child {margin-block-end:0;}
 #easysch-asset-panel .asset-evidence-row .asset-summary-trigger {display:block!important;inline-size:100%!important;max-inline-size:100%;padding:0;margin:0;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit;text-align:start;white-space:normal;overflow-wrap:anywhere;cursor:pointer;}
+/* The complete explanation replaces the brief summary; the forced display above must not keep both. */
+#easysch-asset-panel .asset-evidence-row .asset-summary-trigger[hidden] {display:none!important;}
 #easysch-asset-panel .asset-evidence-row .asset-summary-trigger:hover {background:transparent;color:var(--es-read-ink,var(--fill-primary,#263749));}
 #easysch-asset-panel .asset-summary-trigger[aria-expanded=true] {color:var(--fill-secondary,#73808c);}
 #easysch-asset-panel .asset-evidence-row .asset-row-content {position:relative;box-sizing:border-box;inline-size:100%;min-inline-size:0;max-inline-size:100%;padding:10px 12px 12px;background:var(--material-background,#fff);border-top:1px solid var(--asset-detail-line);overflow:hidden;}

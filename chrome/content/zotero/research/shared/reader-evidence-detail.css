@@ -56,6 +56,11 @@
 .reader-evidence-chat #easysch-conversation-surface .clui-native-shell{border-radius:12px;box-shadow:0 2px 10px #25364b0b,inset 0 1px #ffffffb3;}
 .reader-evidence-chat #easysch-conversation-surface .conversation-surface-footer{border-radius:15px;}
 .reader-evidence-chat #easysch-conversation-surface .conversation-surface-input-row{margin-bottom:0;}
+/* An empty embedded history is one quiet row: no scroll box or edge fades. */
+.reader-evidence-chat #easysch-conversation-surface .conversation-surface-log:has(>.conversation-surface-empty):not(:has(>.conversation-interaction-host:not([hidden]))){padding-block:0;overflow:clip;mask-image:none;}
+.reader-evidence-chat #easysch-conversation-surface .conversation-surface-header:has(+.clui-native-body>.conversation-surface-log>.conversation-surface-empty):not(:has(+.clui-native-body .conversation-interaction-host:not([hidden])))::after{display:none;}
+.reader-evidence-chat .conversation-surface-empty{flex-direction:row;gap:7px;}
+.reader-evidence-chat .conversation-surface-empty>svg{flex:none;width:16px;height:16px;stroke-width:1.65;}
 .reader-evidence-status{position:absolute;left:20px;bottom:15px;z-index:2;max-width:calc(62% - 40px);margin:0;padding:5px 10px;border:1px solid #d9e1e9;border-radius:8px;background:#ffffffeb;backdrop-filter:blur(14px);color:#758291;font-size:12px;box-shadow:0 3px 10px #25364b0f;}
 .reader-evidence-status[hidden]{display:none;}.reader-evidence-status[data-error=true]{color:#a85046;}
 @keyframes evidence-view-enter{from{opacity:0}to{opacity:1}}

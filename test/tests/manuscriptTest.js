@@ -24,6 +24,10 @@ describe('Manuscript assembly native frontend',function(){
  const luminance=({rgb})=>{const v=rgb.map(n=>{n=n/255;return n<=0.04045?n/12.92:((n+0.055)/1.055)**2.4;});return .2126*v[0]+.7152*v[1]+.0722*v[2];};
  const surface=node=>{const w=node.ownerDocument.defaultView;for(let n=node;n&&n.nodeType===1;n=n.parentElement){const value=parse(w.getComputedStyle(n).backgroundColor);if(value.alpha>0)return value;}return {rgb:[255,255,255],alpha:1};};
  const contrast=node=>{const a=luminance(parse(node.ownerDocument.defaultView.getComputedStyle(node).color)),b=luminance(surface(node));return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};
+ // A theme switch starts background-color transitions (surface.css buttons, .12s) while text color
+ // changes at once, so the first frame pairs the new text with the old background. Measure the
+ // colors the transitions settle on; getAnimations() flushes styles, so new transitions are included.
+ const settle=doc=>{for(const animation of doc.getAnimations())if('transitionProperty' in animation)animation.finish();};
  async function capture(name){await Zotero.Promise.delay(150);const image=await win.browsingContext.currentWindowGlobal.drawSnapshot(null,1,'white'),canvas=win.document.createElementNS('http://www.w3.org/1999/xhtml','canvas');canvas.width=image.width;canvas.height=image.height;canvas.getContext('2d').drawImage(image,0,0);const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));await IOUtils.write(PathUtils.join(folder,name),new Uint8Array(await blob.arrayBuffer()));image.close();}
  before(async()=>{win=await loadZoteroPane();win.Zotero_Tabs.closeAll();win.focus();win.resizeTo(1550,980);await R.attachWindow(win);folder=PathUtils.join(Zotero.DataDirectory.dir,'manuscript-acceptance');await IOUtils.makeDirectory(folder,{ignoreExisting:true});prior={request:R.studio.request,pick:R.pick,launch:Zotero.launchFile,appearance:Zotero.Prefs.get('extensions.easysch.writingAppearance',true),active:R.workbenchConversations.getActive()?.id};R.studio.request=offline;});
  after(async()=>{
@@ -84,7 +88,10 @@ describe('Manuscript assembly native frontend',function(){
  it('builds reviewed source-linked topic cards from readable day and night dialogs and keeps the shared card identity in a copy',async function(){
   const w=frame.contentWindow;ui.p.materials.push(ui.M.material({kind:'experiment',title:'温漂复测记录',summary:'复测时记录的晶振温漂。',sourceText:'复测中晶振温漂单独记录，未与正式实验数据混合。'}));ui.changed();await ui.persist({flush:true});
   click(ui.$('left-tabs'),'素材库');manage('按主题建立素材库');await wait(()=>ui.$('popover').open&&ui.$('topic-prompt'),'主题素材库对话框');assert.notInclude(ui.$('topic-prompt').value,'MouseEvent');
-  try{for(const mode of ['light','dark']){w.ResearchAppearance.set(mode);assert.equal(w.document.documentElement.dataset.appearance,mode);for(const node of [ui.$('build-topic'),ui.$('popover'),ui.$('steps').querySelector('.assembly-step.active')])assert.isAtLeast(contrast(node),4.5,mode+' '+(node.id||node.className)+' 文字对比度');await capture('07-topic-'+mode+'.png');}}
+  // Contrast failures are collected and asserted after the dialog flow, so an unreadable theme is
+  // still reported but does not stop the topic cards that the later tests write in.
+  const unreadable=[];
+  try{for(const mode of ['light','dark']){w.ResearchAppearance.set(mode);assert.equal(w.document.documentElement.dataset.appearance,mode);settle(w.document);for(const node of [ui.$('build-topic'),ui.$('popover'),ui.$('steps').querySelector('.assembly-step.active')]){const ratio=contrast(node);if(ratio<4.5)unreadable.push(mode+' '+(node.id||node.className)+' 文字对比度 '+ratio.toFixed(2));}await capture('07-topic-'+mode+'.png');}}
   finally{w.ResearchAppearance.set(['light','dark','auto'].includes(prior.appearance)?prior.appearance:'light');}
   // Only the topic request answers; the evidence card must quote the project's real record.
   R.studio.request=async(system,input)=>{if(!String(system).startsWith('按用户主题整理科研素材'))return offline();const source=input.sources.find(x=>x.text?.includes('晶振温漂单独记录'));assert.exists(source,'检索到项目中的实际记录');return {value:{cards:[{kind:'evidence',title:'温漂复核素材',category:'实验条件',summary:'复测时单独记录了晶振温漂，结论仍需核对正式数据。',sourceID:source.id,quote:'晶振温漂单独记录'},{kind:'idea',title:'待验证的温漂补偿',summary:'比较补偿前后的稳定性，需要设计实验验证。'}]},model:'controlled-ui-fixture'};};
@@ -98,6 +105,7 @@ describe('Manuscript assembly native frontend',function(){
   const data=new w.DataTransfer();data.setData('application/x-manuscript-material',assetID);ui.$('canvas').querySelector('.paper').dispatchEvent(new w.DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}));await wait(()=>topicBlock(),'放入正文的主题素材');
   const b=topicBlock();assert.isTrue(b.assembly);ui.selectBlock(b.id);edit(ui.$('canvas').querySelector(`[data-id="${b.id}"] .editable`),'素材仅提供研究主题线索，仍须核对原始记录与实验。');await ui.persist({flush:true});
   const copy=await R.manuscripts.copy(projectID);created.projects.push(copy.id);assert.equal(R.manuscripts.get(copy.id).materials.find(m=>m.assetID===assetID).id,assetID);await R.manuscripts.remove(copy.id);
+  assert.deepEqual(unreadable,[],'主题素材库对话框在日间和夜间的文字都要可读（对比度至少 4.5）');
  });
  it('preserves manual paragraph edits and keeps text, composer, table, outline and IME keys in their own scope',async function(){
   const b=topicBlock(),original=b.text;ui.selectBlock(b.id);assert.notInclude(ui.$('details').textContent,'润色');await capture('09-manual-paragraph.png');

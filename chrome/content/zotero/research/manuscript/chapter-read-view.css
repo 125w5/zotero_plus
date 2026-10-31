@@ -15,7 +15,8 @@
 #canvas .assembly-read-toolbar .assembly-read-progress{flex:1 1 220px;min-width:0;color:var(--read-muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #canvas .assembly-read-article :is(.easysch-rapid-control,.assembly-read-action){appearance:none;display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;min-height:32px;border:1px solid var(--read-line);border-radius:8px;color:var(--read-muted);background:var(--read-surface);padding:4px 11px;font:13px/1.5 var(--ui-font,system-ui);white-space:nowrap;cursor:pointer;box-shadow:0 1px 3px var(--read-shadow),inset 0 1px var(--read-highlight)}
 #canvas .assembly-read-article :is(.easysch-rapid-control,.assembly-read-action):hover:not(:disabled),#canvas .assembly-read-article .easysch-rapid-control[aria-pressed=true]{background:var(--read-selection);color:var(--read-ink)}
-#canvas .assembly-read-article .assembly-read-action.primary{background:var(--read-ink);border-color:var(--read-ink);color:var(--read-surface)}
+#canvas .assembly-read-article .assembly-read-action.primary{background:var(--ui-primary);border-color:color-mix(in srgb,var(--ui-primary-text) 16%,transparent);color:var(--ui-primary-text)}
+#canvas .assembly-read-article .assembly-read-action.primary:hover:not(:disabled){background:var(--ui-primary-hover);border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent);color:var(--ui-primary-text)}
 #canvas .assembly-read-article :is(button):disabled{opacity:.5;cursor:default}
 #canvas .assembly-read-article :is(button):focus-visible{outline:2px solid var(--read-accent);outline-offset:2px}
 #canvas .assembly-read-article nav.easysch-rapid-tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--read-line);padding:8px 0;margin-top:12px}

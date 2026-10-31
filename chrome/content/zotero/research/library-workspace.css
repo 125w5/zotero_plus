@@ -6,7 +6,7 @@
 #zotero-items-pane-container[data-library-mode=discovery]{display:flex!important;flex-direction:column;overflow:hidden}
 #zotero-items-pane-container[data-library-mode=discovery]>:is(#zotero-items-pane,#zotero-toolbar-item-tree,#zotero-advanced-search-pane-deck){display:none!important;visibility:hidden!important}
 #zotero-items-pane-container[data-library-mode=discovery]>.library-workspace-discovery{display:flex!important;flex:1 1 0;min-height:0;height:0;overflow:hidden}
-#zotero-items-pane-container[data-library-embedded=true]{display:flex!important;flex-direction:column;overflow:hidden}
+#zotero-items-pane-container[data-library-embedded=true]{display:flex!important;flex-direction:column;overflow:hidden;background:var(--es-read-tray)}
 #zotero-items-pane-container[data-library-embedded=true]>:is(#zotero-items-pane,#zotero-toolbar-item-tree,#zotero-advanced-search-pane-deck){display:none!important;visibility:hidden!important}
 #zotero-items-pane-container[data-library-embedded=true]>.library-workspace-discovery{display:flex!important;flex:1 1 0;min-height:0;height:0;overflow:hidden}
 :root[data-library-workspace=embedded] :is(#zotero-item-pane,#zotero-items-splitter){display:none!important;visibility:hidden!important}
@@ -100,10 +100,10 @@ body.library-embedded .discovery-actions>span{margin-left:auto;color:var(--muted
 body.library-embedded .discovery-paper{margin:0 0 12px;padding:18px 20px;border:1px solid var(--line,#dfe4eb);border-radius:13px;background:var(--surface,#fff);box-shadow:0 3px 12px #22394f07,inset 0 1px var(--ui-glint,var(--es-read-highlight));transition:border-color .16s,box-shadow .16s}
 body.library-embedded .discovery-paper:hover{border-color:#bfccd9;box-shadow:0 6px 18px #22394f0d}
 body.library-embedded .discovery-paper>.discovery-title strong{font-size:15px;line-height:1.6;font-weight:600}
-body.library-embedded .discovery-paper>.collection-authors{font-size:12px;color:var(--muted,#687482);margin:8px 0}
-body.library-embedded .collection-abstract{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted,#687482);font-size:13px;line-height:1.75;margin:10px 0}
+body.library-embedded .discovery-paper>.collection-authors{font-size:12px;color:var(--muted,#687482);margin-block:8px}
+body.library-embedded .collection-abstract{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted,#687482);font-size:13px;line-height:1.75;margin-block:10px}
 body.library-embedded .discovery-paper>p[role=status]:empty{display:none}
-body.library-embedded .discovery-paper>button{float:none;font-size:12px;min-height:32px;padding:5px 12px;margin:4px 8px 6px 0;border-radius:8px}
+body.library-embedded .discovery-paper>button{float:none;font-size:13px;min-height:34px;padding:5px 12px;margin:4px 8px 6px 0;border-radius:8px}
 body.library-embedded .discovery-paper>details{margin-top:6px;font-size:12px;color:var(--muted,#687482)}
 body.library-embedded .workbench-discovery-tabs{display:flex;gap:3px;width:fit-content;padding:4px;border-radius:11px;background:var(--soft,#e9edf3);margin:18px 0 10px}
 body.library-embedded .workbench-discovery-tabs button{border:0;background:transparent;color:var(--muted,#687482);font-size:12px;padding:6px 14px;border-radius:8px;min-height:32px}
@@ -251,7 +251,7 @@ html[data-appearance] .discovery-feed-filters select{width:auto;max-width:240px;
 .discovery-destination{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:11px 13px;margin:0 0 16px;border:1px solid var(--ui-border,var(--line));border-radius:10px;background:var(--ui-tray,var(--soft));font-size:12px;color:var(--ui-secondary,var(--muted))}
 .discovery-destination-label{font-weight:500;color:var(--ui-text,var(--text))}
 html[data-appearance] .discovery-destination select{width:auto;max-width:280px;min-height:32px;font-size:12px;border-radius:7px;background:var(--ui-card,var(--surface))}
-html[data-appearance] .discovery-destination button{min-height:32px;font-size:12px;padding:5px 10px;border-radius:7px;background:var(--ui-card,var(--surface))}
+html[data-appearance] .discovery-destination button{min-height:34px;font-size:13px;padding:5px 10px;border-radius:7px;background:var(--ui-card,var(--surface))}
 .discovery-destination-note{flex-basis:100%;font-size:11px;line-height:1.7;color:var(--ui-secondary,var(--muted))}
 .discovery-folder-create{display:flex;align-items:center;gap:8px;width:100%;margin:3px 0 0}.discovery-folder-create[hidden]{display:none}
 .discovery-folder-create input{flex:1;min-width:80px;font-size:12px;min-height:32px;margin:0}

@@ -50,14 +50,19 @@ html[data-appearance] #steps .assembly-step{font:12px/1.4 var(--ui-font,system-u
 .draft-document-diff del{background:#fbe7e7;color:#923d3d;text-decoration:line-through}.draft-document-diff ins{background:#e0f2e5;color:#25673b;text-decoration:none}
 body[data-assembly-stage="3"] #selection-assistant{display:none}
 body[data-assembly-stage="1"] :is(#details,#selection-assistant){display:none!important}
+/* The hidden tab header no longer needs its 46px reserve (selection-assistant.css),
+   so the guidance starts on the same row as the other panes. */
+body[data-assembly-stage="1"] #right.has-selection-assistant{padding-top:0}
 .direction-guidance{padding:16px;font:13px/1.75 var(--ui-font);color:var(--ui-text)}.direction-guidance[hidden]{display:none}.direction-guidance h3{font-size:14px;margin:0 0 14px}.direction-guidance section{border:1px solid var(--ui-border);border-radius:10px;padding:12px;background:var(--ui-card);box-shadow:var(--ui-shadow);margin-bottom:12px}.direction-guidance strong{font-size:12px}.direction-guidance p{white-space:pre-wrap;margin:6px 0 0;color:var(--ui-secondary);overflow-wrap:anywhere}
 @media(max-width:760px){.direction-workspace{margin:10px;padding:16px}.direction-heading h2{font-size:17px}.direction-options{grid-template-columns:1fr}.direction-compact .direction-intro{display:none}}
 
 html[data-appearance] .direction-options{display:flex;flex-direction:column;max-width:920px;gap:9px}
 html[data-appearance] .direction-options button{position:relative;display:flex;align-items:center;min-height:48px;padding:13px 17px 13px 43px;border:1px solid color-mix(in srgb,var(--ui-border) 60%,transparent);background:var(--ui-card);box-shadow:0 2px 7px var(--assembly-shadow);text-align:left;white-space:normal}
-.direction-options button[role=radio]::before{content:'';position:absolute;left:16px;top:18px;width:13px;height:13px;border-radius:50%;border:1px solid var(--ui-border);background:var(--ui-card)}
+.direction-options button[role=radio]::before{content:'';position:absolute;left:16px;top:18px;width:13px;height:13px;border-radius:50%;border:1px solid color-mix(in srgb,var(--ui-secondary) 70%,var(--ui-border));background:var(--ui-card)}
 .direction-options button[role=radio][aria-checked=true]::before{border:4px solid #7d9ebb;box-sizing:border-box}
 html[data-appearance] .direction-options button:is([aria-checked=true],[aria-selected=true]){background:var(--ui-selection);box-shadow:0 2px 8px var(--assembly-shadow),inset 0 1px var(--assembly-highlight)}
+/* Version tabs have no radio dot, so they do not keep its 43px indent. */
+html[data-appearance] .direction-options button[role=tab]{padding-left:17px}
 .direction-material-setup,.direction-relocation{padding:14px 16px;margin:14px 0;border-radius:10px;background:var(--ui-tray);box-shadow:0 2px 9px var(--assembly-shadow)}
 .direction-relocation p{margin:5px 0}.direction-relocation .direction-actions{margin-top:9px}
 html[data-appearance] #right{position:relative}

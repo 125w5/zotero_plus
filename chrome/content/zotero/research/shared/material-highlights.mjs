@@ -155,7 +155,9 @@ export function installMaterialHighlights(host,material,{E,onSave,onError=()=>{}
  for(const group of materialHighlightGroups(material.highlights||[])){
   const highlight=group[0],painted=group.map(paint),display=materialHighlightDisplay(highlight);
   const item=create('article',undefined,'material-local-comment');item.dataset.highlightId=highlight.id;item.dataset.materialId=material.id;item.tabIndex=-1;item.style.setProperty('--highlight-color',MATERIAL_HIGHLIGHT_COLORS[highlight.color]||MATERIAL_HIGHLIGHT_COLORS.blue);const quote=create('blockquote',group.map(row=>materialHighlightDisplay(row).quote).join('\n')),comment=create('div',undefined,'material-comment-text');if(E.renderContent)E.renderContent(comment,highlight.comment);else comment.textContent=highlight.comment;item.append(quote,comment);if(painted.some(row=>!row.resolved))item.append(create('small','来源已变化，标注保留待核对'));else if(painted.some(row=>row.translationChanged))item.append(create('small','译文已更新，保留原标注与原文位置'));list.append(item);
-  for(const mark of painted.flatMap(row=>row.marks))mark.onclick=event=>{event.stopPropagation();if(win.getSelection()?.toString())return;item.focus({preventScroll:true});item.scrollIntoView({block:'nearest'});};if(onSave)button(item,'移除标注',async()=>{const ids=new Set(group.map(row=>row.id));await onSave((material.highlights||[]).filter(row=>!ids.has(row.id)));});
+  // A compact margin (manuscript/material-margin.mjs) keeps saved comments as a
+  // badge; this event lets it open the comment beside the clicked highlight.
+  for(const mark of painted.flatMap(row=>row.marks))mark.onclick=event=>{event.stopPropagation();if(win.getSelection()?.toString())return;const revealed=win.CustomEvent?!mark.dispatchEvent(new win.CustomEvent('material-highlight-reveal',{bubbles:true,cancelable:true,detail:{highlightId:highlight.id}})):false;item.focus({preventScroll:true});if(!revealed)item.scrollIntoView({block:'nearest'});};if(onSave)button(item,'移除标注',async()=>{const ids=new Set(group.map(row=>row.id));await onSave((material.highlights||[]).filter(row=>!ids.has(row.id)));});
  }
  onLayout(list);
  let previewMarks=[];

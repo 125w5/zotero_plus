@@ -5,7 +5,7 @@
 @import url('shared/workspace-controls.css');
 /* The reader rail is the workspace; sections are tonal trays and individual
    evidence cards are raised white surfaces. No extra headings or action rows. */
-#easysch-home-navigation{display:flex;gap:5px;flex-wrap:wrap;padding:12px 8px;border-bottom:1px solid var(--color-border,#d7dbe1)}#easysch-home-navigation button,.academic-chat button,.research-fields-toggle{font:inherit;border:1px solid var(--color-border,#d7dbe1);border-radius:9px;padding:7px 11px;background:var(--color-background,Canvas);color:var(--color-foreground,CanvasText);cursor:pointer;max-width:100%;white-space:normal}#easysch-home-navigation button:hover,.academic-chat button:hover{background:var(--color-quinary,#e9ebee)}.academic-chat{padding:12px;display:flex;flex-direction:column;gap:12px;min-width:0;color:var(--color-foreground,CanvasText);font:13px/1.65 system-ui,'Microsoft YaHei',sans-serif}.academic-chat-heading{display:flex;flex-direction:column;gap:3px}.academic-chat-heading strong{font-size:16px}.academic-chat-heading small,.academic-chat-status{opacity:.75;font-size:12px}.academic-chat-messages{max-height:45vh;overflow:auto}.academic-chat.focused .academic-chat-messages{max-height:62vh;min-height:220px}.academic-turn{padding:12px 0;border-bottom:1px solid var(--color-border,#d7dbe1)}.academic-turn>p:first-child{background:var(--color-quinary,#e9ebee);border-radius:10px;padding:10px 12px;font-weight:600}.academic-turn details{margin-top:8px}.academic-chat-suggestions{display:flex;flex-direction:column;gap:6px}.academic-chat-suggestions button{text-align:left;font-size:12px}.academic-chat form{position:sticky;bottom:0;padding:10px 0;background:var(--color-background,Canvas);display:flex;gap:8px;flex-wrap:wrap}.academic-chat textarea{box-sizing:border-box;flex-basis:100%;width:100%;border:1px solid var(--color-border,#d7dbe1);border-radius:10px;padding:10px;font:inherit;resize:vertical;color:inherit;background:inherit}.academic-chat button.primary{background:#315e89;color:white}.academic-chat button:disabled{opacity:.55}.research-fields-toggle{font-size:11px;margin:6px}.research-paper-metric{font:12px/1.6 system-ui,'Microsoft YaHei',sans-serif;padding:8px 10px;margin:6px;border-radius:8px;background:var(--color-quinary,#e9ebee);color:var(--color-foreground,CanvasText)}
+#easysch-home-navigation{display:flex;gap:5px;flex-wrap:wrap;padding:12px 8px;border-bottom:1px solid var(--color-border,#d7dbe1)}#easysch-home-navigation button,.academic-chat button,.research-fields-toggle{font:inherit;border:1px solid var(--color-border,#d7dbe1);border-radius:9px;padding:7px 11px;background:var(--color-background,Canvas);color:var(--color-foreground,CanvasText);cursor:pointer;max-width:100%;white-space:normal}#easysch-home-navigation button:hover,.academic-chat button:hover{background:var(--color-quinary,#e9ebee)}.academic-chat{padding:12px;display:flex;flex-direction:column;gap:12px;min-width:0;color:var(--color-foreground,CanvasText);font:13px/1.65 system-ui,'Microsoft YaHei',sans-serif}.academic-chat-heading{display:flex;flex-direction:column;gap:3px}.academic-chat-heading strong{font-size:16px}.academic-chat-heading small,.academic-chat-status{opacity:.75;font-size:12px}.academic-chat-messages{max-height:45vh;overflow:auto}.academic-chat.focused .academic-chat-messages{max-height:62vh;min-height:220px}.academic-turn{padding:12px 0;border-bottom:1px solid var(--color-border,#d7dbe1)}.academic-turn>p:first-child{background:var(--color-quinary,#e9ebee);border-radius:10px;padding:10px 12px;font-weight:600}.academic-turn details{margin-top:8px}.academic-chat-suggestions{display:flex;flex-direction:column;gap:6px}.academic-chat-suggestions button{text-align:left;font-size:12px}.academic-chat form{position:sticky;bottom:0;padding:10px 0;background:var(--color-background,Canvas);display:flex;gap:8px;flex-wrap:wrap}.academic-chat textarea{box-sizing:border-box;flex-basis:100%;width:100%;border:1px solid var(--color-border,#d7dbe1);border-radius:10px;padding:10px;font:inherit;resize:vertical;color:inherit;background:inherit}.academic-chat button.primary{background:var(--ui-primary);color:var(--ui-primary-text);border-color:color-mix(in srgb,var(--ui-primary-text) 16%,transparent)}.academic-chat button.primary:hover:not(:disabled){background:var(--ui-primary-hover);border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent)}.academic-chat button:disabled{opacity:.55}.research-fields-toggle{font-size:11px;margin:6px}.research-paper-metric{font:12px/1.6 system-ui,'Microsoft YaHei',sans-serif;padding:8px 10px;margin:6px;border-radius:8px;background:var(--color-quinary,#e9ebee);color:var(--color-foreground,CanvasText)}
 
 #easysch-home-navigation button,.academic-chat button,.research-fields-toggle{height:auto;max-height:none;min-height:30px;line-height:1.5;overflow-wrap:anywhere;box-sizing:border-box}.academic-chat-suggestions button{white-space:normal}.academic-info-toggle{display:none}.academic-chat.focused .academic-info-toggle{display:block;align-self:flex-end}.academic-focus #zotero-view-item>.academic-active-pane{display:block;flex:1}.academic-focus #zotero-view-item>:not(.academic-active-pane){display:none!important}.academic-focus .academic-chat{background:var(--material-background,Canvas);min-height:calc(100vh - 225px)}.academic-focus .academic-chat-messages{flex:1;max-height:none;min-height:100px}.academic-focus .academic-chat form{position:static}.academic-chat-heading{border-bottom:1px solid var(--color-border,#d7dbe1);padding-bottom:10px}.academic-chat [data-ai-prompt]{min-height:84px}.academic-chat .prompt-templates{flex-basis:100%}.academic-chat .academic-chat-status{overflow-wrap:anywhere}
 
@@ -163,8 +163,8 @@ item-details[data-easysch-navigation=paper] .academic-chat form{position:sticky;
 item-details[data-easysch-navigation=paper] .academic-chat form:focus-within{border-color:#aab4c0;box-shadow:0 0 0 2px #aab4c014,0 2px 7px #0000000a}
 item-details[data-easysch-navigation=paper] .academic-chat textarea{flex-basis:100%;width:100%;height:60px;min-height:48px;max-height:126px;padding:1px 2px;border:0!important;border-radius:0;background:transparent!important;font:14px/1.6 system-ui,'Microsoft YaHei',sans-serif;color:var(--easysch-ink);outline:0;resize:none;box-shadow:none}
 item-details[data-easysch-navigation=paper] .academic-chat textarea::placeholder{color:var(--easysch-reading-muted);opacity:.8}
-item-details[data-easysch-navigation=paper] .academic-chat form>.primary{margin:0;margin-inline-start:auto;min-height:26px;height:26px;padding:3px 10px;border:1px solid #303845;border-radius:6px;background:#303845;color:#fff;font:11px/1.5 system-ui,'Microsoft YaHei',sans-serif;box-shadow:0 1px 2px #0002}
-item-details[data-easysch-navigation=paper] .academic-chat form>.primary:hover{background:#465263;border-color:#465263}
+item-details[data-easysch-navigation=paper] .academic-chat form>.primary{margin:0;margin-inline-start:auto;min-height:26px;height:26px;padding:3px 10px;border:1px solid color-mix(in srgb,var(--ui-primary-text) 16%,transparent);border-radius:6px;background:var(--ui-primary);color:var(--ui-primary-text);font:11px/1.5 system-ui,'Microsoft YaHei',sans-serif;box-shadow:var(--ui-control-shadow)}
+item-details[data-easysch-navigation=paper] .academic-chat form>.primary:hover{background:var(--ui-primary-hover);border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent)}
 item-details[data-easysch-navigation=paper] .academic-chat form>.primary:active{transform:translateY(1px);box-shadow:none}
 item-details[data-easysch-navigation=paper] .academic-chat form>button:not(.primary){min-height:26px;padding:3px 7px;border:0;font-size:11px;color:var(--easysch-reading-muted);background:transparent}
 item-details[data-easysch-navigation=paper].academic-focus .academic-chat{height:calc(100vh - 230px);min-height:210px;max-height:none;display:flex;flex-direction:column;padding-bottom:4px}
@@ -276,6 +276,33 @@ item-details[data-easysch-navigation=paper] .reference-pane .reference-row:hover
 }
 #tab-bar-container .tab-name{font:400 13px/1.5 var(--easysch-ui-font);}
 #tab-bar-container .tab.selected .tab-name{font-weight:500;}
+/* The tab text already follows the EasySch palette through --fill-primary, so
+   the selected and hovered fills follow it too. Native host colours would
+   otherwise sit under EasySch ink when the two appearance settings differ. */
+#tab-bar-container .tab.selected{background:var(--ui-card);}
+/* research/appearance.js holds transitions off while it switches the palette. */
+:root[data-appearance-switching] *,:root[data-appearance-switching] *::before,:root[data-appearance-switching] *::after{transition:none!important;}
+#tab-bar-container .tab:not(.selected):hover{background:var(--easysch-hover);}
+/* Native item tree stripes, the items toolbar with its search field, and the
+   item pane read native material variables. Remap them to the same EasySch
+   palette as the text they carry; layout and row metrics stay native. */
+#zotero-items-tree{--material-stripe:var(--easysch-panel);}
+#zotero-items-pane-container{
+ --material-toolbar:color-mix(in srgb,var(--easysch-surface) 88%,var(--easysch-panel));
+ --material-background:var(--easysch-surface);
+ --color-background70:var(--easysch-surface);
+ --fill-tertiary:color-mix(in srgb,var(--easysch-muted) 80%,transparent);
+}
+#zotero-item-pane{
+ --material-sidepane:var(--easysch-panel);
+ --material-background:var(--easysch-surface);
+ --material-panedivider:1px solid var(--easysch-line);
+ --fill-primary:var(--easysch-ink);
+ --fill-secondary:var(--easysch-muted);
+ --fill-tertiary:color-mix(in srgb,var(--easysch-muted) 80%,transparent);
+ --fill-quinary:color-mix(in srgb,var(--easysch-muted) 12%,transparent);
+ color:var(--easysch-ink);
+}
 #easysch-home-navigation{border-bottom-color:var(--easysch-line);}
 /* The two existing left rails share a surface; their splitters, row metrics
    and native collection operations remain owned by the original layout. */
@@ -317,7 +344,7 @@ item-details[data-easysch-navigation=paper] .reference-pane .reference-row:hover
 #easysch-home-navigation .native-workbench button{display:grid;grid-template-columns:18px minmax(0,1fr) 18px;align-items:center;justify-content:center;gap:8px;text-align:center;min-height:36px}
 #easysch-home-navigation .native-workbench button::before{margin:0;width:18px;height:18px}
 #easysch-home-navigation .native-workbench button::after{content:'';width:18px;height:18px}
-#zotero-collections-tree .row[data-source-type=library] .cell-text{flex:1;text-align:center;padding-inline-end:24px;font-weight:500}
+#zotero-collections-tree .row[data-source-type=library] .cell-text{font-weight:500}
 #zotero-toolbar-collection-tree.native-library-search-tools{margin:0;padding:6px 10px;min-height:36px;border-block:1px solid var(--easysch-line);box-shadow:none}
 #zotero-toolbar-collection-tree.native-library-search-tools #zotero-collections-toolbar{width:100%}
 #zotero-toolbar-collection-tree.native-library-search-tools .zotero-tb-button{border-radius:7px;width:30px;height:30px;min-height:30px}
@@ -326,7 +353,7 @@ item-details[data-easysch-navigation=paper] .reference-pane .reference-row:hover
 #easysch-home-navigation .native-workbench [data-page=discovery]::before{mask-image:url('chrome://zotero/skin/16/universal/feed-library.svg')}
 #easysch-home-navigation .native-workbench [data-page=research]::before{mask-image:url('chrome://zotero/skin/16/universal/book.svg')}
 #easysch-home-navigation .native-workbench [data-page=writing]::before{mask-image:url('chrome://zotero/skin/16/universal/edit.svg')}
-#easysch-home-navigation .native-workbench [data-page=ppt]::before{mask:none;background:url('chrome://zotero/skin/item-type/16/light/presentation.svg') center/contain no-repeat;filter:grayscale(1)}
+#easysch-home-navigation .native-workbench [data-page=ppt]::before{mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4h18M4 4v11h16V4M12 15v3M12 18l-3 3M12 18l3 3M8 11.5l3-3 2.5 2L16 8'/%3E%3C/svg%3E")}
 #easysch-library-bottom{border-top-color:var(--easysch-line);}
 #easysch-library-bottom .calendar-inline{
  border-color:var(--easysch-line);

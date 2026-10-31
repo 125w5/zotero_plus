@@ -15,9 +15,16 @@ export function researchQuestionOptions(options) {
 // Both the reader/research surface and the assembly console use these actual
 // handlers. Choosing a card is a local draft; only Confirm or custom Enter
 // returns an answer. There is deliberately no preselected/default answer.
+// Hosts call this when they install, so a card is laid out with its own rules
+// the first time it mounts and the host's scroll lands on its final height.
+export function installQuestionChoiceStyles(doc) {
+ if(doc.querySelector('[data-easysch-question-style]'))return;
+ const style=doc.createElementNS(HTML,'link');style.rel='stylesheet';style.href='chrome://zotero/content/research/shared/conversation-question-choices.css';style.dataset.easyschQuestionStyle='true';(doc.head||doc.documentElement).append(style);
+}
+
 export function mountConversationQuestionChoices({doc,host,options,sources=[],onSource=()=>{},onError=()=>{},onAnswer,onRegenerate,onCancel,isCurrent=()=>true,classes={}}) {
  const node=(tag,cls,text)=>{const n=doc.createElementNS(HTML,tag);n.className=cls||'';if(text!==undefined)n.textContent=text;return n;};
- if(!doc.querySelector('[data-easysch-question-style]')){const style=node('link');style.rel='stylesheet';style.href='chrome://zotero/content/research/shared/conversation-question-choices.css';style.dataset.easyschQuestionStyle='true';(doc.head||doc.documentElement).append(style);}
+ installQuestionChoiceStyles(doc);
  const root=node('div','conversation-question-controls');host.append(root);
  const list=node('div','conversation-question-options');list.setAttribute('role','group');list.setAttribute('aria-label','研究选项');root.append(list);
  let selected='',disposed=false;

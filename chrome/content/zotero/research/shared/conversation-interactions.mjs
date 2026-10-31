@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
-import {mountConversationQuestionChoices} from './conversation-question-choices.mjs';
+import {mountConversationQuestionChoices,installQuestionChoiceStyles} from './conversation-question-choices.mjs';
 const HTML='http://www.w3.org/1999/xhtml';
 
 // Application decisions stay in their owning conversation. Moving or closing
@@ -8,6 +8,9 @@ const HTML='http://www.w3.org/1999/xhtml';
 export function installConversationInteractions({doc,host,renderContent,onSource=()=>{},onOpen=()=>{},onError=()=>{}}) {
  const node=(tag,cls,text)=>{const value=doc.createElementNS(HTML,tag);value.className=cls||'';if(text!==undefined)value.textContent=text;return value;};
  if(!doc.querySelector('[data-easysch-interaction-style]')){const style=node('link');style.rel='stylesheet';style.href='chrome://zotero/content/research/shared/conversation-interactions.css';style.dataset.easyschInteractionStyle='true';(doc.head||doc.documentElement).append(style);}
+ // Loaded now, not when the first question card mounts: a card measured before
+ // its sheet applies grows ~40px after the scroll, leaving its buttons in the fade.
+ installQuestionChoiceStyles(doc);
  const root=node('div','conversation-interaction-host');root.hidden=true;root.setAttribute('aria-live','polite');host.append(root);
  const pending=new Set();let sessionID='',disposed=false;
  const cancelAll=()=>{for(const cancel of [...pending])cancel();};

@@ -124,6 +124,8 @@ export async function installAssemblyConversation(U,{renderChat,applyPanels,pers
    if(answer.planEditProposal&&U.conversationSession?.id===sessionID){if(U.conversationSurface?.isOpen)U.conversationSurface.setExpanded(true,{detail:true});else if(U.p.ui.aiOpen&&document.body.dataset.writingAssistant!=='true')U.openCoauthor();}
    U.updateAssemblyTaskState?.('complete',sessionID);return answer;
   }catch(error){U.updateAssemblyTaskState?.('error',sessionID);
+   // A user stop is not a failure: the composer shows it as a neutral notice.
+   if(signal?.aborted&&error&&typeof error==='object')error.stopped=true;
    if(question?.id){const failure=workbenchFailure(error,{aborted:!!signal?.aborted,model:modelID||'',thinkingLevel:thinkingLevel||'',configuredModel:E.settings?.().model||''});try{await S.update(sessionID,{messages:[{id:question.id,failure}]},{origin:'assembly'});error.messageSaved=true;}catch(saveError){status(saveError.message,true);}}
    throw error;}
   finally{U.busy=false;U.abort=null;if(U.activeResearchSessionID===sessionID)U.activeResearchSessionID='';}

@@ -11,6 +11,8 @@
 .ppt-readiness .ppt-card-heading>div{min-width:0}
 .ppt-readiness .ppt-card-heading>button{flex:none}
 .ppt-readiness .ppt-card-heading small{font-size:12px;color:var(--ui-secondary,var(--muted))}
+/* The later #view-ppt .ppt-card-heading wraps and packs left; the check heading keeps its action at the end. */
+#view-ppt .ppt-readiness>.ppt-card-heading{flex-wrap:nowrap;justify-content:space-between}
 #ppt-stage .ppt-readiness h3{margin:3px 0 0;font-size:17px;line-height:1.5}
 .ppt-readiness-summary{margin:5px 0 0;font-size:13px;line-height:1.6;color:var(--ui-secondary,var(--muted))}
 .ppt-readiness-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
@@ -244,7 +246,7 @@ html[data-appearance] :is(.ppt-template.chosen,.ppt-theme.chosen,.ppt-slide-thum
 #view-ppt .ppt-assistant-footer{gap:6px;min-height:29px;margin-top:1px}
 #view-ppt .ppt-assistant-footer .ppt-icon-control{border:0;background:transparent;box-shadow:none}
 #view-ppt .ppt-assistant .clui-native-stack-btn{width:46px;height:46px;min-height:46px;padding:0;border:1px solid var(--ppt-line);border-radius:50%;font-size:19px;background:var(--clui-container-bg);box-shadow:var(--clui-card-shadow)}
-#view-ppt .ppt-assistant-status{font-size:10px;color:var(--ppt-muted)}
+#view-ppt .ppt-assistant-status{font-size:11px;color:var(--ppt-muted)}
 #view-ppt .ppt-assistant-history{overflow:visible;max-height:none;min-height:0;padding:0;mask-image:none}
 #view-ppt .ppt-assistant .conversation-interaction-host{overflow:visible;max-height:none;min-height:0}
 #view-ppt .ppt-assistant:has(.conversation-interaction-host:not([hidden])) .ppt-assistant-history{max-height:none}
@@ -338,7 +340,7 @@ html[data-appearance] :is(.ppt-template.chosen,.ppt-theme.chosen,.ppt-slide-thum
 #view-ppt .ppt-template-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:28px}
 #view-ppt .ppt-template-columns>.ppt-setting-section{margin-top:0}
 #view-ppt .ppt-template-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:0 0 16px}
-#view-ppt :is(.ppt-template,.ppt-theme){min-width:0;border-radius:var(--ui-radius-card,10px);padding:14px;border:1px solid var(--ui-soft-border,var(--ppt-line));background:var(--ui-control-bg,var(--ppt-card));text-align:left;box-shadow:var(--ui-card-shadow);font:13px/1.7 var(--ui-font);transition:background .16s,border-color .16s}
+#view-ppt :is(.ppt-template,.ppt-theme){display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;min-width:0;border-radius:var(--ui-radius-card,10px);padding:14px;border:1px solid var(--ui-soft-border,var(--ppt-line));background:var(--ui-control-bg,var(--ppt-card));text-align:left;box-shadow:var(--ui-card-shadow);font:13px/1.7 var(--ui-font);transition:background .16s,border-color .16s}
 #view-ppt :is(.ppt-template,.ppt-theme):hover:not(:disabled){background:var(--ui-hover,var(--ppt-tray))}
 #view-ppt :is(.ppt-template,.ppt-theme).chosen{outline:0;background:var(--ppt-selection)!important;border-color:color-mix(in srgb,var(--ui-primary-text) 25%,var(--ppt-line))!important;box-shadow:var(--ui-card-shadow)}
 #view-ppt .ppt-theme-preview{border-radius:7px;overflow:hidden}
@@ -405,7 +407,7 @@ html[data-appearance] body #view-ppt .ppt-contribution-resources{min-width:0;ali
 #view-ppt #ppt-slide-list{max-height:none}
 #view-ppt .ppt-slide-thumb{border-radius:var(--ui-radius-card,10px);font:12px/1.6 var(--ui-font);box-shadow:none}
 #view-ppt .ppt-slide-thumb.selected{background:var(--ppt-selection);border-color:var(--ppt-line);outline:0;box-shadow:none}
-#view-ppt .ppt-slide-thumb>span{display:block;padding-top:6px}
+#view-ppt .ppt-slide-thumb>span{display:block;padding-top:6px;text-wrap:balance}
 #view-ppt .ppt-page-canvas{min-height:0;width:100%;box-sizing:border-box;border-color:var(--ppt-line);border-radius:var(--ui-radius-card,10px);box-shadow:0 2px 8px var(--es-read-shadow,#1e2b3d08)}
 #view-ppt .ppt-page-edit-actions{padding:14px 0;border-top:1px solid var(--ppt-line)}
 #view-ppt .ppt-properties{max-height:none;overflow:visible;padding:20px;border:1px solid var(--ui-soft-border,var(--ppt-line));border-radius:var(--ui-radius-panel,14px);background:var(--ui-panel-bg,var(--ppt-card));box-shadow:var(--ui-panel-shadow);font-family:var(--ui-font)}
@@ -452,7 +454,7 @@ html[data-appearance] body #view-ppt .ppt-contribution-resources{min-width:0;ali
 #view-ppt .ppt-outline-copy input{min-height:41px;font-size:15px;font-weight:600}
 #view-ppt .ppt-outline-actions{display:grid;grid-template-columns:34px 44px;align-items:center;gap:5px;margin-top:25px;padding:0;max-width:none}
 #view-ppt .ppt-outline-actions>.ppt-control{min-width:0;width:100%;min-height:34px;padding:5px 7px}
-#view-ppt .ppt-outline-delete{color:var(--ppt-muted);font-size:12px}
+#view-ppt .ppt-outline-delete{font-size:12px}
 #view-ppt .ppt-outline-proposal{margin-bottom:22px;padding:22px;border:1px solid var(--ui-soft-border,var(--ppt-line));border-radius:var(--ui-radius-panel,14px);background:var(--ui-panel-bg,var(--ppt-card));box-shadow:var(--ui-card-shadow)}
 #view-ppt .ppt-outline-proposal>.ppt-card-heading{flex-wrap:wrap;justify-content:space-between}
 #view-ppt .ppt-outline-proposal .ppt-inline-actions{margin:0}

@@ -74,11 +74,13 @@ html body #view-search.discovery-unified>.research-file-workspace-content{max-wi
 html body #view-search.discovery-unified .discovery-page-heading{display:flex;gap:16px;align-items:baseline;padding:0;margin:0 0 20px;min-height:0;border:0;background:transparent;box-shadow:none}
 html body #view-search.discovery-unified .discovery-page-heading h2{font:600 22px/1.45 var(--ui-font);letter-spacing:0}
 html body #view-search.discovery-unified .discovery-search-card{box-sizing:border-box;min-width:0;padding:18px;border:1px solid color-mix(in srgb,var(--ui-border) 75%,transparent);border-radius:12px;background:var(--ui-card);box-shadow:0 4px 16px #20354b08,inset 0 1px var(--ui-glint);container:discovery-search/inline-size}
-html body #view-search.discovery-unified .discovery-query-grid{display:grid;grid-template-columns:minmax(110px,.7fr) minmax(0,1.4fr) minmax(0,1.4fr) auto;gap:12px;align-items:stretch;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+html body #view-search.discovery-unified .discovery-query-grid{display:grid;grid-template-columns:minmax(210px,.7fr) minmax(0,1.4fr) minmax(0,1.4fr) auto;gap:12px;align-items:stretch;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
 .discovery-query-field{display:flex;flex-direction:column;min-width:0;gap:3px;padding:9px 12px;margin:0;border:1px solid transparent;border-radius:7px;background:color-mix(in srgb,var(--ui-tray) 70%,var(--ui-card));font-weight:400;cursor:text}
 .discovery-query-field>span{font-size:11px;line-height:1.5;color:var(--ui-secondary)}
 html body #view-search.discovery-unified .discovery-query-field :is(input,select){width:100%;height:29px;min-height:29px;padding:0;margin:0;background:transparent;border:0;border-radius:3px;font:14px/1.5 var(--ui-font);box-shadow:none}
 html body #view-search.discovery-unified .discovery-query-field :is(input,select):focus-visible{outline:0}
+/* A long custom or online topic ends in an ellipsis; the select title carries the full name. */
+html body #view-search.discovery-unified .discovery-query-field select{text-overflow:ellipsis}
 html body #view-search.discovery-unified .discovery-submit{align-self:stretch;min-width:92px;min-height:58px;margin:0;padding:10px 21px;border:1px solid color-mix(in srgb,var(--ui-primary-text) 16%,transparent);border-radius:7px;background:var(--ui-primary);color:var(--ui-primary-text);font-size:14px;font-weight:500;box-shadow:none}
 html body #view-search.discovery-unified .discovery-submit:hover{background:var(--ui-primary-hover);border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent)}
 html body #view-search.discovery-unified .discovery-scope-options{position:relative;justify-content:flex-end;flex-wrap:wrap;gap:16px;margin:10px 0 0;min-height:26px}
@@ -95,10 +97,10 @@ html body #view-search.discovery-unified .discovery-scope-options input[type=che
 html body #view-search.discovery-unified .discovery-refinement-panel label{display:block;margin:0 0 7px;font-size:12px;color:var(--ui-secondary)}
 html body #view-search.discovery-unified .discovery-refinement-panel input{display:block;width:100%;height:36px;padding:6px 9px;border-color:var(--ui-border);background:var(--ui-tray);font-size:13px}
 html body #view-search.discovery-unified .discovery-refinement-panel input+label{margin-top:12px}
-html body #view-search.discovery-unified .discovery-scope-note{margin:7px 0 0;min-height:0;font-size:12px}
-html body #view-search.discovery-unified .discovery-scope-note:empty{display:none}
+/* The scope note shares the option band and only takes its free width, so showing, changing or clearing it never adds a row; the title holds the full note. */
+html body #view-search.discovery-unified .discovery-scope-options>.discovery-scope-note{flex:1 1 0;min-width:0;margin:0;min-height:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;line-height:1.5}
 html body #view-search.discovery-unified .discovery-feed-filters{align-items:center;flex-wrap:wrap;padding:10px 0;gap:4px 10px;border:0}
-html body #view-search.discovery-unified .discovery-feed-filters select{flex:1 1 100px;width:auto;max-width:none;min-width:0;height:32px;background:transparent;border-color:transparent;border-radius:6px;padding-inline:6px;font-size:12px}
+html body #view-search.discovery-unified .discovery-feed-filters select{flex:1 1 100px;width:auto;max-width:none;min-width:0;height:32px;background:transparent;border-color:transparent;border-radius:6px;padding-inline:6px;font-size:12px;text-overflow:ellipsis}
 html body #view-search.discovery-unified .discovery-feed-filters select:is(:hover,:focus-visible){background:var(--ui-tray);border-color:var(--ui-border)}
 html body #view-search.discovery-unified .discovery-feed-filters select{background:color-mix(in srgb,var(--ui-tray) 72%,var(--ui-card));border-color:color-mix(in srgb,var(--ui-border) 55%,transparent);box-shadow:inset 0 1px var(--ui-glint),0 1px 3px #20354b05}
 html body #view-search.discovery-unified .discovery-feed-filters select[data-active=true],html body #view-search.discovery-unified .discovery-query-field[data-filled=true]{background:color-mix(in srgb,var(--ui-selection) 76%,var(--ui-card));border-color:var(--ui-soft-border,var(--ui-border));box-shadow:inset 0 1px var(--ui-glint)}

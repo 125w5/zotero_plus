@@ -16,6 +16,8 @@ const ICONS={
  organize:['M3 7V5h7l2 2h9v13H3Z','M3 10h18'],
  layout:['M8 4H4v16h4M12 6h8m-8 6h8m-8 6h8'],
  chevron:['m8 10 4 4 4-4'],close:['m6 6 12 12M6 18 18 6'],
+ // Collapse to the bottom strip: an arrow down onto a bar, so it never reads as the session menu's chevron.
+ collapse:['M6 19h12','m8 9 4 4 4-4'],
  pin:['m9 3 6 0-1 6 4 4H6l4-4Z','M12 13v8'],grip:['M8 6h.01M16 6h.01M8 12h.01M16 12h.01M8 18h.01M16 18h.01'],
  chat:['M4 4h16v12H9l-5 4Z'],plus:['M12 5v14M5 12h14'],
  model:['m12 3 9 5v8l-9 5-9-5V8Z','m3 8 9 5 9-5M12 13v8'],
@@ -45,7 +47,7 @@ export function installConversationSurface({doc,orb,dockTargets=()=>[],state={},
  const original=button(doc,'原内容','显示原来的侧栏内容'),ai=button(doc,'AI','显示研究对话');original.setAttribute('role','tab');ai.setAttribute('role','tab');tabs.append(original,ai);
  const title=button(doc,'研究助手','展开研究对话','chat');title.className='conversation-surface-title';title.dataset.cluiToggle='true';title.setAttribute('aria-expanded','false');header.append(title);
  const choices=button(doc,'研究对话','切换或新建研究对话','chat');choices.className='conversation-surface-sessions';choices.setAttribute('aria-haspopup','menu');choices.setAttribute('aria-expanded','false');choices.append(icon(doc,'chevron'));header.append(choices);
- const collapse=button(doc,'','收起研究对话','chevron');collapse.className='conversation-surface-collapse';collapse.dataset.cluiCollapse='true';collapse.setAttribute('data-l10n-id','clui-hide-conversation');header.append(collapse);
+ const collapse=button(doc,'','收起研究对话','collapse');collapse.className='conversation-surface-collapse';collapse.dataset.cluiCollapse='true';collapse.setAttribute('data-l10n-id','clui-hide-conversation');header.append(collapse);
  const close=button(doc,'','关闭对话，恢复原栏','close');close.className='conversation-surface-close';close.dataset.cluiIgnoreExpand='true';header.append(close);
  const sessionMenu=node('div','conversation-surface-session-menu',root);sessionMenu.hidden=true;sessionMenu.setAttribute('role','menu');sessionMenu.setAttribute('aria-label','研究对话');
  log.setAttribute('role','log');log.setAttribute('aria-label','研究对话消息');

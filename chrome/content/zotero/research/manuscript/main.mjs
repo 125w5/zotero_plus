@@ -45,7 +45,11 @@ import {datasetMaterial,dataRoleSelect,dataRoleLabel} from './dataset-role.mjs';
 export const $=id=>document.getElementById(id);
 export const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 export const U={E:window.parent.Zotero.Research,M,$,el,ready:false,p:null,selectedCells:[],undo:[],redo:[],saving:Promise.resolve(),busy:false};
-export function status(text,error=false){const notice=$('status');clearTimeout(U.statusTimer);notice.textContent=text||'';notice.hidden=!text;notice.classList.toggle('error',error);$('ai-notice').hidden=true;notice.title=error?'单击关闭提示':'';notice.onclick=()=>{notice.hidden=true;};if(text&&!error)U.statusTimer=setTimeout(()=>{notice.hidden=true;},4000);}
+export function status(text,error=false){
+ // The notice floats above the footer over the left rail; reserve its height
+ // there so no material card scrolls underneath it (workspace-surface.css).
+ const notice=$('status'),reserve=()=>document.body?.style?.setProperty('--assembly-status-reserve',notice.hidden?'0px':((notice.offsetHeight||0)+16)+'px'),hide=()=>{notice.hidden=true;reserve();};
+ clearTimeout(U.statusTimer);notice.textContent=text||'';notice.hidden=!text;notice.classList.toggle('error',error);$('ai-notice').hidden=true;notice.title=error?'单击关闭提示':'';notice.onclick=hide;reserve();if(text&&!error)U.statusTimer=setTimeout(hide,4000);}
 export function button(text,fn,host,cls){const b=el('button',text,cls);b.type='button';b.onclick=async e=>{try{await fn(e);}catch(err){status(err.message,true);}};host?.append(b);return b;}
 export function field(host,label,value,fn,type='input'){const l=el('label',label),input=el(type);input.value=value??'';input.onchange=()=>{try{fn(input.value);}catch(e){status(e.message,true);}};l.append(input);host.append(l);return input;}
 export function modal(title){const box=$('popover-content');box.replaceChildren(el('h2',title));$('popover').showModal();return box;}
@@ -327,7 +331,7 @@ async function aiSubmit(e){
   U.aiActivity=el('div','正在查找相关来源…','coauthor-activity');U.aiActivity.setAttribute('role','status');$('chat').after(U.aiActivity);await persist();
   await U.sendResearchMessage(prompt,{sessionID:submittedSessionID,mode,assemblyContext:context,executionMode:submittedSession.executionMode||'auto',modelID:submittedSession.modelID,thinkingLevel:submittedSession.thinkingLevel,onProgress:report,fromComposer:true});renderChat();U.updateAssemblyTaskState?.('complete',submittedSessionID);
   clearSentDraft();await persist();
- }catch(err){U.updateAssemblyTaskState?.('error',submittedSessionID);status(err.message||'暂时未能完成，请重试。',true);}
+ }catch(err){U.updateAssemblyTaskState?.('error',submittedSessionID);if(err?.stopped)status(err.message||'已停止。');else status(err?.message||'暂时未能完成，请重试。',true);}
  finally{U.aiSending=false;U.busy=false;if(U.activeResearchSessionID===submittedSessionID)U.activeResearchSessionID='';U.aiActivity?.remove();U.aiActivity=null;$('ask-ai').disabled=false;$('ai-mode').disabled=false;$('cancel-ai').hidden=true;}
 }
 export function renderChat(){
