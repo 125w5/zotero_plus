@@ -7,9 +7,19 @@ function ensureStyles(doc) {
 	link.rel = 'stylesheet'; link.href = new URL('./media-preview.css', import.meta.url).href;
 	link.dataset.easyschMediaPreview = 'true'; (doc.head || doc.documentElement).append(link);
 }
+// Zotero's chrome window also receives capture-phase scroll events and bubbling
+// resize events from other panes, embedded readers and iframes. Only a resize of
+// this window or a scroll of a node around the trigger moves it from under the
+// pointer; the others must not drop a hover the pointer is still on.
+function displacesTrigger(event, trigger, win) {
+	if (event.target === win) return true;
+	if (event.type !== 'scroll') return false;
+	for (let node = trigger; node; node = node.parentNode || (node.nodeType === 11 ? node.host : null)) if (node === event.target) return true;
+	return false;
+}
 function windowListeners(win) {
 	if (windowPreviews.has(win)) return windowPreviews.get(win);
-	const listeners = new Set(), hide = () => {for (const fn of listeners) fn();};
+	const listeners = new Map(), hide = event => {for (const [fn, trigger] of listeners) if (displacesTrigger(event, trigger, win)) fn();};
 	win.addEventListener('scroll', hide, true); win.addEventListener('resize', hide);
 	const state = {listeners, count: 0, dispose: () => {win.removeEventListener('scroll', hide, true); win.removeEventListener('resize', hide); windowPreviews.delete(win);}};
 	windowPreviews.set(win, state); return state;
@@ -59,7 +69,7 @@ export function installMediaPreview(target, {src, alt = '图片预览', content,
 		(doc.body || doc.documentElement).append(backdrop); restoreFocus = doc.activeElement; close.focus(); win.addEventListener('keydown', modalKey, true);
 	};
 	const enter = () => {
-		hideHover(); events.listeners.add(hideHover); hoverTimer = win.setTimeout(() => {
+		hideHover(); events.listeners.set(hideHover, target); hoverTimer = win.setTimeout(() => {
 			if (disposed || !target.isConnected || dialog) return;
 			hover = create('div'); hover.className = 'research-media-hover'; hover.setAttribute('aria-hidden', 'true'); fill(hover); (doc.body || doc.documentElement).append(hover); positionHover();
 			hover.querySelector('img')?.addEventListener('load', positionHover, {once: true});

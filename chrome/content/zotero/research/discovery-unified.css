@@ -44,16 +44,16 @@
 .discovery-unified .discovery-title input{margin-top:6px;flex:none}
 .discovery-unified .discovery-title .discovery-collection-title{font-size:17px;line-height:1.55;font-weight:600;text-align:left;border:0;border-radius:0;background:transparent;padding:0;box-shadow:none;min-height:0;white-space:normal}
 .discovery-unified .discovery-paper-grip{font-size:18px;opacity:.4;cursor:grab;flex:none;user-select:none}
-.discovery-unified .discovery-paper-meta{display:block;margin:7px 0 9px 43px;color:var(--ui-secondary);font-size:12px}
+.discovery-unified .discovery-paper-meta{display:block;margin:7px 0 9px 52px;color:var(--ui-secondary);font-size:12px}
 .discovery-unified .discovery-paper>button{position:absolute;right:20px;top:19px;min-width:84px}
-.discovery-unified .collection-authors{font-size:12px;color:var(--ui-secondary);margin:0 0 7px 43px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 43px)}
-.discovery-unified .collection-abstract{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;margin:5px 0 8px 43px;font-size:14px;line-height:1.8;color:var(--ui-text)}
+.discovery-unified .collection-authors{font-size:12px;color:var(--ui-secondary);margin:0 0 7px 52px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 52px)}
+.discovery-unified .collection-abstract{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;margin:5px 0 8px 52px;font-size:14px;line-height:1.8;color:var(--ui-text)}
 .discovery-unified .discovery-paper>p[role=status]:empty{display:none}
-.discovery-unified .discovery-paper>p[role=status]{font-size:12px;margin:5px 0 6px 43px}
-.discovery-unified .discovery-paper>details{margin:9px 0 0 43px;font-size:12px;color:var(--ui-secondary)}
+.discovery-unified .discovery-paper>p[role=status]{font-size:12px;margin:5px 0 6px 52px}
+.discovery-unified .discovery-paper>details{margin:9px 0 0 52px;font-size:12px;color:var(--ui-secondary)}
 .discovery-unified .discovery-paper>details[open]{padding:12px;background:var(--ui-tray);border-radius:8px;color:var(--ui-text)}
 .discovery-unified .discovery-paper>details button{margin:8px 5px 0 0;font-size:12px}
-.discovery-keywords{display:flex;flex-wrap:wrap;gap:6px;margin-left:43px}
+.discovery-keywords{display:flex;flex-wrap:wrap;gap:6px;margin-left:52px}
 .discovery-keywords span{border-radius:5px;background:var(--ui-tray);color:var(--ui-secondary);font-size:11px;line-height:1.6;padding:2px 7px}
 .discovery-unified .collection-search-history,.discovery-unified .collection-reference-tools{margin-top:16px;padding:12px 0;border:0;border-top:1px solid var(--ui-border);background:transparent;color:var(--ui-secondary);font-size:13px}
 .discovery-unified .collection-search-history button{margin:8px 6px 0 0}
@@ -65,7 +65,7 @@
 .discovery-journal-actions select{height:34px;margin-left:auto}
 .project-paper-search .search-scope{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:8px}
 .project-paper-search .online-paper{padding:15px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-card);margin:10px 0}
-@media(max-width:900px){.discovery-unified{padding:18px}.discovery-unified .discovery-query-grid,.project-paper-search form{grid-template-columns:1fr 1fr}.discovery-page-heading{flex-wrap:wrap}.discovery-query-grid .discovery-submit{min-height:40px}.discovery-unified .discovery-title{padding-right:0}.discovery-unified .discovery-paper>button{position:static;margin:7px 0 0 43px}.discovery-unified .discovery-save-actions{flex-basis:100%}}
+@media(max-width:900px){.discovery-unified{padding:18px}.discovery-unified .discovery-query-grid,.project-paper-search form{grid-template-columns:1fr 1fr}.discovery-page-heading{flex-wrap:wrap}.discovery-query-grid .discovery-submit{min-height:40px}.discovery-unified .discovery-title{padding-right:0}.discovery-unified .discovery-paper>button{position:static;margin:7px 0 0 52px}.discovery-unified .discovery-save-actions{flex-basis:100%}}
 @media(max-width:540px){.discovery-unified .discovery-query-grid{grid-template-columns:1fr}.discovery-scope-options{flex-wrap:wrap;gap:8px}.discovery-scope-options input:not([type=checkbox]){flex-basis:100%}.discovery-unified .card.discovery-paper{padding:14px}.discovery-unified .discovery-paper-meta,.discovery-unified .collection-abstract,.discovery-unified .collection-authors,.discovery-unified .discovery-paper>details,.discovery-unified .discovery-keywords{margin-left:0}}
 @media(prefers-reduced-motion:reduce){.discovery-unified button{transition:none}}
 
@@ -158,7 +158,7 @@ html body #view-search.discovery-unified .discovery-select-all>input[type=checkb
 html body #view-search.discovery-unified .discovery-title{display:flex;align-items:flex-start;gap:9px;min-width:0}
 html body #view-search.discovery-unified .discovery-title>.discovery-paper-grip{width:18px;min-height:26px;font-size:17px;line-height:26px}
 html body #view-search.discovery-unified .discovery-title>.discovery-collection-title{display:block;flex:1;min-width:0;min-height:26px;width:auto;margin:0;padding:0;font-size:16px;line-height:26px;overflow-wrap:anywhere}
-html body #view-search.discovery-unified .discovery-paper-meta{margin-inline-start:43px;font-size:12px;line-height:1.6}
+html body #view-search.discovery-unified .discovery-paper-meta{margin-inline-start:52px;font-size:12px;line-height:1.6}
 html body #view-search.discovery-unified .card.discovery-paper{content-visibility:auto;contain-intrinsic-block-size:auto 240px}
 /* Expanded query terms and the empty-state relaxations reuse the card tokens. */
 html body #view-search.discovery-unified .discovery-expansion{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 0;font-size:12px;color:var(--ui-secondary)}
@@ -168,3 +168,9 @@ html body #view-search.discovery-unified .discovery-expansion-term>button{min-he
 html body #view-search.discovery-unified .discovery-expansion-term>button:hover{color:var(--ui-text)}
 html body #view-search.discovery-unified #search-results>section.empty>p{margin:0}
 html body #view-search.discovery-unified #search-results>section.empty>.discovery-direct-actions{justify-content:center;margin-top:12px}
+/* Every row under a result title starts where the title text does:
+   18px grip + 9px gap + 16px checkbox + 9px gap = 52px. These outrank the
+   embedded-library margins (library-workspace.css), which drop the indent. */
+html body #view-search.discovery-unified .card.discovery-paper>:is(.discovery-paper-meta,p,.discovery-keywords,details){margin-inline-start:52px}
+@media(max-width:900px){html body #view-search.discovery-unified .card.discovery-paper>button{margin-inline-start:52px}}
+@media(max-width:540px){html body #view-search.discovery-unified .card.discovery-paper>:is(.discovery-paper-meta,p,.discovery-keywords,details,button){margin-inline-start:0}}

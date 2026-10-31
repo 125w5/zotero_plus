@@ -36,6 +36,10 @@
   return null;
  };
  const nativePath=value=>H.nativeChatFilePath(value,Zotero.isWin);
+ // Zotero reuses the IDs of erased items after a restart, so a remembered
+ // attachment ID can now belong to a paper, note or manuscript. Only a file
+ // attachment has a path to read; anything else means the source is gone.
+ const fileAttachment=item=>!!item?.isAttachment?.()&&item.isFileAttachment?.()!==false;
  const libraryID=()=>Zotero.getActiveZoteroPane()?.getSelectedLibraryIDs?.()[0]||Zotero.Libraries.userLibraryID;
  const material=id=>E.store.get('researchMaterials',id)||Object.values(E.manuscripts.all?.()||{}).flatMap(project=>project.materials||[]).find(row=>row.id===id);
  const baseName=value=>String(value||'').split(/[\\/]/).pop();
@@ -129,7 +133,7 @@
    const path=nativePath(await item.getFilePathAsync());if(!path||!await IOUtils.exists(path))throw Error('附件尚未下载到本机。');const kind=H.chatAttachmentFileKind(path),uri=Zotero.File.pathToFileURI(path),parent=item.parentID?await Zotero.Items.getAsync(item.parentID):null,paperTitle=parent?.getField?.('title');
    return {id:'attachment:'+item.id,sourceID:'attachment:'+item.id,attachmentID:item.id,paperItemID:item.parentID||item.id,title:item.getField('title')||item.attachmentFilename||PathUtils.filename(path),...(paperTitle?{paperTitle}:{}),kind,...(kind==='image'?{thumbnailURL:uri,previewURL:uri}:{}),...(kind==='spreadsheet'?{fingerprint:await Zotero.Utilities.Internal.md5Async(path)}:{})};
   },
-  async resolve(reference){if(reference.materialID){const row=material(reference.materialID);if(!row)throw Error('关联素材已移除。');return {...reference,...await A.fromMaterial(row)};}if(reference.attachmentID)return {...reference,...await A.fromItem(Number(reference.attachmentID))};
+  async resolve(reference){if(reference.materialID){const row=material(reference.materialID);if(!row)throw Error('关联素材已移除。');return {...reference,...await A.fromMaterial(row)};}if(reference.attachmentID){const item=await Zotero.Items.getAsync(Number(reference.attachmentID));if(item&&!item.deleted&&!fileAttachment(item))throw Error('这份资料的原附件已删除，资料关联已失效，请移除后重新添加。');return {...reference,...await A.fromItem(Number(reference.attachmentID))};}
    if(reference.id?.startsWith('image:')){const row=Object.entries(E.store.get('writingImages')||{}).find(([,value])=>value.fingerprint===reference.fingerprint),path=row&&nativePath(row[0]);if(!path||!await IOUtils.exists(path))throw Error('图片已被移动或无法读取。');return {...reference,imagePath:path};}
    throw Error('资料关联已失效，请重新添加。');
   },
@@ -150,7 +154,11 @@
     if(!Zotero.Libraries.get(lib)?.editable)throw Error('当前文库不可编辑，请切换到可编辑文库。');
     if(locks.has(key))return clone(await locks.get(key));
     const task=(async()=>{
-     const remembered=E.store.get('chatFileSources',key),cached=remembered?.itemID&&await Zotero.Items.getAsync(remembered.itemID),cachedPath=cached&&!cached.deleted&&nativePath(await cached.getFilePathAsync());if(cachedPath&&await IOUtils.exists(cachedPath)&&(await IOUtils.stat(cachedPath)).size===stat.size&&await Zotero.Utilities.Internal.md5Async(cachedPath)===hash)return A.fromItem(cached.id);
+     const remembered=E.store.get('chatFileSources',key),cached=remembered?.itemID&&await Zotero.Items.getAsync(remembered.itemID),usable=!!cached&&!cached.deleted&&fileAttachment(cached),cachedPath=usable&&nativePath(await cached.getFilePathAsync());
+     // A stale entry is forgotten before anything else can fail, so the next
+     // drop of this file does not stop at the same entry again.
+     if(remembered&&!usable)await E.store.update(state=>{if(state.chatFileSources?.[key]?.itemID===remembered.itemID)delete state.chatFileSources[key];});
+     if(cachedPath&&await IOUtils.exists(cachedPath)&&(await IOUtils.stat(cachedPath)).size===stat.size&&await Zotero.Utilities.Internal.md5Async(cachedPath)===hash)return A.fromItem(cached.id);
      // Fingerprints, not filename/title, establish identity. Existing imported
      // attachments are reused; no user file or item is deleted on cache misses.
      const reusedID=await reusableAttachment(lib,kind,stat.size,hash,signal);

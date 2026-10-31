@@ -51,7 +51,8 @@
    const query=ref.title||ref.quote,arxiv=!ref.doi&&Ref.referenceArxiv(ref.quote),k=ref.doi?'doi:'+ref.doi:arxiv?'arxiv:'+arxiv:'bibliography:'+E.assets.key(query),entry=referenceWriter.get(k);
    // A retry only bypasses negative/failure entries; successfully acquired
    // metadata is reused. Different panes and papers share the same lookup.
-   if(entry&&Date.now()-entry.at<(entry.records.length?604800000:3600000)&&(entry.records.length||entry.lookupVersion===ReferenceMetadata.REFERENCE_LOOKUP_VERSION&&!refresh)){if(entry.error)throw Error(entry.error);return entry.records;}
+   // Records from an older lookup version may carry a closed PDF location.
+   if(entry&&entry.lookupVersion===ReferenceMetadata.REFERENCE_LOOKUP_VERSION&&Date.now()-entry.at<(entry.records.length?604800000:3600000)&&(entry.records.length||!refresh)){if(entry.error)throw Error(entry.error);return entry.records;}
    return ReferenceMetadata.consumeReferenceTask(metadataTasks,k,async metadataSignal=>{try{
    const wait=lookupTail.then(async()=>{checkReferences(metadataSignal);await Zotero.Promise.delay(Math.max(0,lastLookup+180-Date.now()));checkReferences(metadataSignal);lastLookup=Date.now();});lookupTail=wait.catch(()=>{});await wait;
    const records=await ReferenceMetadata.lookupReferenceMetadata(E,ref,{signal:metadataSignal,Parser:Zotero.getMainWindow().DOMParser});checkReferences(metadataSignal);

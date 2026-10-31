@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import {cleanDOI,referenceArxiv,crossrefRecord,matchesReference} from './reference-matcher.mjs';
 
-export const REFERENCE_LOOKUP_VERSION='public-reference-2';
+export const REFERENCE_LOOKUP_VERSION='public-reference-3';
 export const checkReferenceSignal=signal=>{if(signal?.aborted)throw Object.assign(Error('已取消参考文献读取'),{name:'AbortError'});};
 
 /** A request belongs to its current consumers. Closing one reader leaves the

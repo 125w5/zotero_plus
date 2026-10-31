@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 // Like the reader, annotations are a right-side overlay. Showing an annotation
 // must never resize the paper or move the text that the user just selected.
-const rails=new WeakMap();
+const rails=new WeakMap(),styledDocuments=new WeakSet();
 export function materialMarginGeometry({innerWidth,pageRight=0,padding=8}){
  innerWidth=Math.max(1,Number(innerWidth)||1);padding=Math.min(padding,Math.max(0,(innerWidth-1)/2));
  const railWidth=Math.max(1,Math.min(innerWidth<620?196:228,innerWidth-padding*2)),gap=8,left=Math.max(padding,Math.min(pageRight+gap,innerWidth-railWidth-padding));
@@ -12,7 +12,8 @@ export function materialMarginGeometry({innerWidth,pageRight=0,padding=8}){
 export function materialMarginToggleLabel(count,expanded){return expanded?'收起批注':'批注 '+count;}
 export function installMaterialMargin(card){
  const doc=card.ownerDocument,win=doc.defaultView,canvas=doc.getElementById('canvas');let state=rails.get(canvas);
- if(!doc.querySelector('link[data-material-overview],link[href$="refined-surface.css"]')){const link=doc.createElement('link');link.rel='stylesheet';link.href='chrome://zotero/content/research/manuscript/material-overview.css';link.dataset.materialOverview='true';doc.head.append(link);}
+ // Every card of a canvas render comes through here: look the sheet up once per document.
+ if(!styledDocuments.has(doc)){styledDocuments.add(doc);if(!doc.querySelector('link[data-material-overview],link[href$="refined-surface.css"]')){const link=doc.createElement('link');link.rel='stylesheet';link.href='chrome://zotero/content/research/manuscript/material-overview.css';link.dataset.materialOverview='true';doc.head.append(link);}}
  if(!state){
   const lane=doc.createElement('div');lane.className='assembly-material-margin';lane.setAttribute('aria-label','素材页外批注');canvas.append(lane);
   state={lane,entries:new Set(),frame:null};rails.set(canvas,state);
@@ -52,14 +53,14 @@ export function installMaterialMargin(card){
   // material, or Escape, returns it to the badge.
   const collapse=row=>{row.expanded=false;row.revealMark=null;syncToggle(row);state.schedule();};
   state.outside=event=>{for(const row of state.entries)if(row.expanded&&!row.host.contains(event.target)&&!row.card.contains(event.target))collapse(row);};
-  state.escape=event=>{if(event.key!=='Escape')return;const open=[...state.entries].filter(row=>row.expanded);if(!open.length)return;event.preventDefault();event.stopPropagation();for(const row of open){collapse(row);if(row.host.contains(doc.activeElement))row.toggle.focus({preventScroll:true});}};
+  state.escape=event=>{if(event.key!=='Escape')return;const open=[...state.entries].filter(row=>row.expanded);if(!open.length)return;event.preventDefault();event.stopPropagation();for(const row of open){collapse(row);if(row.host.contains(doc.activeElement))row.toggle?.focus({preventScroll:true});}};
   doc.addEventListener('pointerdown',state.outside,true);doc.addEventListener('keydown',state.escape);
   state.dispose=()=>{if(state.frame!==null)win.cancelAnimationFrame(state.frame);state.observer.disconnect();canvas.removeEventListener('scroll',state.schedule);win.removeEventListener('resize',state.schedule);doc.removeEventListener('pointerdown',state.outside,true);doc.removeEventListener('keydown',state.escape);lane.remove();rails.delete(canvas);};
  }
- const host=doc.createElement('section');host.className='material-margin-group';host.dataset.materialMarginFor=card.dataset.materialId;
- const toggle=doc.createElement('button');toggle.type='button';toggle.className='material-margin-toggle';toggle.hidden=true;toggle.setAttribute('aria-expanded','false');host.append(toggle);state.lane.append(host);
- const entry={card,host,toggle,expanded:false,revealMark:null};
- toggle.onclick=event=>{event.stopPropagation();entry.expanded=!entry.expanded;entry.revealMark=null;syncToggle(entry);state.schedule();};
+ const host=doc.createElement('section');host.className='material-margin-group';host.dataset.materialMarginFor=card.dataset.materialId;state.lane.append(host);
+ // The count badge is made on first use (syncToggle). A render inserts a host
+ // for each of its ~300 cards, and most of them never show a badge.
+ const entry={card,host,toggle:null,expanded:false,revealMark:null,schedule:state.schedule};
  // material-highlights.mjs announces a click on a saved highlight. In compact
  // mode open its comment beside that highlight instead of scrolling the paper.
  const reveal=event=>{if(entry.host.dataset.compact!=='true'||entry.host.dataset.drafting==='true')return;entry.expanded=true;entry.revealMark=event.target?.closest?.('mark')||null;syncToggle(entry);state.schedule();event.preventDefault();};
@@ -69,6 +70,8 @@ export function installMaterialMargin(card){
 }
 function syncToggle(row){
  const count=row.host.querySelectorAll('.material-local-comment').length,show=row.host.dataset.compact==='true'&&row.host.dataset.drafting!=='true'&&count>0;
- if(!count)row.expanded=false;row.host.dataset.expanded=String(!!row.expanded);row.toggle.hidden=!show;
+ if(!count)row.expanded=false;row.host.dataset.expanded=String(!!row.expanded);
+ if(!row.toggle){if(!show)return;const toggle=row.host.ownerDocument.createElement('button');toggle.type='button';toggle.className='material-margin-toggle';toggle.onclick=event=>{event.stopPropagation();row.expanded=!row.expanded;row.revealMark=null;syncToggle(row);row.schedule();};row.toggle=toggle;row.host.prepend(toggle);}
+ row.toggle.hidden=!show;
  const label=materialMarginToggleLabel(count,row.expanded);if(row.toggle.textContent!==label)row.toggle.textContent=label;row.toggle.title=row.expanded?'收起页外批注':'显示页外批注';row.toggle.setAttribute('aria-expanded',String(!!row.expanded));
 }

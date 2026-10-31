@@ -149,7 +149,7 @@ export function applyPanels(){
  form.style.setProperty('--composer-height',(s.aiOpen?Math.min(100,Math.max(44,U.composerHeight||44)):28)+'px');
  document.body.style.setProperty('--assembly-chat-height',chatHeight+'px');
  document.body.style.setProperty('--assembly-footer-height',document.querySelector('footer').getBoundingClientRect().height+'px');
- $('left').hidden=!s.leftOpen;$('right').hidden=!s.rightOpen;$('left').style.width=s.leftWidth+'px';$('right').style.width=s.rightWidth+'px';
+ $('left').hidden=!s.leftOpen;document.body.dataset.leftPane=s.leftOpen?'open':'closed';$('right').hidden=!s.rightOpen;$('left').style.width=s.leftWidth+'px';$('right').style.width=s.rightWidth+'px';
  U.selectionAssistant?.sync();
  $('toggle-ai').replaceChildren();const logo=el('span',undefined,'easysch-symbol');logo.setAttribute('aria-hidden','true');$('toggle-ai').append(logo,el('span',s.aiOpen?'收起对话':'研究助手'));$('toggle-ai').title=s.aiOpen?'收起对话，保留输入栏':'展开研究助手';$('toggle-ai').setAttribute('aria-expanded',String(!!s.aiOpen));
  const main=$('workspace').querySelector('main').getBoundingClientRect();document.body.style.setProperty('--assembly-canvas-center',((main.left+main.right)/2)+'px');

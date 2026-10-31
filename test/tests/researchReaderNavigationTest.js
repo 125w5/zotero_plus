@@ -159,7 +159,9 @@ describe('Stable paper reader navigation', function () {
   assert.isString(fixtureCover.pdfHash);assert.isAbove(fixtureCover.pdfHash.length,10);
   report.overviewFixture={pdfHash:fixtureCover.pdfHash,path:fixtureCover.path,thumbnail:fixtureCover.thumbnail,pageIndex:fixtureCover.pageIndex,width:fixtureCover.width,height:fixtureCover.height};
   const host=win.document.createElementNS('http://www.w3.org/1999/xhtml','div');host.style.cssText='position:fixed;left:100px;top:70px;width:310px;height:520px;overflow:auto;background:white;z-index:9000;contain:layout';win.document.documentElement.append(host);let calls=0;const paths=[],opened=[];
-  const interaction=report.overviewInteraction={enter:0,leave:0,scroll:0,focus:0,blur:0};const countScroll=()=>interaction.scroll++;win.addEventListener('scroll',countScroll,true);
+  // Resize events from the embedded reader and other frames bubble to this window and
+  // used to cancel the hover the pointer was on; record them next to scrolls.
+  const interaction=report.overviewInteraction={enter:0,leave:0,scroll:0,focus:0,blur:0,resize:0,frameResize:0};const countScroll=()=>interaction.scroll++,countResize=event=>{interaction.resize++;if(event.target!==win)interaction.frameResize++;};win.addEventListener('scroll',countScroll,true);win.addEventListener('resize',countResize);
   const overviewPane=details.getPanes().find(pane=>pane.dataset.pane.includes('research-overview'));
   assert.exists(overviewPane);const nativeBody=overviewPane.querySelector('[data-type="body"]'),originalNodes=[...nativeBody.childNodes],priorOpen=overviewPane.open,priorStyle=details.getAttribute('style');
   const cover={pageIndex:2,pageHeight:792,pageWidth:612,bbox:[32,28,580,754],path:'controlled-high-resolution.png',thumbnail:'controlled-thumbnail.png',skippedPages:[{pageIndex:0,reason:'publisher-cover'},{pageIndex:1,reason:'submission-cover'}]};
@@ -202,7 +204,7 @@ describe('Stable paper reader navigation', function () {
   } finally {
    nativeBody._overviewOff?.();nativeBody._overviewHoverCleanup?.();nativeBody._overviewItem=null;nativeBody._overviewSignature=null;nativeBody.replaceChildren(...originalNodes);overviewPane.open=priorOpen;
    if(priorStyle===null)details.removeAttribute('style');else details.setAttribute('style',priorStyle);
-   win.removeEventListener('scroll',countScroll,true);host._overviewOff?.();host._overviewHoverCleanup?.();host.remove();E.assets.cover=saved.cover;E.previewImage=saved.preview;E.library.openSource=saved.open;E._overviewPages=saved.pages;E.paperAbstract=saved.abstract;E.quickTranslate=saved.translate;E.materialSourceInfo=saved.sourceInfo;
+   win.removeEventListener('scroll',countScroll,true);win.removeEventListener('resize',countResize);host._overviewOff?.();host._overviewHoverCleanup?.();host.remove();E.assets.cover=saved.cover;E.previewImage=saved.preview;E.library.openSource=saved.open;E._overviewPages=saved.pages;E.paperAbstract=saved.abstract;E.quickTranslate=saved.translate;E.materialSourceInfo=saved.sourceInfo;
    if(snapshotBranch!==undefined)await E.store.update(s=>{delete s.journalMetricSnapshots?._overviewControlledTick;if(!snapshotBranch&&s.journalMetricSnapshots&&!Object.keys(s.journalMetricSnapshots).length)delete s.journalMetricSnapshots;});
   }
  });

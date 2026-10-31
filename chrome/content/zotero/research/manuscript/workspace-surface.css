@@ -317,13 +317,10 @@ html[data-appearance] footer #ask-ai {
  min-height: 27px;
  margin: 0;
  padding: 3px 9px;
- border: 1px solid #365b7b;
+ border: 1px solid;
  border-radius: 5px;
  font-size: 12px;
- color: #fff;
- background: #365b7b;
 }
-html[data-appearance] footer #ask-ai:hover {background: #2c4e6b;}
 footer #ask-ai:disabled {opacity: .55; cursor: wait;}
 footer #cancel-ai {margin: 0; min-height: 27px; font-size: 12px;}
 footer :is(#check, #save-status, .paper-zoom, #writing-appearance) {flex: 0 0 auto; white-space: nowrap; font-size: 11px;}
@@ -352,7 +349,8 @@ footer #status:empty {display: none;}
 /* The notice sits above the footer over the left rail. status() reserves its
    height there so material cards end above it at every scroll position. */
 html[data-appearance] body #left {padding-bottom: var(--assembly-status-reserve, 0px);}
-html[data-appearance] body:not(:has(#left[hidden])) footer #status {max-width: clamp(160px, calc(var(--assembly-console-sessions, 392px) - 32px), 660px);}
+/* Set by applyPanels: a body-level :has() is re-matched on every node inserted into the page. */
+html[data-appearance] body:not([data-left-pane=closed]) footer #status {max-width: clamp(160px, calc(var(--assembly-console-sessions, 392px) - 32px), 660px);}
 html[data-appearance] footer #status.error {color: #a43838; border-color: #c58d8d;}
 html[data-appearance=dark] footer #status.error {color: #ffb7b7; border-color: #a26a6a;}
 /* Blur only the two persistent bars, never manuscript text or source previews. */
@@ -436,12 +434,10 @@ footer #footer-actions {grid-column:3;grid-row:1;display:flex;align-items:center
 footer #footer-actions>* {align-self:center;margin:0;}
 footer #save-status {display:inline-block;flex:0 0 70px;width:70px;min-width:70px;overflow:hidden;text-overflow:ellipsis;text-align:center;font-size:10px;line-height:20px;}
 footer #writing-appearance {max-width:77px;padding:4px 2px;font-size:11px;height:27px;}
-html[data-appearance] footer #ask-ai {width:30px;height:30px;min-height:30px;border-radius:9px;padding:0;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1;background:#242c34;border-color:#242c34;box-shadow:0 2px 4px var(--assembly-shadow);}
-html[data-appearance] footer #ask-ai:hover {background:#3c4954;}
-/* Dark mode uses the dark primary button pair; a dark circle would hide the
-   currentColor arrow and vanish into the dark input pill. */
-html[data-appearance=dark] footer #ask-ai {background:#abc5dd;border-color:#abc5dd;color:#152a3c;}
-html[data-appearance=dark] footer #ask-ai:hover {background:#bfd3e5;}
+html[data-appearance] footer #ask-ai {width:30px;height:30px;min-height:30px;border-radius:9px;padding:0;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1;background:var(--ui-primary);border-color:color-mix(in srgb,var(--ui-primary-text) 16%,transparent);color:var(--ui-primary-text);box-shadow:0 2px 4px var(--assembly-shadow);}
+/* The same primary pair as the other composer send buttons, in both themes;
+   the arrow uses currentColor, so it stays visible on the dark input pill. */
+html[data-appearance] footer #ask-ai:hover {background:var(--ui-primary-hover);border-color:color-mix(in srgb,var(--ui-primary-text) 22%,transparent);}
 html[data-appearance] footer :is(#ai-attach,#ai-options,#ai-template-toggle) {height:29px;min-height:29px;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:3px 6px;border:0;border-radius:7px;color:var(--muted);background:transparent;box-shadow:none;line-height:1;}
 html[data-appearance] footer :is(#ai-attach,#ai-options) {width:27px;padding:0;font-size:20px;}
 html[data-appearance] footer :is(#ai-attach,#ai-options,#ai-template-toggle):hover {background:var(--assembly-hover);color:var(--text);}

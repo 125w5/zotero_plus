@@ -75,7 +75,7 @@ Object.assign(EasySchUI, {
 				'clear-memory',
 			]);
 		advanced.append(skill, this.$('refresh'));
-		const original=this.$('analyze'), action=original.cloneNode(true);original.replaceWith(action);action.onclick=async()=>{try{if(!this.current){this.readAfterChoosing=true;await this.chooseResearchPapers();return;}await this.run(this.$('prompt').value.trim()?'ask':'analyze');}catch(e){this.status(e.message,true);}};
+		const original=this.$('analyze'), action=original.cloneNode(true);original.replaceWith(action);action.onclick=async()=>{try{if(!this.current){this.readAfterChoosing=true;await this.chooseResearchPapers();return;}action.setAttribute('aria-busy','true');await this.run(this.$('prompt').value.trim()?'ask':'analyze');}catch(e){this.status(e.message,true);}finally{action.setAttribute('aria-busy','false');}};
 		this.$('prompt').addEventListener('input',()=>this.updateReadingActions());
 		const options = research.querySelector('.presentation-options');
 		if (options) advanced.append(options);

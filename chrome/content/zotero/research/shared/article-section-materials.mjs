@@ -100,7 +100,9 @@ export function deriveArticleSectionMaterials(materials, {documents = {}, index 
 }
 
 export function articleSectionView(materials, {protectedIDs = [], memberships = {}} = {}) {
- const protectedSet = new Set(protectedIDs), byID = new Map(materials.map(m => [m.id, m])), hidden = new Set();
+ const protectedSet = new Set(protectedIDs), byID = new Map(materials.map(m => [m.id, m])), hidden = new Set(), chapters = new Map();
+ // The library list runs this view on every search keystroke.
+ for (const m of materials) if (m.analysisVersion === ARTICLE_SECTION_VERSION) {if (!chapters.has(m.sourceVersion)) chapters.set(m.sourceVersion, []); chapters.get(m.sourceVersion).push(m);}
  for (const aggregate of materials) if (aggregate.analysisVersion === ARTICLE_SECTION_VERSION && aggregate.sourceVersion) {
   const members = [...(aggregate.derivedFrom || []), ...Object.keys(memberships).filter(id => memberships[id] === aggregate.id)];
   for (const id of members) {
@@ -108,8 +110,9 @@ export function articleSectionView(materials, {protectedIDs = [], memberships = 
    if (original && machineFragment(original) && original.sourceVersion === aggregate.sourceVersion && !protectedSet.has(id)) hidden.add(id);
   }
   if (aggregate.userEdited || (aggregate.revision || 1) !== 1 || protectedSet.has(aggregate.id)) continue;
-  const newer = materials.filter(m => m.analysisVersion === ARTICLE_SECTION_VERSION && m.sourceVersion === aggregate.sourceVersion
-   && m.attachmentID === aggregate.attachmentID && String(m.parseVersion || '') > String(aggregate.parseVersion || ''));
+  const newer = chapters.get(aggregate.sourceVersion).filter(m => m.attachmentID === aggregate.attachmentID && String(m.parseVersion || '') > String(aggregate.parseVersion || ''));
+  // Without a newer parse nothing covers this card; skip copying its anchors.
+  if (!newer.length) continue;
   const covered = new Set(newer.flatMap(m => materialAnchors(m).map(anchorSignature)));
   const originals = materialAnchors(aggregate);
   if (originals.length && originals.every(anchor => covered.has(anchorSignature(anchor)))) hidden.add(aggregate.id);

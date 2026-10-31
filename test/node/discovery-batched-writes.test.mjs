@@ -172,6 +172,23 @@ test('a stopped collection keeps the metadata it already resolved', async () => 
 	for (let n = 0; n < 6; n++) await tick();
 	assert.equal(Object.keys(r.f.state.referenceMetadata || {}).length, 5, 'resolved entries are written on abort; cancelled ones are not cached as failures');
 });
+test('metadata saved by an older lookup version is looked up again; current metadata is reused', async () => {
+	let r = referenceFixture(2);
+	await r.E.collectReferences({id: 1});
+	await tick(); await tick();
+	assert.equal(r.requests, 2);
+	let [stale, current] = Object.keys(r.f.state.referenceMetadata);
+	// Before the open-access-only PDF rule, a record could keep the publisher's closed PDF.
+	r.f.state.referenceMetadata[stale] = {...r.f.state.referenceMetadata[stale], lookupVersion: 'public-reference-2'};
+	delete r.f.state.referenceMetadata[current].lookupVersion;
+	let again = await r.E.collectReferences({id: 1}, {refresh: true});
+	assert.equal(again.records.length, 2);
+	assert.equal(r.requests, 4, 'both older entries are fetched again');
+	await tick(); await tick();
+	assert.ok(Object.values(r.f.state.referenceMetadata).every(entry => entry.lookupVersion === ReferenceMetadata.REFERENCE_LOOKUP_VERSION));
+	await r.E.collectReferences({id: 1}, {refresh: true});
+	assert.equal(r.requests, 4, 'entries from the current version are reused');
+});
 
 test('a journal metric that is not yet written already counts for TOP filtering', () => {
 	let f = storeFixture({journalMetricSnapshots: {}});

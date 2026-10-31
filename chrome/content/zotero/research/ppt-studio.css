@@ -79,8 +79,8 @@ html[data-appearance] :is(.ppt-template.chosen,.ppt-theme.chosen,.ppt-slide-thum
 #view-ppt .ppt-document-actions{display:flex;align-items:center;justify-content:flex-end;flex:0 1 auto;gap:8px;flex-wrap:wrap}
 #view-ppt .ppt-document-actions>.ppt-control{min-height:36px;padding:7px 12px;background:var(--ui-control-bg,var(--ppt-card));font-size:12px;box-shadow:var(--ui-control-shadow)}
 #view-ppt .ppt-document-actions>.ppt-control[aria-expanded=true]{background:var(--ppt-selection);border-color:color-mix(in srgb,var(--ui-primary-text) 18%,var(--ppt-line))}
-@media(max-width:900px){#view-ppt .ppt-top{padding:12px 18px;gap:12px}#view-ppt .ppt-draft-identity{flex-basis:100%}#view-ppt .ppt-document-actions{justify-content:flex-start}}
-@media(max-width:550px){#view-ppt .ppt-draft-identity select{flex:1 1 220px;width:100%}#view-ppt .ppt-document-actions{gap:7px}#view-ppt .ppt-document-actions>.ppt-control{padding-inline:10px}}
+@media(max-width:900px){#view-ppt .ppt-top{padding:12px 18px;gap:12px}#view-ppt .ppt-draft-identity{flex-basis:100%}#view-ppt .ppt-document-actions{justify-content:flex-start;gap:4px}#view-ppt .ppt-document-actions>.ppt-control{padding-inline:8px}}
+@media(max-width:550px){#view-ppt .ppt-draft-identity select{flex:1 1 220px;width:100%}#view-ppt .ppt-document-actions{gap:4px}#view-ppt .ppt-document-actions>.ppt-control{padding-inline:8px}}
 #view-ppt .ppt-steps{padding:8px 14px;gap:4px;background:var(--ui-glass,#ffffffb0);backdrop-filter:blur(20px);border-color:var(--ppt-line)}
 #view-ppt .ppt-steps button{border:1px solid transparent;min-height:34px;border-radius:10px;background:transparent;box-shadow:none;padding:6px 10px;font-weight:450}
 #view-ppt .ppt-steps button.active{border-color:var(--ppt-line);background:var(--ppt-selection);color:var(--ppt-ink);box-shadow:inset 0 1px #ffffff90}

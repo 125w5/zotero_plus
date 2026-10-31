@@ -110,7 +110,8 @@ export async function openReaderEvidenceDetail(E,reader,asset,{doc=reader?._wind
  const pagehide=event=>{if(event.target===doc)close();};
  const control={root,dialog,image,asset,chatHost,close};viewers.set(doc,control);
  root.onclick=event=>{if(event.target===root)close();};root.onkeydown=event=>{if(event.key!=='Tab')return;const focusable=[...dialog.querySelectorAll('button,textarea,input,select,[tabindex="0"]')].filter(value=>!value.disabled&&!value.closest('[hidden]')&&value.getClientRects().length);if(!focusable.length)return;const at=focusable.indexOf(doc.activeElement);if(event.shiftKey&&at<=0){event.preventDefault();focusable.at(-1).focus();}else if(!event.shiftKey&&at===focusable.length-1){event.preventDefault();focusable[0].focus();}};
- doc.documentElement.append(root);doc.addEventListener('keydown',escape);root.addEventListener('easysch-conversation-close-request',close);win.addEventListener('pagehide',pagehide);renderExplanation();root.focus({preventScroll:true});
+ // The backdrop starts below the window layer (menu bar, task progress, window buttons).
+ root.style.setProperty('--evidence-window-top',Math.max(0,doc.getElementById('titlebar')?.getBoundingClientRect().bottom||0)+'px');doc.documentElement.append(root);doc.addEventListener('keydown',escape);root.addEventListener('easysch-conversation-close-request',close);win.addEventListener('pagehide',pagehide);renderExplanation();root.focus({preventScroll:true});
  offMaterials=E.manuscripts.onAssetsChanged?.(renderExplanation);offImages=E.assets.onImagesChanged?.(id=>{if(id===reader.itemID)renderExplanation();});
  if(reader.tabID&&win.Zotero?.Notifier)tabObserver=win.Zotero.Notifier.registerObserver({notify:()=>{if(win.Zotero_Tabs?.selectedID!==reader.tabID)close();}},['tab'],'reader-evidence-detail');
  const retained=E.assets.materialFor(asset),imagePath=retained?.imageRetained&&retained.imagePath?retained.imagePath:asset.path||asset.imagePath||asset.thumbnail;

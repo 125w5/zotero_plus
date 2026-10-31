@@ -141,3 +141,10 @@ test('a new feasibility plan becomes outdated when its native source exclusions 
  f.setAnnotations([{id:70,key:'EXCLUDE',annotationType:'ink',annotationPosition:JSON.stringify({pageIndex:0}),tags:[Exclusions.MATERIAL_EXCLUSION_TAG]}]);assert.equal(f.E.notebook.assessmentCurrent('p',version),false);
  f.clear();assert.equal(f.E.notebook.assessmentCurrent('p',version),true);assert.equal(sources[0].sourceText,'Before OMITTED after.');
 });
+
+test('a PDF attachment that is not a file attachment (linked URL or no file) is read as having no exclusion marks',async()=>{
+ const f=await serviceFixture(),attachment=f.Zotero.Items.get(7),raw=[material('Before OMITTED after.')];
+ attachment.isFileAttachment=()=>false;attachment.getAnnotations=()=>{throw Error('getAnnotations() can only be called on file attachments');};
+ assert.equal(f.A.filterAutomaticMaterials(raw)[0].sourceText,raw[0].sourceText);
+ await f.A.prepareMaterialExclusions([7]);
+});

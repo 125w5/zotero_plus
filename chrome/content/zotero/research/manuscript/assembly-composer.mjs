@@ -6,7 +6,7 @@ import {installCLUIChatBehavior} from '../shared/clui-surface.mjs';
 import {pendingPlanEditMessage} from '../shared/plan-edit-proposal.mjs';
 import {libraryView} from '../shared/material-access.mjs';
 
-const EXTRA_ICONS={camera:['M3 7h5l2-3h4l2 3h5v13H3Z','M16 13a4 4 0 1 0-8 0 4 4 0 0 0 8 0'],shield:['M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z','m8 12 3 3 5-6'],tools:['M4 5h16M4 12h16M4 19h16','M8 3v4m8 3v4M9 17v4'],paper:['M5 3h14v18H5Z','M8 7h8m-8 4h8m-8 4h5'],slides:['M3 4h18v13H3Z','M12 17v4m-4 0h8M7 8h10m-10 4h5'],trash:['M5 6h14M9 6V3h6v3M7 6l1 15h8l1-15','M10 10v7m4-7v7']};
+const EXTRA_ICONS={'dock-left':['M3 4h18v16H3Z','M9 4v16','m6 10-2 2 2 2'],camera:['M3 7h5l2-3h4l2 3h5v13H3Z','M16 13a4 4 0 1 0-8 0 4 4 0 0 0 8 0'],shield:['M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z','m8 12 3 3 5-6'],tools:['M4 5h16M4 12h16M4 19h16','M8 3v4m8 3v4M9 17v4'],paper:['M5 3h14v18H5Z','M8 7h8m-8 4h8m-8 4h5'],slides:['M3 4h18v13H3Z','M12 17v4m-4 0h8M7 8h10m-10 4h5'],trash:['M5 6h14M9 6V3h6v3M7 6l1 15h8l1-15','M10 10v7m4-7v7']};
 function icon(doc,name){
  if(!EXTRA_ICONS[name])return assemblyChatIcon(doc,name);
  const ns='http://www.w3.org/2000/svg',svg=doc.createElementNS(ns,'svg');for(const [key,value]of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))svg.setAttribute(key,value);
@@ -32,7 +32,7 @@ export function installAssemblyComposer(U,{status,persist}){
  const taskbar=node('nav','assembly-taskbar');taskbar.id='assembly-taskbar';taskbar.setAttribute('aria-label','当前任务与对话');
  const tabs=node('div','assembly-task-tabs');tabs.setAttribute('role','tablist');taskbar.append(tabs);
  const taskActions=node('div','assembly-task-actions');taskbar.append(taskActions);
- taskActions.append(control('新建对话','plus',()=>{const session=U.conversationSession;return S.create({title:'新研究对话',origin:'assembly',projectID:U.p.id,modelID:session.modelID||'',thinkingLevel:session.thinkingLevel||'off',executionMode:session.executionMode||'auto',mode:session.mode||'auto'});}),control('固定当前任务到左栏','pin',async()=>{const m=U.conversationSession.messages?.at(-1);if(m)await U.pinResearchMessage({sessionID:U.conversationSession.id,messageID:m.id},'left');else U.openChatRail('left');}),control('显示回答依据','link',()=>U.openChatRail('right')));
+ taskActions.append(control('新建对话','plus',()=>{const session=U.conversationSession;return S.create({title:'新研究对话',origin:'assembly',projectID:U.p.id,modelID:session.modelID||'',thinkingLevel:session.thinkingLevel||'off',executionMode:session.executionMode||'auto',mode:session.mode||'auto'});}),control('固定当前任务到左栏','dock-left',async()=>{const m=U.conversationSession.messages?.at(-1);if(m)await U.pinResearchMessage({sessionID:U.conversationSession.id,messageID:m.id},'left');else U.openChatRail('left');}),control('显示回答依据','link',()=>U.openChatRail('right')));
  U.$('ai').querySelector('.ai-heading').after(taskbar);
  const master=U.ensureChatMasterShell?.();
  // Keep the existing fixed transcript and footer in one real CLUI surface.

@@ -349,7 +349,8 @@
   if(indexing.has(id))return indexing.get(id);
   const controller=sourceController();sourceControllers.add(controller);
   const promise=(async()=>{
-   const attachment=await Zotero.Items.getAsync(id),file=await attachment?.getFilePathAsync?.();
+   // The ID may have been reused by a non-attachment item after the attachment was erased.
+   const attachment=await Zotero.Items.getAsync(id),file=attachment&&attachment.isAttachment?.()!==false&&attachment.isFileAttachment?.()!==false&&await attachment.getFilePathAsync?.();
    if(!file||!await IOUtils.exists(file))throw Error('附件尚未下载到本机，无法准备译文');
    if(stopping||Zotero.closing||controller.signal.aborted)throw Error('软件正在关闭，已停止准备原文');
    // This deterministic text pass has its own queue. Translation must not wait

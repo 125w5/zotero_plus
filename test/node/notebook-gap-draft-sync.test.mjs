@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 // WSB-11: editing the research question, conditions, structure or scope reaches
 // project.researchGoal and researchPreparation without starting a task: about
-// 500 ms after typing (scope 550 ms, never during an IME composition), on blur
+// 500 ms after typing (scope 550 ms; neither during an IME composition), on blur
 // and on pagehide. A draft save writes the project alone, in the project's one
 // write queue: it never rebuilds the material library through N.catalog or
 // re-renders the notebook page. Only the plan panel follows, when the edit
@@ -236,6 +236,27 @@ test('the page saves a keyword about 550 ms after typing stops and never during 
 		assert.equal(scopes().length,3,'a change saves the scope at once');assert.equal(scopes()[2].change.researchScope.secondaryKeyword,'CNN 识别');
 		await world.quiet();
 		assert.equal(world.project.researchScope.primaryKeyword,'机器学习');
+		assert.deepEqual(page.failures,[]);
+	}
+	finally{await page.close();}
+});
+
+test('the page never saves the question or a condition while an IME is still composing it',async()=>{
+	let world=pageWorld(),page=await world.openPage(),drafts=recordDrafts(world);
+	try{
+		for(let [key,draft,pinyin,text] of [['idea','ideaDraft','bijiao liangzhong','比较两种调制识别方法'],['constraints','constraints','liangzhou','两周；单卡 GPU']]){
+			let field=page.$(key),count=drafts.length;
+			field.dispatchEvent(new FakeEvent('compositionstart'));type(page,key,pinyin);
+			await wait(800);
+			assert.equal(drafts.length,count,'nothing is saved while the IME composes '+key);
+			field.value=text;field.dispatchEvent(new FakeEvent('compositionend'));let composed=Date.now();
+			await until(()=>drafts.length===count+1,'组字结束后保存 '+key);
+			assert.ok(drafts[count].at-composed>=480,'saved after the pause: '+(drafts[count].at-composed)+' ms');
+			assert.deepEqual(drafts[count].change,{[draft]:text},'the committed text, never the pinyin');
+		}
+		await world.quiet();
+		assert.equal(world.project.researchGoal,'比较两种调制识别方法');
+		assert.equal(world.project.researchPreparation.resourceConstraints,'两周；单卡 GPU');
 		assert.deepEqual(page.failures,[]);
 	}
 	finally{await page.close();}

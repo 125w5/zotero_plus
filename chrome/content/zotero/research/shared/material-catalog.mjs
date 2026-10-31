@@ -28,15 +28,22 @@ function contains(text,term){if(!text.includes(term))return false;if(!/^[a-z0-9]
 // Normalized search text per material and field, recomputed only when the raw
 // field text changes; searches run over every material on each keystroke.
 const fieldMemo=new WeakMap();
-function memoField(owner,name,raw,compute){if(!owner||typeof owner!=='object')return compute(raw);let fields=fieldMemo.get(owner);if(!fields){fields=new Map();fieldMemo.set(owner,fields);}const cached=fields.get(name);if(cached&&cached.raw===raw)return cached.value;const value=compute(raw);fields.set(name,{raw,value});return value;}
+function memoField(owner,name,raw,compute){if(!owner||typeof owner!=='object')return compute(raw);let fields=fieldMemo.get(owner);if(!fields){fields=new Map();fieldMemo.set(owner,fields);}const cached=fields.get(name);if(cached&&cached.raw===raw)return cached.value;
+ // A delegating scope record (material-research-filters.mjs) reuses its material's unchanged fields.
+ const inherited=fieldMemo.get(Object.getPrototypeOf(owner))?.get(name);if(inherited&&inherited.raw===raw){fields.set(name,inherited);return inherited.value;}
+ const value=compute(raw);fields.set(name,{raw,value});return value;}
 export function searchMaterials(materials,query,{summary=m=>m.summary||m.summaryZh||'',tags=TAGS,tagsOf=m=>m.tags}={}){
  const q=normalize(query);if(!q)return materials.map(m=>({m,score:0,reason:'',snippet:summary(m)}));
  const concepts=tags.filter(t=>[t.name,...t.aliases].some(a=>contains(q,normalize(a))));
  const words=(q.match(/[\p{Script=Han}]+|[a-z0-9][a-z0-9+.-]*/gu)||[]).flatMap(word=>/[\p{Script=Han}]/u.test(word)?[word,...word.split(/(?:在|中的|用于|应用于|基于|针对|研究|的应用|应用|方面|之中|以及)/u).filter(term=>term.length>=2)]:[word]);
  const groups=words.map(w=>{const tag=tags.find(t=>[t.name,...t.aliases].some(a=>normalize(a)===w));return tag?[tag.name,...tag.aliases].map(normalize):[w];});
  for(const t of concepts)groups.push([t.name,...t.aliases].map(normalize));
+ // Han pairs per word, built once per query instead of once per field.
+ const pairsOf=new Map(groups.flat().filter(w=>/^[\p{Script=Han}]{3,}$/u.test(w)).map(w=>[w,Array.from({length:w.length-1},(_,i)=>w.slice(i,i+2))]));
  return materials.map(m=>{const contents=(m.contents||[]).flatMap(entry=>entry.type==='table'?[entry.caption,...(entry.rows||[]).flat()]:[entry.text,entry.latex,entry.caption]).filter(Boolean).join(' ');const fields=[['中文说明',summary(m)],['标题',m.title],['论文章节',[m.section,m.chapter,m.sectionType,m.anchor?.section].filter(Boolean).join(' ')],['补充说明与图表',contents],['标签与别名',list([tagsOf(m),m.explicitTags,m.inferredTags,m.field,m.method]).join(' ')],['原文或用户笔记',m.sourceText],['来源',list([m.paperTitle,m.coverage,m.author,m.doi,m.anchor?.url]).join(' ')]];
-  let score=0,hit=null;for(const [name,value] of fields){const text=memoField(m,name,value,normalize);let n=contains(text,q)?12:0;for(const group of groups)if(group.some(w=>contains(text,w)))n+=4;else for(const w of group)if(/^[\p{Script=Han}]{3,}$/u.test(w)){const pairs=Array.from({length:w.length-1},(_,i)=>w.slice(i,i+2)),count=pairs.filter(s=>text.includes(s)).length;if(count>=2&&count/pairs.length>=0.6)n+=count/pairs.length;}if(n){score+=n;if(!hit||n>hit.n)hit={name,value:String(value||''),n};}}
+  let score=0,hit=null;for(const [name,value] of fields){const text=memoField(m,name,value,normalize),found=new Map(),has=w=>{let v=found.get(w);if(v===undefined){v=contains(text,w);found.set(w,v);}return v;};let n=has(q)?12:0;
+   // A query word often repeats in its group list; each term scans the text once.
+   for(const group of groups)if(group.some(has))n+=4;else for(const w of group){const pairs=pairsOf.get(w);if(!pairs)continue;let count=0;for(let i=0;i<pairs.length;i++){if(has(pairs[i]))count++;const best=count+pairs.length-i-1;if(best<2||best/pairs.length<0.6)break;}if(count>=2&&count/pairs.length>=0.6)n+=count/pairs.length;}if(n){score+=n;if(!hit||n>hit.n)hit={name,value:String(value||''),n};}}
   const display=hit?memoField(m,'display:'+hit.name,hit.value,value=>value.normalize('NFKC').replace(/\s+/gu,' ')):'',folded=display&&memoField(m,'folded:'+hit.name,display,value=>value.toLocaleLowerCase()),positions=[q,...groups.flat()].map(term=>folded.indexOf(term)).filter(i=>i>=0),index=Math.max(0,(positions.length?Math.min(...positions):0)-20);return {m,score,reason:hit?'命中'+hit.name+(concepts.length?' · 含规范别名':''):'',snippet:(index?'…':'')+display.slice(index,index+130)};
  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.m.id.localeCompare(b.m.id));
 }

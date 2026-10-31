@@ -72,3 +72,5 @@ researchWritingFramework
 researchWritingInteraction
 researchDiscoveryAppearance
 researchNotebook
+manuscript
+researchInteractionPerformance

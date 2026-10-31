@@ -17,12 +17,15 @@ function scopeRecord(m){
  if(cached?.title===title)return cached;
  const record=Object.create(m,{title:{value:title,enumerable:true}});scopeRecords.set(m,record);return record;
 }
-export function filterMaterialScope(rows,project,query){
+export function filterMaterialScope(rows,project,query,{searched=false}={}){
  const scope=materialSearchScope(project,query),primary=scope.primaryKeyword;
  // Apply the catalog's fuzzy semantics once, including Chinese concept words
  // and explicit aliases. Keep domain, second keyword and exclusions strict.
+ // searched: the rows are catalogResults for this query, which already matched
+ // the generated Chinese description, catalogue tags and project aliases; a
+ // second search without them would drop those hits.
  if(scope.fuzzy)scope.primaryKeyword='';
- const scoped=rows.filter(row=>matchesResearchScope(scopeRecord(row.m),scope));if(!scope.fuzzy||!primary)return scoped;
+ const scoped=rows.filter(row=>matchesResearchScope(scopeRecord(row.m),scope));if(!scope.fuzzy||!primary||searched)return scoped;
  // One search pass over all candidates; each material is scored independently.
  const matched=new Set(searchMaterials(scoped.map(row=>scopeRecord(row.m)),primary).map(hit=>hit.m));return scoped.filter(row=>matched.has(scopeRecord(row.m)));
 }
