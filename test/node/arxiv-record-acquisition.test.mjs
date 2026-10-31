@@ -47,7 +47,8 @@ async function fixture({pdf=()=>reply(),provider=notFound}={}){
 let failures=f=>f.state.discoveryPDFFailures||{};
 // What the search pages do with a cached row: enrich it, then keep it only if it is offered as a download.
 let offered=(f,row)=>Feed.applyDiscoveryFilters([Feed.enrichDiscoveryRecord(row,f.E)]).length===1;
-// The arXiv provider row of a paper; arxivSearchPage rows carry no DOI.
+// The arXiv provider row of a paper. arxivSearchPage takes id, url and pdf from the Atom <id>,
+// which names a version (2401.54321v2), and gives no DOI. Where only the failure matters, a bare number is used.
 let arxivRow=(id,extra={})=>({id,source:'arXiv',title:'An arXiv only preprint',abstract:'',date:'2024-01-20',url:'https://arxiv.org/abs/'+id,pdf:'https://arxiv.org/pdf/'+id,authors:[{lastName:'Ada Lovelace',fieldMode:1}],oa:true,retracted:null,citationCount:null,sourceType:'repository',...extra});
 // A Semantic Scholar discovery row of an arXiv-only preprint: the id and url are Semantic
 // Scholar's, the pdf is on arxiv.org, and the DOI is empty or arXiv's own.
@@ -58,8 +59,8 @@ test('a Semantic Scholar row of an arXiv-only preprint is filed as that preprint
 		let f=await fixture(),saved=await f.E.obtainPaper(s2Preprint(doi),{open:false}),item=f.items.get(saved.itemID);
 		assert.equal(item.itemType,'preprint','DOI '+JSON.stringify(doi));assert.equal(item.getField('publicationTitle'),'','arXiv.org is not a journal');
 		assert.equal(item.getField('url'),'https://arxiv.org/abs/2401.54321');assert.equal(item.getField('repository'),'arXiv');assert.equal(item.getField('archiveID'),'2401.54321','the arXiv number, not the Semantic Scholar paperId');
-		let again=await f.E.obtainPaper(arxivRow('2401.54321'),{open:false});
-		assert.equal(again.itemID,saved.itemID,'the arXiv provider row finds the same item');assert.equal(f.regular().length,1);assert.equal(f.downloads.length,1,'the PDF is downloaded once');
+		let again=await f.E.obtainPaper(arxivRow('2401.54321v2'),{open:false});
+		assert.equal(again.itemID,saved.itemID,'the arXiv provider row finds the same item');assert.equal(f.regular().length,1);assert.equal(f.downloads.length,1,'the PDF is downloaded once');assert.equal(again.attachmentID,saved.attachmentID,'the saved PDF, which had no version, is the one reused');
 		let direct=await fixture(),open=await direct.E.obtainOpenPaper(s2Preprint(doi),{});
 		assert.equal(direct.items.get(open.itemID).itemType,'preprint','obtainOpenPaper uses the same rule');
 	}
@@ -75,8 +76,26 @@ test('a reference matched on OpenAlex by its arXiv DataCite DOI is filed as that
 	let f=await fixture({provider}),saved=await f.E.obtainReferencePaper(record,{open:false}),item=f.items.get(saved.itemID);
 	assert.equal(item.itemType,'preprint');assert.equal(item.getField('publicationTitle'),'');assert.equal(item.getField('url'),'https://arxiv.org/abs/2401.24680');assert.equal(item.getField('archiveID'),'2401.24680','the arXiv number, not the OpenAlex work');
 	assert.deepEqual(f.lookups,[],'an arXiv record needs no open-access lookup');
-	let again=await f.E.obtainPaper(arxivRow('2401.24680'),{open:false});
-	assert.equal(again.itemID,saved.itemID);assert.equal(f.regular().length,1);assert.equal(f.downloads.length,1);
+	// Even with only v1 on arXiv, the arXiv row names v1 and the OpenAlex pdf_url names no version.
+	let again=await f.E.obtainPaper(arxivRow('2401.24680v1'),{open:false});
+	assert.equal(again.itemID,saved.itemID);assert.equal(f.regular().length,1);assert.equal(f.downloads.length,1);assert.equal(again.attachmentID,saved.attachmentID);
+});
+
+test('an arXiv row first and the Semantic Scholar row of the same preprint after it share one PDF',async()=>{
+	let f=await fixture(),first=await f.E.obtainPaper(arxivRow('2401.54321v2'),{open:false}),second=await f.E.obtainPaper(s2Preprint(''),{open:false});
+	assert.equal(second.itemID,first.itemID);assert.equal(second.attachmentID,first.attachmentID);assert.equal(f.downloads.length,1,'the PDF is downloaded once');
+});
+
+test('two named arXiv versions are two PDFs, and a named version prefers its own copy',async()=>{
+	let f=await fixture(),v1=await f.E.obtainPaper(arxivRow('2401.54321v1'),{open:false}),v2=await f.E.obtainPaper(arxivRow('2401.54321v2'),{open:false});
+	assert.equal(v2.itemID,v1.itemID);assert.notEqual(v2.attachmentID,v1.attachmentID,'v2 is a new PDF');assert.deepEqual(f.downloads,['https://arxiv.org/pdf/2401.54321v1','https://arxiv.org/pdf/2401.54321v2']);
+	// A row without a version (Semantic Scholar) takes the newest saved version.
+	let latest=await f.E.obtainPaper(s2Preprint(''),{open:false});
+	assert.equal(latest.attachmentID,v2.attachmentID,'v2, not v1');assert.equal(f.downloads.length,2,'nothing is downloaded again');
+	// Earlier versions could leave a copy without a version on the same item, listed first.
+	let item=f.items.get(v1.itemID),bare=await f.E.attachDiscoveryPDF(item,pdfBytes(),{title:item.getField('title'),pdf:'https://arxiv.org/pdf/2401.54321'});item.attachments.unshift(item.attachments.pop());
+	let again=await f.E.obtainPaper(arxivRow('2401.54321v2'),{open:false});
+	assert.equal(again.attachmentID,v2.attachmentID,'the v2 copy, not the copy without a version listed before it');assert.notEqual(again.attachmentID,bare.id);assert.equal(f.downloads.length,2);
 });
 
 test('an OpenAlex row of a journal article whose open copy is on arXiv is filed as that journal article',async()=>{
@@ -163,9 +182,59 @@ test('a later arXiv download clears the failure recorded for its address',async(
 	assert.equal(failures(f)[row.pdf],undefined,'the address has delivered a PDF');assert.equal(offered(f,row),true);
 });
 
+// The OpenAlex row of a journal article whose only open copy is on arXiv (as W4317543090):
+// it keeps its journal DOI, so it takes the open-access path, yet its pdf is an arxiv.org address.
+let journalWithArxivCopy=()=>{
+	let copy={is_oa:true,landing_page_url:'http://arxiv.org/abs/2112.06805',pdf_url:'https://arxiv.org/pdf/2112.06805',version:'submittedVersion',source:{id:'https://openalex.org/S4306400194',display_name:'arXiv (Cornell University)',type:'repository'}};
+	let publisher={is_oa:false,landing_page_url:'https://doi.org/10.1103/physrevlett.130.036702',pdf_url:null,version:'publishedVersion',source:{id:'https://openalex.org/S24807848',display_name:'Physical Review Letters',issn_l:'0031-9007',type:'journal'}};
+	let row=Feed.openAlexFeedRecord({id:'https://openalex.org/W4317543090',doi:'https://doi.org/10.1103/physrevlett.130.036702',title:'Measured quantum spin transport',publication_date:'2023-01-18',publication_year:2023,primary_location:publisher,best_oa_location:copy,locations:[publisher,copy],open_access:{is_oa:true,oa_status:'green',oa_url:copy.landing_page_url},authorships:[{author:{display_name:'A. Author'}}]});
+	assert.equal(row.pdf,'https://arxiv.org/pdf/2112.06805');assert.equal(modules['arxiv.mjs'].arxivRecordID(row),null,'not an arXiv record');return row;
+};
+// The Semantic Scholar row of the same paper links the same open copy.
+let s2Journal=row=>({source:'Semantic Scholar',id:'fedcba9876543210fedcba9876543210fedcba98',title:row.title,abstract:'',date:'2023-01-18',doi:row.doi,url:'https://www.semanticscholar.org/paper/fedcba9876543210fedcba9876543210fedcba98',journal:'Physical Review Letters',pdf:row.pdf,authors:[],oa:true,citationCount:3,retracted:null});
+
+test('the arXiv copy of a journal article that can succeed later is not recorded, as on the arXiv path',async()=>{
+	for(let [name,pdf,error] of [
+		['HTTP 403',()=>reply({status:403}),{message:'PDF 无法获取（HTTP 403）'}],
+		['HTTP 429',()=>reply({status:429}),{message:'PDF 无法获取（HTTP 429）'}],
+		['HTTP 503',()=>reply({status:503}),{message:'PDF 无法获取（HTTP 503）'}],
+		['network',()=>{throw new TypeError('NetworkError when attempting to fetch resource.');},{name:'TypeError'}],
+		// The 20 s download deadline of requestDiscoveryPDF runs out while arxiv.org does not answer.
+		['timeout',(_url,{signal})=>new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(Object.assign(Error('aborted'),{name:'AbortError'})),{once:true})),{name:'TimeoutError'}]
+	]){
+		let f=await fixture({pdf:(url,options)=>options.probe?reply():pdf(url,options)}),row=journalWithArxivCopy();
+		if(name==='timeout')f.E.setTimeout=(fn,ms,...rest)=>setTimeout(fn,ms>=20000?1:ms,...rest);
+		await assert.rejects(f.E.obtainPaper(row,{open:false}),error,name);
+		assert.deepEqual(f.probes,[row.pdf],name);assert.deepEqual(f.downloads,[row.pdf],'the full download failed: '+name);
+		assert.equal(failures(f)[row.pdf],undefined,'not recorded: '+name);assert.equal(offered(f,row),true,'still offered: '+name);assert.equal(offered(f,s2Journal(row)),true,'the other row of this address too: '+name);assert.equal(f.regular().length,0);
+	}
+});
+
+test('the arXiv copy of a journal article that fails for good is still recorded',async()=>{
+	for(let [name,pdf,message] of [
+		['probe 404',()=>reply({status:404}),'PDF 无法获取（HTTP 404）；文库没有变化'],
+		['download 404',(_url,{probe})=>probe?reply():reply({status:404}),'PDF 无法获取（HTTP 404）'],
+		['download returns a web page',(_url,{probe})=>probe?reply():reply({type:'text/html; charset=utf-8',body:'<html>Human verification</html>'}),'来源返回网页或验证页面，未提供 PDF'],
+		['download over 80 MB',(_url,{probe})=>probe?reply():reply({length:90000000}),'PDF 超过 80 MB，请从来源页面单独下载']
+	]){
+		let f=await fixture({pdf}),row=journalWithArxivCopy();
+		await assert.rejects(f.E.obtainPaper(row,{open:false}),{message,lasting:true},name);
+		assert.ok(failures(f)[row.pdf],'recorded: '+name);assert.equal(offered(f,row),false,name);assert.equal(offered(f,s2Journal(row)),false,'every row of this address: '+name);assert.equal(f.regular().length,0);
+	}
+});
+
+test('a refused or rate-limited probe of the arXiv copy says it can be retried and is not recorded',async()=>{
+	for(let status of [403,429]){
+		let f=await fixture({pdf:()=>reply({status})}),row=journalWithArxivCopy();
+		await assert.rejects(f.E.obtainPaper(row,{open:false}),{message:'公开 PDF 暂不可用：PDF 无法获取（HTTP '+status+'）；文库没有变化，可稍后重试',lasting:false});
+		assert.deepEqual(f.probes,[row.pdf]);assert.deepEqual(f.downloads,[]);assert.equal(failures(f)[row.pdf],undefined,'not recorded: HTTP '+status);assert.equal(offered(f,row),true,'HTTP '+status);
+	}
+});
+
 test('a failure that will repeat does not say it can be retried, on the open-access and the arXiv path alike',async()=>{
 	let oversized=()=>reply({length:90000000}),open={id:'https://openalex.org/W1',source:'OpenAlex',title:'Large open paper',doi:'10.1000/large',url:'https://doi.org/10.1000/large',pdf:'https://repository.example/large.pdf',oa:true,authors:[]};
-	await assert.rejects((await fixture({pdf:oversized})).E.obtainPaper(open,{open:false}),{message:'PDF 超过 80 MB，请从来源页面单独下载'});
+	// The probe reads 1 KB and passes; the full download is refused, and says it will repeat.
+	await assert.rejects((await fixture({pdf:oversized})).E.obtainPaper(open,{open:false}),{message:'PDF 超过 80 MB，请从来源页面单独下载',lasting:true});
 	await assert.rejects((await fixture({pdf:oversized})).E.obtainPaper(arxivRow('2401.40001'),{open:false}),{message:'PDF 超过 80 MB，请从来源页面单独下载；文库没有变化'});
 	let kept=await fixture({pdf:oversized});await kept.E.importAcademic(arxivRow('2401.40002'),{select:false});
 	await assert.rejects(kept.E.obtainPaper(arxivRow('2401.40002'),{open:false}),{message:'PDF 超过 80 MB，请从来源页面单独下载；文库中的这条题录没有改动'});

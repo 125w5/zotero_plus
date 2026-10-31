@@ -154,7 +154,9 @@
    let found=E.findAcademicItem&&await E.findAcademicItem(record,target),attachment=found&&await E.library.localPDF(found);if(attachment){await E.placeAcademicInCollection?.(found.id,target);return{itemID:found.id,attachmentID:attachment.id,reused:true,...target};}
    if(!record.pdf||!/^https:\/\//.test(record.pdf))throw Error('暂无直接公开 PDF；文库没有变化，可打开来源页面。');
    if(Zotero.Libraries?.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件');if(signal?.aborted)throw Error('已取消');onProgress({stage:'download',text:'正在下载 PDF…'});
-   let bytes;try{bytes=await E.requestDiscoveryPDF(record.pdf,{signal,onProgress:progress=>onProgress({stage:'download',text:'正在下载 PDF…',...progress})});}catch(error){if(!signal?.aborted)await E.markDiscoveryPDFFailure?.(record.pdf,error);throw error;}
+   // A failed download is recorded by the rule of the probe in obtainPaper (see arxivPDF). Its
+   // error.lasting, as on discoveryPDFUnavailable's errors, tells the reference pane not to offer a retry.
+   let bytes;try{bytes=await E.requestDiscoveryPDF(record.pdf,{signal,onProgress:progress=>onProgress({stage:'download',text:'正在下载 PDF…',...progress})});}catch(error){if(signal?.aborted||error?.name==='AbortError')throw error;let lasting=lastingPDF(String(error?.message??error));if(!arxivPDF(record.pdf)||lasting)await E.markDiscoveryPDFFailure?.(record.pdf,error);if(error&&typeof error==='object')error.lasting=lasting;throw error;}
    onProgress({stage:'save',text:'正在保存 PDF…'});
    let saved=await E.importAcademic(record,{select:false,...target}),item=await Zotero.Items.getAsync(saved.id);attachment=await E.library.localPDF(item);if(attachment)return{itemID:item.id,attachmentID:attachment.id,reused:true,...target};
    attachment=await E.attachDiscoveryPDF(item,bytes,record);
@@ -228,6 +230,10 @@
  // A failure that repeats on every attempt at this address: 404/410, a web or
  // verification page, content that is not a PDF, or more than the 80 MB limit.
  let lastingPDF=text=>/（HTTP 4(?:04|10)）|返回网页或验证页面|返回非 PDF|超过 80 MB/.test(text);
+ // arxiv.org turns automated access away for a while (403, 429, 5xx) and then lets it in again.
+ // As in arxiv.js, an address there is recorded only for a failure that will repeat, whichever
+ // row reached it; another host's refusal is recorded as before.
+ let arxivPDF=url=>/^https:\/\/(?:export\.|www\.)?arxiv\.org\//i.test(url||'');
  // One wording for a public PDF that could not be fetched; unchanged says what
  // happened to the library. Only a failure that can pass says it can be retried;
  // the error's lasting says which, for a caller that records the address.
@@ -252,7 +258,7 @@
     }catch(error){if(error.message.includes('撤稿'))throw error;}
    }
    if(!/^https:\/\//i.test(candidate.pdf||''))throw Error('未找到公开 PDF；'+unchanged+'，可稍后重试');
-   if(E.verifyDiscoveryPDF){onProgress({stage:'verify',text:'正在检查公开 PDF…'});let check=await E.verifyDiscoveryPDF(candidate.pdf,{signal});if(!check?.available){if(!check?.transient)await E.markDiscoveryPDFFailure?.(candidate.pdf,check?.error);throw E.discoveryPDFUnavailable(check?.error,unchanged);}}
+   if(E.verifyDiscoveryPDF){onProgress({stage:'verify',text:'正在检查公开 PDF…'});let check=await E.verifyDiscoveryPDF(candidate.pdf,{signal});if(!check?.available){let failure=E.discoveryPDFUnavailable(check?.error,unchanged);if(arxivPDF(candidate.pdf)?failure.lasting:!check?.transient)await E.markDiscoveryPDFFailure?.(candidate.pdf,check?.error);throw failure;}}
    const result=await E.obtainOpenPaper({...candidate,oa:true},{onProgress,signal,...target});
    const attachment=await E.library.localPDF(result.attachmentID);
    if(!attachment)throw Error('附件保存失败：本机文件不可用；题录已保留');

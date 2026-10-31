@@ -68,6 +68,9 @@
  // Before createdPaperCollectionID existed the create dialog named the folder
  // after the title; null records a folder chosen when the project was created.
  // create:false only reads: a project without a folder gets null and no write.
+ // Keeping the current folder keeps an explicit paper choice, which can name
+ // papers from other folders; a folder change or an automatic choice takes the
+ // folder's papers.
  let projectCollection=async(id,{collectionID,newCollectionName,newFolder=false,create=true}={})=>{
   const p=N.project(id);if(!p)throw Error('论文项目已删除');const target=collectionID??(newFolder||newCollectionName?null:p.paperCollectionID);
   if(!target&&create===false&&!newFolder&&!newCollectionName)return null;
@@ -76,7 +79,7 @@
   else{let name=newCollectionName?clipName(newCollectionName):defaultFolderName(p),current=liveCollection(p.paperCollectionID),own=liveCollection(p.createdPaperCollectionID)||(current&&(current.name===name||p.createdPaperCollectionID===undefined&&current.name===clipName(p.title))?current:null);
    if(own){folder=await N.paperFolderSelection(id,own.id);reused=true;}else{const created=await E.createDiscoveryCollection(name);folder=await N.paperFolderSelection(id,created.id);}
   }
-  if(!target&&p.createdPaperCollectionID!==folder.collectionID||p.paperCollectionID!==folder.collectionID||!p.paperSelectionExplicit&&JSON.stringify(p.materialPaperIDs||[])!==JSON.stringify(folder.selectedPaperIDs))await N.catalog(id,value=>{value.paperCollectionID=folder.collectionID;value.materialPaperIDs=folder.selectedPaperIDs;value.paperSelectionExplicit=p.paperCollectionID===folder.collectionID&&!!p.paperSelectionExplicit;if(!target)value.createdPaperCollectionID=folder.collectionID;});
+  if(!target&&p.createdPaperCollectionID!==folder.collectionID||p.paperCollectionID!==folder.collectionID||!p.paperSelectionExplicit&&JSON.stringify(p.materialPaperIDs||[])!==JSON.stringify(folder.selectedPaperIDs))await N.catalog(id,value=>{const keepChoice=p.paperCollectionID===folder.collectionID&&!!p.paperSelectionExplicit;value.paperCollectionID=folder.collectionID;if(!keepChoice){value.materialPaperIDs=folder.selectedPaperIDs;value.paperSelectionExplicit=false;}if(!target)value.createdPaperCollectionID=folder.collectionID;});
   return reused?{...folder,reused:true}:folder;
  };
  // One folder step at a time per project, so a double click cannot create two.
@@ -182,7 +185,10 @@
  // structure that does not parse keeps the last one that did. The write is the
  // project alone: no material-library rebuild, and the change names the draft
  // fields it mirrors, so the notebook page does not re-render behind the field.
+ // It decides after the project writes already queued, since an earlier sync
+ // waiting there may still save a question the field no longer shows.
  N.syncPreparation=async id=>{
+  await catalogJobs.get(id)?.catch(()=>{});
   const p=projectView(id),state=stateView(id);if(!p)return;
   const goal=savedGoal(state.ideaDraft,p),scope=Domain.normalizeResearchScope(state.researchScope||Domain.researchScopeFromProject(p)),before=p.researchPreparation||{},same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
   let structureDraft=before.structureDraft;if(typeof state.structureDraft==='string'){try{P.parseWritingStructure(state.structureDraft);structureDraft=state.structureDraft;}catch{/* keep the last parsed structure */}}
@@ -533,8 +539,13 @@
   const current=await N.preparationPaperSelection(id),selection=N.project(id).preparationSourceSelection;if(selection)await N.setPreparationSources(id,{...selection,paperIDs:[...new Set([...current.selectedPaperIDs,...downloaded.map(row=>row.itemID)])]});else await N.setPaperScope(id,{paperIDs:[...new Set([...current.selectedPaperIDs,...downloaded.map(row=>row.itemID)])]});
   await N.update(id,{downloadedPapers:[...(N.state(id).downloadedPapers||[]).filter(row=>!downloaded.some(saved=>saved.itemID===row.itemID)),...downloaded],downloadFailures:failed});return {downloaded,failed};
  };
+ // materialCollectionFailures lists the papers the page shows as not organized.
+ // A run that stops keeps the earlier failure of a paper it did not reach and
+ // drops the one of a paper it organized; a completed run writes its own list.
  N.collectProjectMaterials=async(id,status=()=>{},signal)=>{
   await N.ensureProjectCollection(id);const folder=await N.preparationPaperSelection(id),paperIDs=folder.selectedPaperIDs,failures=[];
+  const done=new Set(),before=N.state(id).materialCollectionFailures||[],recorded=()=>M.clone([...failures,...before.filter(row=>!done.has(row.paperID))]);
+  try{
   for(const [index,paperID]of paperIDs.entries()){
    if(signal?.aborted)throw Error('已停止；已整理素材保留');let title='论文 '+paperID,attachmentID=null;
    try{const paper=await Zotero.Items.getAsync(paperID);if(!paper)throw Error('论文已不存在');title=paper.getField('title')||title;const pdf=await E.library.localPDF(paper);
@@ -543,7 +554,8 @@
     attachmentID=pdf.id;
     status('整理完整章节 '+(index+1)+'/'+paperIDs.length+' · '+title);
     const indexed=A.indexState?.()[pdf.id];if(indexed?.status!=='complete')await A.queueArticle(pdf.id,{signal,status});
-   }catch(error){if(signal?.aborted||error.name==='AbortError')throw error;failures.push({paperID,attachmentID,title,error:error.message||String(error)});await N.update(id,{materialCollectionFailures:M.clone(failures)});status('整理未完成：'+title+' · '+(error.message||String(error))+'；继续整理其余论文');}
+    done.add(paperID);
+   }catch(error){if(signal?.aborted||error.name==='AbortError')throw error;done.add(paperID);failures.push({paperID,attachmentID,title,error:error.message||String(error)});await N.update(id,{materialCollectionFailures:recorded()});status('整理未完成：'+title+' · '+(error.message||String(error))+'；继续整理其余论文');}
   }
   if(signal?.aborted)throw Error('已停止；已整理素材保留');await A.ensureArticleSectionMaterials?.();
   const annotations=(await A.candidates(paperIDs)).filter(row=>paperIDs.includes(row.paperItemID||row.anchor?.paperItemID)||paperIDs.includes(row.attachmentID||row.anchor?.attachmentID)),published=annotations.length?await A.publishMaterials(annotations):{cards:[]},all=await automaticMaterials([...new Map([...N.materials(id),...published.cards].filter(row=>row.kind!=='idea'&&!isDiscussion(row)&&row.sourceText?.trim()).map(row=>[row.id,row])).values()]);
@@ -551,6 +563,11 @@
   // The project corpus is no longer rebuilt on every collection; corpora are
   // read through E.corpus.projectRows, and 导入当前装配 stays explicit.
   await N.update(id,{materialSuggestions:suggestions,materialCollectionFailures:failures});return {materials:all,suggestions,failures};
+  }catch(error){
+   // Without an earlier or a new failure there is nothing to write: a stop is not a failure.
+   if(before.length||failures.length)await N.update(id,{materialCollectionFailures:recorded()}).catch(writeError=>Zotero.logError(writeError));
+   throw error;
+  }
  };
  N.suggestMaterialRecommendations=async(id,result,status=()=>{},signal)=>{
   const project=N.project(id),folder=await N.preparationPaperSelection(id),version=N.state(id).versions.find(row=>row.id===N.state(id).selectedVersion)||N.state(id).versions.at(-1),suggestions=M.clone(result.suggestions),materials=await automaticMaterials(result.materials);
@@ -586,10 +603,14 @@
  // this window: the page also saves them on pagehide, when it cannot wait
  // between two writes. The choice is copied before it waits for an earlier
  // write, and a project without a paper folder gets one first.
+ // A 精读 or 结构参考 mark on a paper Zotero has deleted or moved to the trash
+ // is dropped before the first write, as the page drops it when it reads the
+ // library, so the papers are never saved without their marks.
  let preparationChoiceJobs=new Map();
  N.savePreparationChoice=(id,choice)=>{
   let value=M.clone(choice||{}),task=(preparationChoiceJobs.get(id)||Promise.resolve()).catch(()=>{}).then(async()=>{
    let {collectionIDs=[],paperIDs=[],featuredPaperIDs=[],closeReadingPaperIDs=[],structurePaperID=null}=value;
+   let gone=paperID=>{let item;try{item=Zotero.Items.get(Number(paperID));}catch{return false;}return !item||!!item.deleted;};closeReadingPaperIDs=closeReadingPaperIDs.filter(paperID=>!gone(paperID));if(structurePaperID!==null&&gone(structurePaperID))structurePaperID=null;
    if(!N.project(id)?.paperCollectionID)await N.ensureProjectCollection(id);
    let sources=await N.setPreparationSources(id,{collectionIDs,paperIDs,featuredPaperIDs});
    return {sources,readingSelection:await N.saveReadingSelection(id,{closeReadingPaperIDs,structurePaperID})};
@@ -613,8 +634,9 @@
  // A project's own materials keep their ids in a copy, so a plan reads its own
  // project's materials through lookup.project(id). One scan builds the table of
  // every project; the lookup itself keeps the first project holding an id, for
- // callers that name no project.
- const sourceRevisionLookup=()=>{const library=libraryView();let byProject=null,first=null;const owned=projectID=>{if(!byProject){byProject=new Map();first=new Map();for(const [pid,p] of Object.entries(A.allView?.()||A.all())){const map=new Map();for(const m of p.materials||[]){if(!map.has(m.id))map.set(m.id,m.revision);if(!first.has(m.id))first.set(m.id,m.revision);}byProject.set(pid,map);}}return projectID===undefined?first:byProject.get(projectID)||new Map();};const lookup=projectID=>id=>{const shared=library[id];if(shared)return shared.revision;return owned(projectID).get(id);};const revisionOf=lookup();revisionOf.project=lookup;return revisionOf;};
+ // callers that name no project. hasProject(id) reads the same project table
+ // without the scan: a project in the trash is not in it.
+ const sourceRevisionLookup=()=>{const library=libraryView();let all=null,byProject=null,first=null;const projects=()=>all||=A.allView?.()||A.all()||{};const owned=projectID=>{if(!byProject){byProject=new Map();first=new Map();for(const [pid,p] of Object.entries(projects())){const map=new Map();for(const m of p.materials||[]){if(!map.has(m.id))map.set(m.id,m.revision);if(!first.has(m.id))first.set(m.id,m.revision);}byProject.set(pid,map);}}return projectID===undefined?first:byProject.get(projectID)||new Map();};const lookup=projectID=>id=>{const shared=library[id];if(shared)return shared.revision;return owned(projectID).get(id);};const revisionOf=lookup();revisionOf.project=lookup;revisionOf.hasProject=projectID=>Object.hasOwn(projects(),projectID);return revisionOf;};
  // Corpus rows are keyed by their material ID ('corpus-'+entryID), so a changed
  // corpus entry invalidates artifacts like any other source. Built lazily and
  // only when a version used corpus rows and the corpus service is loaded.
@@ -625,9 +647,10 @@
  // A plan is marked when one of its hypotheses changed, or when a changed
  // source is out of date for that plan itself (N.stale of its own version): a
  // change an older plan predates never marks a plan made after it. Each card's
- // reason names its own changes.
- N.invalidateArtifacts=async(id,hypothesisIDs=[],sourceIDs=[])=>{
-  const state=N.state(id),changed=new Set(sourceIDs),revisionOf=changed.size?sourceRevisionLookup().project(id):null,corpusRevisionOf=changed.size&&E.corpus?.revisionLookup?corpusRevisionLookup():undefined,reasons=new Map();
+ // reason names its own changes. A caller that has built the lookups for this
+ // project passes them, so one notification or review scans the projects once.
+ N.invalidateArtifacts=async(id,hypothesisIDs=[],sourceIDs=[],lookups={})=>{
+  const state=N.state(id),changed=new Set(sourceIDs),revisionOf=changed.size?lookups.revisionOf||sourceRevisionLookup().project(id):null,corpusRevisionOf=changed.size&&E.corpus?.revisionLookup?lookups.corpusRevisionOf||corpusRevisionLookup():undefined,reasons=new Map();
   for(const a of state.artifacts){
    if(a.status==='needs-review')continue;const v=state.versions.find(row=>row.id===a.versionID);if(!v)continue;
    if((v.plan?.hypotheses||[]).some(h=>hypothesisIDs.includes(h.id))){reasons.set(a.id,'相关假设已有新版本');continue;}
@@ -638,8 +661,12 @@
   await E.store.update(store=>{for(const artifact of store.researchNotebooks?.[id]?.artifacts||[]){if(artifact.status==='needs-review'||!reasons.has(artifact.id))continue;artifact.status='needs-review';artifact.reviewReason=reasons.get(artifact.id);const material=store.researchMaterials?.[artifact.materialID];if(material){material.verification='stale';material.revision++;}}});emit(id);A.notifyAssetsChanged?.();return affected.map(a=>a.materialID);};
  // The notebook page re-checks its confirmed plans when it opens, for changes
  // made while the app was closed (a sync, another device).
- N.reviewArtifacts=async id=>{const state=stateView(id),reviewed=new Set((state.artifacts||[]).filter(a=>a.status!=='needs-review').map(a=>a.versionID));if(!reviewed.size)return [];const revisionOf=sourceRevisionLookup().project(id),changed=[...new Set((state.versions||[]).filter(v=>reviewed.has(v.id)).flatMap(v=>N.stale(v,revisionOf)).filter(item=>!item.startsWith('pending-item:')))];return changed.length?N.invalidateArtifacts(id,[],changed):[];};
- A.onAssetsChanged(()=>{const all=(E.store.peek?E.store.peek('researchNotebooks'):E.store.get('researchNotebooks'))||{},revisionOf=sourceRevisionLookup(),corpusRevisionOf=E.corpus?.revisionLookup?corpusRevisionLookup():undefined;for(const [id,state] of Object.entries(all)){const changed=[...new Set((state.versions||[]).flatMap(v=>N.stale(v,revisionOf.project(id),corpusRevisionOf)).filter(item=>!item.startsWith('pending-item:')))];if(changed.length)N.invalidateArtifacts(id,[],changed).catch(e=>Zotero.logError(e));}});
+ N.reviewArtifacts=async id=>{const state=stateView(id),reviewed=new Set((state.artifacts||[]).filter(a=>a.status!=='needs-review').map(a=>a.versionID));if(!reviewed.size)return [];const revisionOf=sourceRevisionLookup().project(id),corpusRevisionOf=E.corpus?.revisionLookup?corpusRevisionLookup():undefined,changed=[...new Set((state.versions||[]).filter(v=>reviewed.has(v.id)).flatMap(v=>N.stale(v,revisionOf,corpusRevisionOf)).filter(item=>!item.startsWith('pending-item:')))];return changed.length?N.invalidateArtifacts(id,[],changed,{revisionOf,corpusRevisionOf}):[];};
+ // One lookup per notification, shared by every notebook and the invalidation
+ // it starts. A notebook whose project is in the trash is skipped: its own
+ // materials are not in the project table, so every plan would look out of
+ // date. Once restored, the page's review and later notifications check it.
+ A.onAssetsChanged(()=>{const all=(E.store.peek?E.store.peek('researchNotebooks'):E.store.get('researchNotebooks'))||{},revisionOf=sourceRevisionLookup(),corpusRevisionOf=E.corpus?.revisionLookup?corpusRevisionLookup():undefined;for(const [id,state] of Object.entries(all)){if(!revisionOf.hasProject(id))continue;const projectRevisionOf=revisionOf.project(id),changed=[...new Set((state.versions||[]).flatMap(v=>N.stale(v,projectRevisionOf,corpusRevisionOf)).filter(item=>!item.startsWith('pending-item:')))];if(changed.length)N.invalidateArtifacts(id,[],changed,{revisionOf:projectRevisionOf,corpusRevisionOf}).catch(e=>Zotero.logError(e));}});
  // A Zotero edit, trash or deletion of an item a confirmed plan cites fires no
  // asset change. This observer re-checks the plans citing it, whether or not
  // their page is open; a burst of notifications is handled once.

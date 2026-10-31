@@ -115,6 +115,7 @@
 .conversation-surface-toolbar button svg{width:14px;height:14px;}
 #easysch-conversation-surface .conversation-surface-action-stack .clui-native-stack-btn{width:46px;height:46px;min-height:46px;padding:0;border:1px solid var(--ui-border,#dce2e9);border-radius:50%;}
 .conversation-surface-action-stack .conversation-control-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
+.conversation-surface-announcement{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;pointer-events:none;}
 .conversation-surface-action-stack svg{width:19px!important;height:19px!important;}
 .conversation-surface-mode{flex:0 1 auto;min-width:28px;max-width:112px;}
 .conversation-surface-mode>svg:last-child{width:10px;height:10px;}

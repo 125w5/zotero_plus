@@ -45,7 +45,8 @@ export function abstractExcerpt(value,{limit=260}={}){
   if(boundary[0]==='.'&&/\b(?:e\.g|i\.e|et al|vs|cf|Fig|Eq|Dr|Mr|Ms|Prof|No)$/i.test(full.slice(0,boundary.index)))continue;
   add(boundary.index+1);
  }add(full.length);
- const output=selected=>{const sourceSentences=selected.map(({text,start,end})=>({text,start,end})),excerpt=sourceSentences.map(sentence=>sentence.text).join(' ');return {text:excerpt,full,shortened:excerpt!==full,sourceSentences};};
+ // Shortened means a sentence was left out; joining Chinese sentences with spaces alone does not count.
+ const output=selected=>{const sourceSentences=selected.map(({text,start,end})=>({text,start,end})),excerpt=sourceSentences.map(sentence=>sentence.text).join(' ');return {text:excerpt,full,shortened:selected.length<sentences.length,sourceSentences};};
  if(full.length<=limit)return output(sentences);
  const generic=sentence=>/\b(?:important|critical|crucial|essential|key role|widely used|global connectivity|in recent years|gold standard)\b|重要(?:性|作用|手段|组成)|关键(?:作用|组成)|全球连接|广泛(?:应用|使用)|近年来|黄金标准/i.test(sentence);
  const review=/\b(?:this (?:review|survey)|(?:review|survey) (?:paper|article)|this paper (?:reviews|surveys))\b|本(?:文|综述).{0,12}(?:综述|回顾|梳理)/i.test(full);

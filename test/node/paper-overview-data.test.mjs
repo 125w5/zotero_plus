@@ -72,10 +72,12 @@ function abstractHost(){
   replaceChildren(...nodes){this._text='';this.children=[];this.append(...nodes);}
   setAttribute(key,value){this.attributes[key]=value;}
   querySelector(selector){const name=selector.slice(1),attribute=/^\[data-([a-z-]+)="([^"]+)"\]$/.exec(selector),key=attribute?.[1].replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase());for(const child of this.children){if(attribute?child.dataset?.[key]===attribute[2]:child.className?.split(' ').includes(name))return child;const nested=child.querySelector?.(selector);if(nested)return nested;}return null;}
-  remove(){if(this.parentNode)this.parentNode.children=this.parentNode.children.filter(node=>node!==this);this.isConnected=false;}
+  remove(){if(this.parentNode)this.parentNode.children=this.parentNode.children.filter(node=>node!==this);this.parentNode=null;this.isConnected=false;}
+  contains(node){for(let value=node;value;value=value.parentNode)if(value===this)return true;return false;}
+  focus(){this.ownerDocument.activeElement=this;}
  }
  const view=new EventTarget();view.closed=false;
- const doc={defaultView:view,createElementNS:(_ns,tag)=>new Node(tag,doc),createTextNode:value=>({textContent:value})};
+ const doc={defaultView:view,activeElement:null,createElementNS:(_ns,tag)=>new Node(tag,doc),createTextNode:value=>({textContent:value})};
  doc.head=new Node('head',doc);doc.head.isConnected=true;doc.documentElement=doc.head;doc.querySelector=selector=>doc.head.querySelector(selector);
  const host=new Node('host',doc);host.isConnected=true;return host;
 }
@@ -191,4 +193,62 @@ test('in the item pane the overview entry still opens the separate abstract pane
  installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost();host.closest=selector=>selector==='item-details'?{tabID:'tab-reader',selectResearchPane:pane=>{selected.push(pane);}}:null;await E.renderPaperOverview(host,parent);
  host.querySelector('.overview-abstract-open').onclick();host.querySelector('.overview-abstract-content').onkeydown({key:' ',preventDefault(){}});
  assert.deepEqual(selected,['abstract','abstract']);assert.equal(translations,0);assert.equal(host.querySelector('.overview-abstract-full'),null);assert.notEqual(host.querySelector('.overview-abstract').hidden,true);
+});
+// The excerpt and its 阅读全文 are hidden once the full abstract opens, so the control that had focus disappears.
+test('keyboard activation outside the item pane moves focus into the full abstract at once, and a late translation does not take it back',async()=>{
+ let finish;const parent={id:66,isRegularItem:()=>true,getField:key=>({title:'Controlled English paper',abstractNote:overviewEnglish})[key]||'',getCreators:()=>[]};
+ const E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({}),quickTranslate:()=>new Promise(resolve=>{finish=()=>resolve({text:overviewChinese});})};
+ installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost(),doc=host.ownerDocument;await E.renderPaperOverview(host,parent);
+ assert.equal(host.querySelector('.overview-abstract-open').title,'查看完整双语摘要','an English abstract opens with its translation');
+ const content=host.querySelector('.overview-abstract-content');content.focus();content.onkeydown({key:'Enter',preventDefault(){}});
+ const full=host.querySelector('.overview-abstract-full');assert.ok(full);assert.equal(host.querySelector('.overview-abstract').hidden,true);
+ assert.strictEqual(doc.activeElement,full,'focus leaves the hidden excerpt for the full abstract');assert.equal(full.tabIndex,-1,'the full abstract takes focus without joining the Tab order');
+ for(let i=0;i<20&&!finish;i++)await new Promise(resolve=>setImmediate(resolve));
+ assert.ok(host.querySelector('.paper-abstract-original'));assert.strictEqual(doc.activeElement,full,'focus stays in the full abstract while the translation is pending');
+ const composer={};doc.activeElement=composer;finish();
+ for(let i=0;i<20&&!host.querySelector('.paper-abstract-chinese')?.textContent.includes(overviewChinese);i++)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(host.querySelector('.paper-abstract-chinese').textContent,'中文译文'+overviewChinese);assert.strictEqual(doc.activeElement,composer,'a late translation does not move focus back');
+});
+test('the full abstract takes focus only from the control that opened it',async()=>{
+ for(const fromButton of [true,false]){
+  const parent={id:fromButton?67:68,isRegularItem:()=>true,getField:key=>({title:'Controlled English paper',abstractNote:overviewEnglish})[key]||'',getCreators:()=>[]};
+  const E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({}),quickTranslate:async()=>({text:overviewChinese})};
+  installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost(),doc=host.ownerDocument;await E.renderPaperOverview(host,parent);
+  const open=host.querySelector('.overview-abstract-open'),composer={};if(fromButton)open.focus();else doc.activeElement=composer;
+  await open.onclick();assert.equal(host.querySelector('.paper-abstract-chinese').textContent,'中文译文'+overviewChinese);
+  assert.strictEqual(doc.activeElement,fromButton?host.querySelector('.overview-abstract-full'):composer,fromButton?'Enter on 阅读全文 moves focus into the full abstract':'a click that left focus in the composer does not move it');
+ }
+});
+// A Chinese source is shown without a translation, so its full view is never bilingual.
+const shortChinese='独立设备的评估避免训练集与测试集之间的数据泄漏。实验在留出设备上报告准确率。';
+test('a short Chinese abstract shown in full is not marked shortened although its sentences are joined with spaces',()=>{
+ const excerpt=abstractExcerpt(shortChinese);assert.equal(excerpt.text,'独立设备的评估避免训练集与测试集之间的数据泄漏。 实验在留出设备上报告准确率。');assert.equal(excerpt.shortened,false);
+ const brief=abstractExcerpt(shortChinese,{limit:20});assert.equal(brief.text,'实验在留出设备上报告准确率。');assert.equal(brief.shortened,true,'a sentence left out still marks the excerpt shortened');
+});
+test('outside the item pane a short Chinese abstract shown whole offers no full view and is never called bilingual',async()=>{
+ let translations=0;const parent={id:69,isRegularItem:()=>true,getField:key=>({title:'中文论文',abstractNote:shortChinese})[key]||'',getCreators:()=>[]};
+ const E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({}),quickTranslate:async()=>{translations++;return {text:'unused'};}};
+ installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost();await E.renderPaperOverview(host,parent);
+ const open=host.querySelector('.overview-abstract-open'),content=host.querySelector('.overview-abstract-content');
+ assert.equal(content.textContent.replace(/\s+/g,''),shortChinese,'the excerpt already shows every sentence');
+ assert.equal(open.hidden,true,'no entry repeats the same text');assert.equal(content.attributes.role,undefined);assert.equal(content.tabIndex,undefined);assert.equal(content.onclick,undefined);assert.equal(content.title,undefined);
+ assert.doesNotMatch(open.title+open.attributes['aria-label'],/双语/);assert.equal(translations,0);
+});
+test('outside the item pane a longer Chinese abstract opens its full text as 查看完整摘要 without translating',async()=>{
+ const long='卫星通信系统是全球连接的重要组成部分。'+'近年来低轨卫星网络的规模持续扩大，地面终端的接入数量也不断增加。'.repeat(4)+'本文提出基于队列状态的时隙分配策略以降低信息年龄。'+'仿真设置包含多种上传速率、信道条件与终端密度的组合。'.repeat(3)+'实验结果显示，在5至100 kbps上传速率下，该策略相比固定分配将感知保真度提高了35%。';
+ let translations=0;const parent={id:70,isRegularItem:()=>true,getField:key=>({title:'中文论文',abstractNote:long})[key]||'',getCreators:()=>[]};
+ const E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({}),quickTranslate:async()=>{translations++;return {text:'unused'};}};
+ installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost();await E.renderPaperOverview(host,parent);
+ const open=host.querySelector('.overview-abstract-open'),content=host.querySelector('.overview-abstract-content');
+ assert.ok(content.textContent.length<long.length,'the excerpt leaves sentences out');assert.notEqual(open.hidden,true);
+ assert.equal(open.title,'查看完整摘要');assert.equal(open.attributes['aria-label'],'查看完整摘要');assert.equal(content.attributes.role,'button');assert.equal(content.title,'查看完整摘要');
+ await open.onclick();
+ assert.equal(host.querySelector('.paper-abstract-original').textContent,'中文摘要'+long);assert.equal(host.querySelector('.paper-abstract-chinese'),null);assert.equal(translations,0);
+});
+test('in the item pane a short Chinese abstract keeps its entry to the abstract pane, labelled without 双语',async()=>{
+ const selected=[],parent={id:71,isRegularItem:()=>true,getField:key=>({title:'中文论文',abstractNote:shortChinese})[key]||'',getCreators:()=>[]};
+ const E={store:storeFor({}),library:{localPDF:async()=>null,describe:()=>({})},materialSourceInfo:()=>({})};
+ installPaperOverview(E,{Zotero:uiZotero,IOUtils:{}});const host=abstractHost();host.closest=selector=>selector==='item-details'?{tabID:'tab-reader',selectResearchPane:pane=>{selected.push(pane);}}:null;await E.renderPaperOverview(host,parent);
+ const open=host.querySelector('.overview-abstract-open');assert.notEqual(open.hidden,true);assert.equal(open.title,'查看完整摘要');
+ open.onclick();host.querySelector('.overview-abstract-content').onkeydown({key:'Enter',preventDefault(){}});assert.deepEqual(selected,['abstract','abstract']);
 });

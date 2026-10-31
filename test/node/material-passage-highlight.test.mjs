@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 // 保存标注 on a full-text hit. The rows findPaperPassages returns carry no
 // revision; saving a highlight on one copies it into the project's materials
+// as this project's own material, which names the hit in passageID
 // (saveProjectMaterialHighlights), and every project save checks each material
 // for an anchor, source text and an integer revision (M.assertProject). The
 // copy starts at revision 1, as a new material does (M.material), so the
@@ -22,7 +23,7 @@ test('a highlight saved on a full-text hit copies it with a version, and the pro
 	const saved=outcome(f.overviews.at(-1).options.onSaveHighlights([{id:'h1',text:'two calibrated cameras',comment:''}]));
 	await f.flush();
 	assert.equal(await saved,'saved','the highlight is saved');
-	const copy=f.state('manuscripts','p').materials.find(row=>row.id===hit.m.id);
+	const copy=f.state('manuscripts','p').materials.find(row=>row.passageID===hit.m.id);
 	assert.ok(copy,'the copy is saved with the project');
 	assert.equal(copy.revision,1,'the copy starts at the first version');
 	assert.deepEqual(copy.projectHighlights.map(row=>row.text),['two calibrated cameras']);
@@ -34,7 +35,7 @@ test('a highlight saved on a full-text hit copies it with a version, and the pro
 	const again=outcome(f.overviews.at(-1).options.onSaveHighlights([...copy.projectHighlights,{id:'h2',text:'fixed target board',comment:''}]));
 	await f.flush();
 	assert.equal(await again,'saved');
-	const next=f.state('manuscripts','p').materials.find(row=>row.id===hit.m.id);
+	const next=f.state('manuscripts','p').materials.find(row=>row.passageID===hit.m.id);
 	assert.equal(next.revision,1,'a highlight does not change the material version');assert.equal(next.annotationRevision,2);
 	assert.equal(f.writes,0,'nothing is written to the shared material library');
 	assert.deepEqual(f.failures,[]);

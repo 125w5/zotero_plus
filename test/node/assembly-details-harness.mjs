@@ -80,14 +80,16 @@ function clock(){
 }
 
 // One project p (section s1) with project materials from `project`, shared
-// materials `assets` and extra store branches `store`.
-export async function fixture({assets=[asset('m1',7),asset('m2',8,{title:'第二份素材'})],project=['m1','m2'],local=[],blocks=[],ui={},store={},parents={9:5}}={}){
-	const time=clock(),errors=[],observers=[],failures=handlerFailures.length;let writes=0;
+// materials `assets` and extra store branches `store`. `marks` lists the PDF
+// annotations of attachments 7, 8 and 9; hold() and fail(count) stand for a
+// slow or broken workspace file under a material edit.
+export async function fixture({assets=[asset('m1',7),asset('m2',8,{title:'第二份素材'})],project=['m1','m2'],local=[],blocks=[],ui={},store={},parents={9:5},marks={}}={}){
+	const time=clock(),errors=[],observers=[],failures=handlerFailures.length;let writes=0,gate=null,failing=0;
 	const io={read:async()=>({version:1,papers:{},projects:{},settings:{},researchMaterials:Object.fromEntries(assets.map(row=>[row.id,row])),researchNotebooks:{},materialExclusionQuotes:{},...structuredClone(store),manuscripts:{p:{schemaVersion:1,id:'p',title:'研究',revision:0,sections:[{id:'s1',title:'方法',conclusion:''}],blocks:structuredClone(blocks),chat:[],proposals:[],materials:[...assets.filter(row=>project.includes(row.id)),...local].map(row=>structuredClone(row)),ui:{step:0,left:'materials',leftOpen:true,rightOpen:true,assemblyFlowVersion:3,catalog:{selection:[]},sectionID:'s1',blockID:null,caret:0,...ui}}}}),
-		write:async(_next,branches)=>{if(branches?.includes('researchMaterials'))writes++;}};
+		write:async(_next,branches)=>{if(!branches?.includes('researchMaterials'))return;writes++;if(gate)await gate.promise;if(failing>0){failing--;throw Error('存储写入失败');}}};
 	const E={assets:{key:JSON.stringify},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,studio:{request:async()=>({value:{summaries:[]},model:'fixture'})}};
 	vm.runInNewContext(sources.storage,{EasySch:E,Zotero:{logError:error=>errors.push(error)}});E.store=E.createStore(io);await E.store.init();
-	const attachments=new Map([7,8,9].map(id=>[id,{id,parentID:parents[id]||null,deleted:false,marks:[],async loadDataType(){},getAnnotations(){return this.marks;}}]));
+	const attachments=new Map([7,8,9].map(id=>[id,{id,parentID:parents[id]||null,deleted:false,marks:marks[id]||[],async loadDataType(){},getAnnotations(){return this.marks;}}]));
 	const item=id=>attachments.get(Number(id))||[...attachments.values()].flatMap(row=>row.marks).find(mark=>mark.id===Number(id));
 	const Zotero={Research:E,logError:error=>errors.push(error),debug(){},getMainWindow:()=>({AbortController}),Utilities:{randomString:()=>'fixture'},Items:{get:item,getAsync:async id=>item(id),loadDataTypes:async()=>{}},Notifier:{registerObserver:observer=>{observers.push(observer);return 'observer';},unregisterObserver(){}}};
 	const context=vm.createContext({Zotero,IOUtils:{},Services:{},ChromeUtils:{importESModule:url=>{const module=modules[url.split('/').at(-1)];if(!module)throw Error('Unexpected import '+url);return module;}},URL,Date:time.Date});
@@ -122,6 +124,7 @@ export async function fixture({assets=[asset('m1',7),asset('m2',8,{title:'第二
 	const show=id=>{sandbox.showMaterial(U.p.materials.find(row=>row.id===id)||A.assetLibraryView()[id]);return box.querySelector('h3');};
 	const open=id=>{const heading=show(id);heading.ondblclick();return {heading,input:heading.querySelector('input')};};
 	return {E,A,U,N,doc,box,selection,math,overviews,explanations,library,sandbox,show,open,advance,flush:()=>advance(2500),render:()=>sandbox.renderEditor(),
+		hold(){let release;const promise=new Promise(resolve=>{release=resolve;});gate={promise};return ()=>{gate=null;release();};},fail(count){failing=count;},
 		paragraph:(blockID=U.p.ui.blockID)=>doc.querySelector('#canvas [data-id="'+blockID+'"] .editable'),
 		// Store reads come back as values of this realm, so deepEqual compares content only.
 		edit:(id,patch)=>A.editAsset(id,patch,E.store.get('researchMaterials',id).revision),stored:id=>outer(E.store.get('researchMaterials',id)),state:(...path)=>outer(E.store.get(...path)),

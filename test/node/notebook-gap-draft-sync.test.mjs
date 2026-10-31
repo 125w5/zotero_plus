@@ -2,8 +2,10 @@
 // WSB-11: editing the research question, conditions, structure or scope reaches
 // project.researchGoal and researchPreparation without starting a task: about
 // 500 ms after typing (scope 550 ms, never during an IME composition), on blur
-// and on pagehide. A draft save writes the project alone: it never rebuilds the
-// material library through N.catalog or re-renders the notebook page.
+// and on pagehide. A draft save writes the project alone, in the project's one
+// write queue: it never rebuilds the material library through N.catalog or
+// re-renders the notebook page. Only the plan panel follows, when the edit
+// changes whether the plan is current.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {notebookFixture} from './notebook-gap-fixture.mjs';
@@ -85,10 +87,13 @@ test('entering assembly without a plan keeps the saved goal of an emptied questi
 });
 
 test('with the assembly editor open a draft save persists through its queue without rebuilding the material library',async()=>{
-	let f=await notebookFixture(),ui={p:structuredClone(f.project),saving:Promise.resolve(),renders:0,persists:0,renderLibrary(){this.renders++;},async persist(){this.persists++;f.project=structuredClone(this.p);}},changes=[];
-	f.Zotero.getMainWindow=()=>({document:{getElementById:key=>key==='manuscript-study'?{contentWindow:{ManuscriptUI:ui}}:null}});
+	let finishSaving,f=await notebookFixture(),ui={p:structuredClone(f.project),saving:new Promise(resolve=>{finishSaving=resolve;}),renders:0,persists:0,renderLibrary(){this.renders++;},async persist(){this.persists++;f.project=structuredClone(this.p);}},changes=[];
+	f.Zotero.getMainWindow=()=>({document:{getElementById:key=>(key==='manuscript-study'?{contentWindow:{ManuscriptUI:ui}}:null)}});
 	f.N.subscribe((id,change)=>changes.push(change));
-	await f.N.saveDraft('study',{ideaDraft:'比较三种图像测量方法的误差'});
+	let saving=f.N.saveDraft('study',{ideaDraft:'比较三种图像测量方法的误差'});
+	await wait(20);
+	assert.equal(ui.p.researchGoal,'比较两种图像测量方法','the editor\'s own save runs first');assert.equal(ui.persists,0);
+	finishSaving();await saving;
 	assert.equal(ui.p.researchGoal,'比较三种图像测量方法的误差','the open editor holds the synced goal');
 	assert.equal(f.project.researchPreparation.researchGoal,'比较三种图像测量方法的误差','and saves it');
 	assert.equal(ui.persists,1);
@@ -97,6 +102,78 @@ test('with the assembly editor open a draft save persists through its queue with
 	await f.N.saveDraft('study',{scopeOrigin:'manual',researchScope:{domain:'computer-vision',primaryKeyword:'image error'}});
 	assert.equal(ui.p.researchScope.primaryKeyword,'image error');
 	assert.equal(ui.renders,0);assert.equal(ui.persists,2);
+});
+
+// Holds the engine's project saves until release(), as a slow workspace.json
+// write does. A held save has already copied the project it writes, and the
+// revision check runs when it commits.
+function holdSaves(world){
+	let held=[],save=world.A.save;
+	world.A.save=value=>new Promise(resolve=>held.push(resolve)).then(()=>save(value));
+	return {held,async release(){while(held.length){held.shift()();await wait(20);}}};
+}
+let goals=world=>[world.notebook.ideaDraft,world.project.researchGoal,world.project.memory?.goal,world.project.researchPreparation?.researchGoal];
+
+// The draft save and the catalog write share the project's one write queue:
+// the second starts only after the first has saved, so neither overwrites the
+// other or is refused as a concurrent update.
+for(let draftFirst of [true,false])test('a draft save and a catalog write issued together both reach the project ('+(draftFirst?'draft':'catalog')+' first)',async()=>{
+	let world=libraryWorld({folders:[{id:17,name:'项目文献'}],papers:[{id:1,title:'A',abstract:'a',folders:[17]}],project:{title:'调制识别',researchGoal:'旧问题',paperCollectionID:17,materialPaperIDs:[1]},notebook:{view:'plan',ideaDraft:'旧问题'}});
+	let gate=holdSaves(world),revision=world.project.revision;
+	let draft=()=>world.N.saveDraft(world.id,{ideaDraft:'比较三种测量方法'}),catalog=()=>world.N.catalog(world.id,p=>{p.readingSelection={closeReadingPaperIDs:[],structurePaperID:null,structureOnly:true};});
+	let first=(draftFirst?draft:catalog)();
+	await until(()=>gate.held.length,'the first project write is saving');
+	let second=(draftFirst?catalog:draft)();
+	await wait(20);
+	assert.equal(gate.held.length,1,'the second write waits until the first has saved');
+	await gate.release();
+	let results=await Promise.allSettled([first,second]);
+	assert.deepEqual(results.map(row=>(row.status==='fulfilled'?'ok':row.reason.message)),['ok','ok']);
+	assert.equal(world.project.researchGoal,'比较三种测量方法');
+	assert.equal(world.project.researchPreparation.researchGoal,'比较三种测量方法');
+	assert.ok(world.project.readingSelection,'the catalog write is kept');
+	assert.equal(world.project.revision,revision+2);
+});
+
+// A question changed and then restored while an earlier project write is still
+// saving (a paper choice about 500 ms after a tick, on a large workspace): the
+// sync of the restored question decides after the queued sync of the changed
+// one, so the project ends on the question the field shows.
+test('a question restored while an earlier project write is saving leaves the project on the restored question',async()=>{
+	let world=libraryWorld({folders:[{id:17,name:'项目文献'}],papers:[{id:1,title:'A',abstract:'a',folders:[17]}],project:{title:'调制识别',researchGoal:'问题A',paperCollectionID:17,materialPaperIDs:[1]},notebook:{view:'plan',ideaDraft:'问题A'}});
+	await world.N.saveDraft(world.id,{ideaDraft:'问题A'});
+	assert.deepEqual(goals(world),['问题A','问题A','问题A','问题A']);
+	let gate=holdSaves(world);
+	let other=world.N.catalog(world.id,p=>{p.readingSelection={closeReadingPaperIDs:[1],structurePaperID:null,structureOnly:false};});
+	await until(()=>gate.held.length,'the earlier project write is saving');
+	// The sync of 问题B has read the project and waits behind the earlier write
+	// when the question is restored.
+	let typed=world.N.saveDraft(world.id,{ideaDraft:'问题B'});
+	await wait(20);assert.equal(world.notebook.ideaDraft,'问题B');
+	let restored=world.N.saveDraft(world.id,{ideaDraft:'问题A'});
+	await wait(20);assert.equal(world.notebook.ideaDraft,'问题A');
+	await gate.release();
+	let results=await Promise.allSettled([other,typed,restored]);await gate.release();
+	assert.deepEqual(results.map(row=>(row.status==='fulfilled'?'ok':row.reason.message)),['ok','ok','ok']);
+	assert.deepEqual(goals(world),['问题A','问题A','问题A','问题A'],'the home card, project search and the plan inputs follow the field');
+	assert.deepEqual(world.project.readingSelection?.closeReadingPaperIDs,[1],'the earlier write is kept');
+});
+
+test('a question restored while the assembly editor saves leaves the open project on the restored question',async()=>{
+	let finishSaving,f=await notebookFixture(),ui={p:structuredClone(f.project),saving:new Promise(resolve=>{finishSaving=resolve;}),renders:0,renderLibrary(){this.renders++;},async persist(){f.project=structuredClone(this.p);}};
+	f.Zotero.getMainWindow=()=>({document:{getElementById:key=>(key==='manuscript-study'?{contentWindow:{ManuscriptUI:ui}}:null)}});
+	let goal=ui.p.researchGoal,other=f.N.catalog('study',p=>{p.readingSelection={closeReadingPaperIDs:[1],structurePaperID:null,structureOnly:false};});
+	let typed=f.N.saveDraft('study',{ideaDraft:'比较三种图像测量方法的误差'});
+	await wait(20);assert.equal(f.N.state('study').ideaDraft,'比较三种图像测量方法的误差');
+	let restored=f.N.saveDraft('study',{ideaDraft:goal});
+	await wait(20);assert.equal(f.N.state('study').ideaDraft,goal);
+	finishSaving();
+	let results=await Promise.allSettled([other,typed,restored]);
+	assert.deepEqual(results.map(row=>(row.status==='fulfilled'?'ok':row.reason.message)),['ok','ok','ok']);
+	assert.deepEqual([ui.p.researchGoal,ui.p.memory?.goal,ui.p.researchPreparation?.researchGoal],[goal,goal,goal],'the open editor holds the restored question');
+	assert.equal(f.project.researchGoal,goal,'and saves it');
+	assert.deepEqual(ui.p.readingSelection?.closeReadingPaperIDs,[1],'the earlier write is kept');
+	assert.equal(ui.renders,1,'only the catalog write redraws the material library');
 });
 
 // The real feasibility page (notebook.html, notebook.mjs) on a project with a
@@ -184,6 +261,68 @@ test('a question or condition saved on blur writes the project once and does not
 		let updates=world.counts.updates;page.$('idea').dispatchEvent(new FakeEvent('change'));await world.quiet();
 		assert.equal(world.counts.updates,updates,'an unchanged field writes nothing');
 		assert.deepEqual([world.project.researchGoal,world.project.researchPreparation.resourceConstraints],['比较两种调制识别方法','两周']);
+		assert.deepEqual(page.failures,[]);
+	}
+	finally{await page.close();}
+});
+
+// A project whose plan was generated from the page's inputs: current and not
+// confirmed, so the page offers 确认这一版方案.
+const plan={title:'低信噪比调制识别方案',novelty:'在两台接收机上比较识别误差',significance:'说明接收机漂移的影响',feasibility:'现有数据足以完成两台接收机的对照',minimumValidation:'先完成单台接收机的识别误差对照',
+	hypotheses:[{id:'h1',claim:'接收机漂移降低识别准确率',falsification:'两台接收机误差无差异'}],closest:[],
+	experiments:[{id:'e1',hypothesisID:'h1',title:'重复识别实验',data:'两台接收机录制的数据',comparison:'CNN 与特征工程方法',metrics:'平均绝对误差',cost:'一周',outputs:'误差对照表'}],decisions:[],openQuestions:[]};
+async function currentPlanWorld(){
+	let world=libraryWorld({folders:[{id:17,name:'项目文献'}],papers:[{id:1,title:'Batch recognition study',abstract:'Batches.',folders:[17]}],
+		project:{title:'调制识别',paperCollectionID:17,materialPaperIDs:[1],paperSelectionExplicit:true,preparationSourceSelection:{collectionIDs:[17],paperIDs:[1],featuredPaperIDs:[]},researchScope:scope},
+		notebook:{view:'plan',workflowStage:'feasibility',scopeOrigin:'manual',researchScope:scope,ideaDraft:'比较低信噪比下的调制识别方法',constraints:'一周'}});
+	world.model=input=>({value:input.sourceSelection?structuredClone(plan):{suggestions:[]},model:'fixture'});
+	await world.N.evaluate(world.id,'比较低信噪比下的调制识别方法');
+	return world;
+}
+// The plan status the page shows: the confirm button, the main button and the notice.
+let planShown=page=>({confirm:!!page.doc.querySelector('.plan-confirm'),main:page.$('continue-assembly').textContent,notice:!!page.doc.querySelector('.plan-notice')});
+const CURRENT={confirm:true,main:'确认方案，进入素材装配',notice:false},STALE={confirm:false,main:'继续装配，方案待更新',notice:true};
+// The assembly editor open in another tab, counting its material-library redraws.
+function openEditor(world){
+	let ui={p:structuredClone(world.project),saving:Promise.resolve(),renders:0,renderLibrary(){this.renders++;},async persist(){world.state.manuscripts[world.id]=structuredClone(this.p);}};
+	world.Zotero.getMainWindow=()=>({document:{getElementById:key=>(key==='manuscript-'+world.id?{contentWindow:{ManuscriptUI:ui}}:null)}});
+	return ui;
+}
+let editAndLeave=(page,key,value)=>{let field=page.$(key);field.focus();field.value=value;field.dispatchEvent(new FakeEvent('input'));field.dispatchEvent(new FakeEvent('change'));field.blur();};
+
+test('a question saved on blur shows at once whether the plan is current, without rebuilding the material library',async()=>{
+	let world=await currentPlanWorld(),page=await world.openPage(),catalog=world.N.catalog,catalogWrites=0;world.N.catalog=(...args)=>{catalogWrites++;return catalog(...args);};
+	try{
+		let ui=openEditor(world),version=world.notebook.versions.at(-1);
+		await wait(60);assert.deepEqual(planShown(page),CURRENT);
+		editAndLeave(page,'idea','研究完全不同的问题：图像去噪');await world.quiet();
+		assert.equal(world.N.assessmentCurrent(world.id,version),false,'the engine no longer takes this plan as current');
+		assert.deepEqual(planShown(page),STALE,'no confirm button that can only fail, and the main button and notice say the plan needs an update');
+		assert.equal(ui.p.researchGoal,'研究完全不同的问题：图像去噪','the open editor holds the synced question');
+		editAndLeave(page,'idea','比较低信噪比下的调制识别方法');await world.quiet();
+		assert.equal(world.N.assessmentCurrent(world.id,version),true);
+		assert.deepEqual(planShown(page),CURRENT,'restoring the question brings the confirm button back');
+		assert.equal(catalogWrites,0,'a draft save is not a catalog write');
+		assert.equal(ui.renders,0,'the material library is not rebuilt');
+		assert.deepEqual(page.failures,[]);
+	}
+	finally{world.N.catalog=catalog;await page.close();}
+});
+
+test('a condition saved by the typing timer while its field keeps focus updates the plan status, and redraws the plan only when it changes',async()=>{
+	let world=await currentPlanWorld(),page=await world.openPage();
+	try{
+		await wait(60);assert.deepEqual(planShown(page),CURRENT);
+		let field=page.$('constraints'),typeAndPause=async value=>{field.value=value;field.dispatchEvent(new FakeEvent('input'));await until(()=>world.notebook.constraints===value,'the typing timer saved '+value);await world.quiet();};
+		field.focus();
+		await typeAndPause('两周');
+		assert.deepEqual(planShown(page),STALE,'stale once the timer saved the new conditions');
+		let shown=page.$('plan').firstElementChild;
+		await typeAndPause('三周');
+		assert.ok(page.$('plan').firstElementChild===shown,'a save that leaves the plan stale does not redraw it');
+		await typeAndPause('一周');
+		assert.deepEqual(planShown(page),CURRENT,'current again once a later save restores the conditions');
+		assert.equal(page.doc.activeElement,field,'the field keeps focus');assert.equal(field.value,'一周');
 		assert.deepEqual(page.failures,[]);
 	}
 	finally{await page.close();}

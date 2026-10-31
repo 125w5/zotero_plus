@@ -16,7 +16,7 @@ const folders=[{id:17,name:'生物'},{id:18,name:'通信'}];
 const legacy=()=>libraryWorld({folders,papers,project:{title:'旧版准备项目'},notebook:{view:'plan',workflowStage:'feasibility',ideaDraft:'低信噪比下的调制识别',constraints:'一周'}});
 const order=page=>page.doc.querySelector('.preparation-local-papers').children.map(row=>Number(row.dataset.paperId));
 
-test('restoring a preparation page without a folder or a confirmed scope writes nothing',async()=>{
+test('restoring a preparation page without a folder or a confirmed scope writes nothing, also when it closes',async()=>{
 	let world=legacy(),before=world.snapshot();
 	let page=await world.openPage();
 	try{
@@ -30,8 +30,40 @@ test('restoring a preparation page without a folder or a confirmed scope writes 
 		assert.equal(page.$('primary-keyword').value,shown.primaryKeyword,'the inferred scope is shown as a suggestion');
 		assert.deepEqual(order(page),[1,2,3],'the suggestion ranks the local list');
 		assert.deepEqual(page.failures,[]);assert.deepEqual(world.logged,[]);
+		// nb-selection:4: closing the untouched page saves no draft either.
+		await page.close();
+		assert.equal(world.snapshot(),before,'closing the untouched page leaves the project and notebook as they were');
+		assert.equal(world.counts.saves,0,'closing saves no project');
 	}
 	finally{await page.close();}
+});
+
+test('closing an untouched page with a manual scope writes nothing',async()=>{
+	let scope={domain:'communications',primaryKeyword:'调制识别'},world=libraryWorld({folders,papers,project:{title:'旧版准备项目'},notebook:{view:'plan',workflowStage:'feasibility',ideaDraft:'低信噪比下的调制识别',constraints:'一周',scopeOrigin:'manual',researchScope:scope}}),before=world.snapshot();
+	let page=await world.openPage();
+	await page.close();
+	assert.equal(world.snapshot(),before);
+	assert.equal(world.counts.saves,0);
+});
+
+test('a field edited, saved and typed back to its loaded text before closing is stored as typed',async()=>{
+	let world=legacy(),page=await world.openPage();
+	try{
+		let idea=page.$('idea');
+		idea.value='比较两种调制识别方法';idea.dispatchEvent(new FakeEvent('input'));
+		await until(()=>world.notebook.ideaDraft==='比较两种调制识别方法','草稿已保存');await world.quiet();
+		idea.value='低信噪比下的调制识别';idea.dispatchEvent(new FakeEvent('input'));
+	}
+	finally{await page.close();}
+	assert.equal(world.notebook.ideaDraft,'低信噪比下的调制识别','closing saves the text typed back');
+	assert.equal(world.project.researchGoal,'低信噪比下的调制识别');
+});
+
+test('a value the page puts into a field without an input event is saved when the page closes',async()=>{
+	let world=legacy(),page=await world.openPage();
+	try{page.$('idea').value='页面填入的研究问题';}
+	finally{await page.close();}
+	assert.equal(world.notebook.ideaDraft,'页面填入的研究问题');
 });
 
 test('the first paper choice on a project without a folder creates its folder and is saved',async()=>{

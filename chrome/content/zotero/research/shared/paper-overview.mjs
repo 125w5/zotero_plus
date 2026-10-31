@@ -97,15 +97,17 @@ export function installPaperOverview(E,{Zotero,IOUtils}){
    box.querySelector('.overview-abstract')?.remove();fullAbstract?.remove();fullAbstract=null;if(!abstract?.text)return;
    const section=el('section',undefined,'overview-abstract'),head=el('div',undefined,'paper-overview-heading'),label=el('h4','摘要');
    const expand=el('button','阅读全文','overview-abstract-open'),content=el('p',undefined,'overview-abstract-content');
-   expand.type='button';expand.title='查看完整双语摘要';expand.setAttribute('aria-label',expand.title);
+   expand.type='button';expand.title=chineseText(abstract.text)?'查看完整摘要':'查看完整双语摘要';expand.setAttribute('aria-label',expand.title);
    head.append(label,expand);section.append(head,content);section.dataset.source=abstract.kind;
    section.title=abstract.kind==='pdf'?'来自本地 PDF 的摘要':'题录中的摘要';box.append(section);
    // The overview shows the abstract's own sentences; only the full abstract view translates.
    // Hosts without item details (workbench preview, file details) have no abstract pane, so the
    // full view replaces the excerpt below this overview; a changed abstract or a new paper drops it.
+   // Focus on the hidden excerpt moves into the full view at once. A Chinese abstract already shown whole has no full view to open.
    const excerpt=abstractExcerpt(abstract.text);content.lang=chineseText(excerpt.text)?'zh':'en';content.dataset.view='excerpt';
-   const open=()=>{if(details)return details.selectResearchPane?.('abstract');if(section.hidden||!valid()||sequence!==abstractSequence)return null;section.hidden=true;fullAbstract=el('div',undefined,'overview-abstract-full');host.append(fullAbstract);return E.renderPaperAbstract(fullAbstract,item);};expand.onclick=open;
-   content.setAttribute('role','button');content.tabIndex=0;content.title='查看完整双语摘要';content.onclick=open;content.onkeydown=event=>{if(['Enter',' '].includes(event.key)&&!event.isComposing){event.preventDefault();void open();}};
+   const open=()=>{if(details)return details.selectResearchPane?.('abstract');if(section.hidden||!valid()||sequence!==abstractSequence)return null;const hadFocus=section.contains(doc.activeElement);section.hidden=true;fullAbstract=el('div',undefined,'overview-abstract-full');fullAbstract.tabIndex=-1;host.append(fullAbstract);if(hadFocus)fullAbstract.focus({preventScroll:true});return E.renderPaperAbstract(fullAbstract,item);};expand.onclick=open;
+   const repeats=!details&&chineseText(abstract.text)&&!excerpt.shortened;expand.hidden=repeats;
+   if(!repeats){content.setAttribute('role','button');content.tabIndex=0;content.title=expand.title;content.onclick=open;content.onkeydown=event=>{if(['Enter',' '].includes(event.key)&&!event.isComposing){event.preventDefault();void open();}};}
    const terms=[...(currentMetadata.tags||[]),...(abstract.keywords||[])];
    for(const segment of abstractKeywordSegments(excerpt.text,terms)){if(segment.keyword)content.append(el('mark',segment.text,'overview-keyword'));else content.append(doc.createTextNode(segment.text));}
   };

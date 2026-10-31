@@ -115,15 +115,25 @@ export function installPreparationTools({E,N,A,id,$,el,button,status,run,refresh
  // collectionIDs is the folder scope the saved papers are checked against: the
  // folders of the ticked papers, and of a 精读 or 结构参考 paper the scope does
  // not reach yet. A folder that only holds a mark already in scope adds nothing.
+ // While the ticked papers stay those saved and the saved folders still in the
+ // library reach every tick and mark, those folders are kept: an earlier page
+ // saved wider scopes, and 精选 or 精读 alone must not make the plan stale.
  function selectionChoice(){
-  const picked=library.papers.filter(row=>selectedPapers.has(row.id)),reach=new Set([N.project(id)?.paperCollectionID,...picked.flatMap(row=>row.collectionIDs)]);
+  const project=N.project(id)||{},saved=project.preparationSourceSelection,rows=new Map(library.papers.map(row=>[row.id,row])),same=(a,b)=>JSON.stringify([...a].sort())===JSON.stringify([...b].sort());
+  const folders=new Set(library.folders.map(row=>row.id)),kept=(saved?.collectionIDs||[]).filter(folderID=>folders.has(folderID)),scope=new Set([project.paperCollectionID,...kept]),marks=[...selectedPapers,...closePapers,...(structurePaperID==null?[]:[structurePaperID])];
+  const keep=!!saved&&same(saved.paperIDs,selectedPapers)&&marks.every(paperID=>rows.get(paperID)?.collectionIDs.some(folderID=>scope.has(folderID)));
+  const picked=library.papers.filter(row=>selectedPapers.has(row.id)),reach=new Set([project.paperCollectionID,...picked.flatMap(row=>row.collectionIDs)]);
   const marked=library.papers.filter(row=>!selectedPapers.has(row.id)&&(closePapers.has(row.id)||row.id===structurePaperID)&&!row.collectionIDs.some(folderID=>reach.has(folderID)));
-  return {collectionIDs:[...new Set([...picked,...marked].flatMap(row=>row.collectionIDs))],paperIDs:[...selectedPapers],featuredPaperIDs:[...featuredPapers],closeReadingPaperIDs:[...closePapers],structurePaperID};
+  return {collectionIDs:keep?kept:[...new Set([...picked,...marked].flatMap(row=>row.collectionIDs))],paperIDs:[...selectedPapers],featuredPaperIDs:[...featuredPapers],closeReadingPaperIDs:[...closePapers],structurePaperID};
  }
  // The parent queues the write per project, so it starts now, also on pagehide,
  // and the page never waits between two writes. A change made during a write
  // keeps the choice unsaved. A folder the save created is shown in the picker.
- function writeSelection(){
+ // A save that fails because the library changed while the page was open (a
+ // paper moved to another folder or out of all of them) reads the library again
+ // and is tried once more; after pagehide the first error stands.
+ function writeSelection(){return writeSelectionOnce().catch(async error=>{if(disposed)throw error;await refreshLocal();if(disposed||!library)throw error;return writeSelectionOnce();});}
+ function writeSelectionOnce(){
   const choice=selectionChoice(),changes=selectionChanges,folder=N.project(id)?.paperCollectionID;
   const saving=N.savePreparationChoice?N.savePreparationChoice(id,choice):(selectionQueue=selectionQueue.catch(()=>{}).then(()=>N.setPreparationSources(id,choice)).then(()=>N.saveReadingSelection(id,choice)));
   return Promise.resolve(saving).then(()=>{if(changes===selectionChanges){selectionSaved=true;selectionEdited=false;}if(!folder&&N.project(id)?.paperCollectionID&&refreshPapers&&!disposed)Promise.resolve(refreshPapers()).catch(error=>status(error.message));});
@@ -194,7 +204,10 @@ export function installPreparationTools({E,N,A,id,$,el,button,status,run,refresh
    const structureLabel=el('label','结构参考'),structure=el('select'),none=el('option','暂不选择');none.value='';structure.append(none);structure.setAttribute('aria-label','结构参考论文，仅学习结构');for(const paper of paperScope.papers){const option=el('option',paper.title);option.value=paper.id;structure.append(option);}structure.value=draftStructure??'';structure.onchange=()=>{draftStructure=structure.value?Number(structure.value):null;};structureLabel.append(structure);reading.append(structureLabel);d.append(reading);
    const info=feedback(d);info.textContent=[...failures.map(row=>'下载失败：'+row.title+' · '+row.error),...(result.failures||[]).map(row=>'整理未完成：'+row.title+' · '+row.error),...(result.recommendationError?['用途建议未完成：'+result.recommendationError+'；可手动选择。']:[])].join('\n');const footer=el('div');footer.className='preparation-dialog-actions';
    if(apply)button('暂不应用，保留现有正文',()=>{d.returnValue='skip';d.close();resolve([]);},footer);else button('返回',()=>d.close(),footer);
-   const accept=button(apply?'应用所选并进入装配':'保存准备素材',async()=>{accept.disabled=true;try{await N.savePreparationMaterialSelection(id,[...selected]);await N.saveReadingSelection(id,{closeReadingPaperIDs:[...draftClose],structurePaperID:draftStructure});closePapers=new Set(draftClose);structurePaperID=draftStructure;d.returnValue='saved';d.close();status('已选择 '+selected.size+' 份完整素材'+(apply?'':'；进入装配时可确认应用'));resolve([...selected]);renderLocal();render();}catch(error){info.textContent=error.message;accept.disabled=false;}},footer);accept.className='primary';d.append(footer);d.addEventListener('close',()=>{if(!['saved','skip'].includes(d.returnValue))resolve(null);},{once:true});
+   // The confirmed marks become the page's and are saved through the queued
+   // paper-choice save, after an autosave that still holds the earlier marks.
+   // A failed save puts the page's marks back.
+   const accept=button(apply?'应用所选并进入装配':'保存准备素材',async()=>{accept.disabled=true;const keptClose=closePapers,keptStructure=structurePaperID;try{await N.savePreparationMaterialSelection(id,[...selected]);closePapers=new Set(draftClose);structurePaperID=draftStructure;await writeSelection();d.returnValue='saved';d.close();status('已选择 '+selected.size+' 份完整素材'+(apply?'':'；进入装配时可确认应用'));resolve([...selected]);renderLocal();render();}catch(error){closePapers=keptClose;structurePaperID=keptStructure;renderLocal();info.textContent=error.message;accept.disabled=false;}},footer);accept.className='primary';d.append(footer);d.addEventListener('close',()=>{if(!['saved','skip'].includes(d.returnValue))resolve(null);},{once:true});
   });
  }
  async function chooseAssemblyMaterials(){const state=N.state(id),suggestions=state.materialSuggestions||[],available=new Map([...Object.values(A.assetLibrary()),...N.materials(id)].map(row=>[row.id,row]));if(!suggestions.length)return [];return showMaterials({suggestions:suggestions.filter(row=>available.has(row.materialID)),materials:[...available.values()],failures:collectionFailures(state)},{apply:true});}

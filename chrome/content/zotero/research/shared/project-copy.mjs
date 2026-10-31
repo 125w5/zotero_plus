@@ -7,7 +7,9 @@ import { threadContext, chapterBasis, threadDigest } from './research-thread.mjs
 import { DIRECTION_VERSION, directionThreadSignature, directionSignature, assertDraftBatchCurrent } from './assembly-direction.mjs';
 import { frameworkStructure, frameworkUnitSignature, frameworkReviewSignature } from './writing-framework.mjs';
 import { projectTaskBasis } from './manuscript-assessment.mjs';
-import { captureWritingPreview } from './assembly-writing-preview.mjs';
+import { captureWritingPreview, assertWritingPreviewCurrent } from './assembly-writing-preview.mjs';
+import { layoutSnapshot, applyLayoutProposal } from './manuscript-layout.mjs';
+import { selectionContextVersion, assertSelectionTargetCurrent } from '../manuscript/selection-target.mjs';
 
 let attempt = (fn) => {
 	try {
@@ -16,6 +18,55 @@ let attempt = (fn) => {
 	catch {
 		return undefined;
 	}
+};
+let passes = (fn) => {
+	try {
+		fn();
+		return true;
+	}
+	catch {
+		return false;
+	}
+};
+
+// One record of p.proposals, as copied (row) and as the original stores it
+// (old). Returns its replacement in the copy, or undefined to keep row as
+// copied. A record the editor still acts on names the project: a pending one
+// moves to the copy, so a stale one shows the original's message there, and
+// the hash it stores is recomputed only where it is current for the original;
+// the result must pass the same check in the copy. An adopted selection edit
+// moves to the copy, so 撤回修改 works there; an adopted rewrite does not name it.
+let restampProposal = (source, target, old, row) => {
+	let p0 = source.project, p1 = target.project, next = JSON.parse(JSON.stringify(row));
+	if (row.kind === 'assembly-writing-preview') {
+		// A version 1 candidate keeps a fingerprint that is not recomputed here.
+		if (row.status !== 'pending' || row.capture?.projectID !== p0.id || row.capture.version === 1) return undefined;
+		next.capture.projectID = p1.id;
+		if (!passes(() => assertWritingPreviewCurrent(p0, old.capture))) return next;
+		let fresh = captureWritingPreview(p1, { blockID: row.capture.blockID, sectionID: row.capture.sectionID, instruction: row.capture.instruction });
+		Object.assign(next.capture, { title: fresh.title, fingerprint: fresh.fingerprint });
+		assertWritingPreviewCurrent(p1, next.capture);
+		return next;
+	}
+	if (row.kind === 'layout') {
+		if (row.status !== 'pending' || row.projectID !== p0.id) return undefined;
+		next.projectID = p1.id;
+		if (!passes(() => applyLayoutProposal(p0, old))) return next;
+		next.documentSnapshot = layoutSnapshot(p1);
+		applyLayoutProposal(p1, next);
+		return next;
+	}
+	if (row.kind === 'assembly-selection-preview') {
+		if (!['pending', 'accepted'].includes(row.status) || row.target?.projectID !== p0.id) return undefined;
+		next.target.projectID = p1.id;
+		// The chapter reads, as the editor passes them (readingOptions), decide
+		// the context of a read point and of a chapter with a writing plan.
+		if (row.status !== 'pending' || !passes(() => assertSelectionTargetCurrent(p0, old.target, { readings: source.readings }))) return next;
+		next.target.contextVersion = selectionContextVersion(p1, next.target, { readings: target.readings });
+		assertSelectionTargetCurrent(p1, next.target, { readings: target.readings });
+		return next;
+	}
+	return undefined;
 };
 
 export function restampProjectCopy(source, target) {
@@ -138,6 +189,27 @@ export function restampProjectCopy(source, target) {
 		assertDraftBatchCurrent(p1, next);
 		p1.draftBatch = next;
 		return true;
+	});
+	// Last, on the copy as the steps above leave it, which is what the editor
+	// checks. Rows pair by index (remap keeps the order) and by id; a row that
+	// fails is reported and kept as copied, and the other rows go on.
+	step('proposals', () => {
+		let rows = p1.proposals, touched = false;
+		if (!Array.isArray(rows)) return false;
+		for (let [index, row] of rows.entries()) {
+			let old = p0.proposals?.[index];
+			if (!row || !old || old.id !== row.id || old.kind !== row.kind) continue;
+			try {
+				let next = restampProposal(source, target, old, row);
+				if (!next) continue;
+				rows[index] = next;
+				touched = true;
+			}
+			catch (error) {
+				report.failed.push('proposals ' + row.id + ': ' + error.message);
+			}
+		}
+		return touched;
 	});
 	return report;
 }

@@ -1,7 +1,9 @@
 import {formatSelection,breakParagraph} from './editor-interactions.mjs';
 import {clearTableCellContent} from '../shared/table-cell-content.mjs';
 import {U,$,el,button,field,modal,status,snapshot,changed,persist,selectBlock} from './main.mjs';
-export function history(redo=false){const preferOutline=!!document.activeElement?.closest('[data-outline-block],.section-card,[data-material]');const from=redo?U.redo:U.undo,to=redo?U.undo:U.redo;if(!from.length)return;to.push(U.M.clone(U.p));U.p=from.pop();U.lastTyping=0;U.textSelection=null;changed({editor:true});const outline=document.querySelector(`[data-outline-block="${U.p.ui.blockID}"]`),editor=document.querySelector(`[data-id="${U.p.ui.blockID}"] .editable`)||document.querySelector(`[data-id="${U.p.ui.blockID}"] .cell-editor`);(preferOutline?outline||editor:editor||outline)?.focus();status(redo?'已重做':'已撤销；来源资料未改变');}
+import {materialSearchScope} from './material-research-filters.mjs';
+// The library search follows the restored project's saved browse keyword before the redraw, as when the project opens.
+export function history(redo=false){const preferOutline=!!document.activeElement?.closest('[data-outline-block],.section-card,[data-material]');const from=redo?U.redo:U.undo,to=redo?U.undo:U.redo;if(!from.length)return;to.push(U.M.clone(U.p));U.p=from.pop();U.materialQuery=materialSearchScope(U.p).primaryKeyword;U.lastTyping=0;U.textSelection=null;changed({editor:true});const outline=document.querySelector(`[data-outline-block="${U.p.ui.blockID}"]`),editor=document.querySelector(`[data-id="${U.p.ui.blockID}"] .editable`)||document.querySelector(`[data-id="${U.p.ui.blockID}"] .cell-editor`);(preferOutline?outline||editor:editor||outline)?.focus();status(redo?'已重做':'已撤销；来源资料未改变');}
 function selection(){const ids=U.p.ui.selectedBlocks||[];return ids.length?ids:[U.p.ui.blockID].filter(Boolean);}
 export function removeEmptyTextBlock(target,key='Delete'){
  const node=target.closest('.block'),b=U.p.blocks.find(value=>value.id===node?.dataset.id);
@@ -11,7 +13,10 @@ export function removeEmptyTextBlock(target,key='Delete'){
  const editor=next&&document.querySelector(`[data-id="${next.id}"] .editable`);if(editor){editor.focus();const range=document.createRange();range.selectNodeContents(editor);range.collapse(key!=='Backspace');const selected=window.getSelection();selected.removeAllRanges();selected.addRange(range);}else $('canvas').focus();status('已移除空白内容框 · Ctrl+Z 撤销；素材来源保留');return true;
 }
 export function removeSelection(target){
- const section=target.closest('[data-section].section-card,[data-section].outline-section'),material=target.closest('[data-material]');
+ // A usage row unlinks only that use; a block row inside a section or material card removes only its block.
+ const use=target.closest('.evidence-use[data-outline-block]');
+ if(use){const b=U.p.blocks.find(x=>x.id===use.dataset.outlineBlock),card=use.closest('[data-material]');if(!b||!card)return;snapshot();b.materials=b.materials.filter(x=>x.id!==card.dataset.material);b.review='missing';changed({editor:true});$('canvas').focus();status('已解除这处来源关联。Ctrl+Z 恢复；原始资料保留。');return;}
+ const row=target.closest('[data-outline-block]'),section=!row&&target.closest('[data-section].section-card,[data-section].outline-section'),material=!row&&target.closest('[data-material]');
  if(section){const s=U.p.sections.find(s=>s.id===section.dataset.section),box=modal('移除章节');box.append(el('p',`将移除“${s.title}”及其子模块。素材库和 Zotero 文献保留，可按 Ctrl+Z 撤销。`));button('移除章节及子模块',()=>{snapshot();const ids=new Set([s.id]);let added=true;while(added){added=false;for(const x of U.p.sections)if(ids.has(x.parentID)&&!ids.has(x.id)){ids.add(x.id);added=true;}}U.p.sections=U.p.sections.filter(x=>!ids.has(x.id));U.p.blocks=U.p.blocks.filter(b=>!ids.has(b.sectionID));U.p.ui.sectionID=U.p.sections[0]?.id||null;U.p.ui.blockID=null;$('popover').close();changed({editor:true});$('canvas').focus();},box);return;}
  snapshot();if(material){const id=material.dataset.material;U.p.materials=U.p.materials.filter(m=>m.id!==id);for(const b of U.p.blocks)if(b.materials.some(m=>m.id===id)){b.materials=b.materials.filter(m=>m.id!==id);b.review='missing';}U.p.ui.materialID=null;}
  else{const ids=selection();if(U.p.blocks.some(b=>ids.includes(b.id)&&b.locked)){U.undo.pop();throw Error('所选模块已锁定，请先解锁');}U.p.blocks=U.p.blocks.filter(b=>!ids.includes(b.id));U.p.ui.blockID=null;U.p.ui.selectedBlocks=[];}

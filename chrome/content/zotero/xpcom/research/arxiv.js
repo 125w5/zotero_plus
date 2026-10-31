@@ -31,8 +31,12 @@
   }
   await E.store.update(s=>{s.academicSearch||={};s.academicSearch['arxiv:'+query]={at:Date.now(),results};});return results;
  };
- // A saved PDF of this exact arXiv version whose file is still on disk.
- const versionPDF=async(item,id)=>{for(const aid of item.getAttachments()){const a=await Zotero.Items.getAsync(aid);if(a.isPDFAttachment()&&P.arxivID(a.getField('url'))===id&&await a.getFilePathAsync()&&await IOUtils.exists(await a.getFilePathAsync()))return a;}return null;};
+ // A saved PDF of this arXiv paper whose file is still on disk. A copy of exactly this version
+ // comes first. Else, when either number names no version, the same paper matches: a number
+ // without a version is the latest, so the newest saved version is taken. A copy saved without
+ // a version is then reused even if a newer version came out after it was fetched; that is the
+ // price of not downloading the same paper twice. Two named versions are two PDFs.
+ const versionPDF=async(item,id)=>{let v=/v(\d+)$/i,base=id.replace(v,''),best=null,rank=-1;for(let aid of item.getAttachments()){let a=await Zotero.Items.getAsync(aid),saved=a?.isPDFAttachment()&&P.arxivID(a.getField('url'));if(!saved||saved!==id&&!(saved.replace(v,'')===base&&(!v.test(saved)||!v.test(id))))continue;let path=await a.getFilePathAsync();if(!path||!await IOUtils.exists(path))continue;if(saved===id)return a;let n=Number(saved.match(v)?.[1]||0);if(n>rank){best=a;rank=n;}}return best;};
  E.importAcademicPDF=async(record,options={})=>{const{open=true,onProgress=()=>{},signal}=options,id=P.arxivID(record.id)||P.arxivID(record.url)||P.arxivID(record.pdf);if(!id)throw Error('无法识别 arXiv PDF 编号');const target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID||Zotero.getActiveZoteroPane().getSelectedLibraryIDs()[0]||Zotero.Libraries.userLibraryID,collectionID:options.collectionID},key=target.libraryID+':'+id;onProgress({stage:'lookup',text:'正在匹配文库…'});if(downloads.has(key)){const result=await downloads.get(key);if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);onProgress({stage:'saved',text:'PDF 已保存'});if(open)await Zotero.Reader.open(result.attachmentID);return{...result,...target,reused:true};}
   // As in obtainOpenPaper, the record is filed only after its PDF has arrived and
   // passed the PDF check; a failed download leaves the library as it was.

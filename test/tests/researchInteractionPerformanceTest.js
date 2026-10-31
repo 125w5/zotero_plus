@@ -7,18 +7,30 @@ describe('Research native interaction performance in a large workspace', functio
 	const BIG_ID = 'perf-ix-manuscript-big';
 	const TYPE_BLOCK_ID = 'perf-ix-block-big-0000';
 	const PHASE_QUERY = '相位噪声补偿';
-	const TARGET_BYTES = 40 * 1024 * 1024;
+	// The measured daily workspace (docs/freeze-and-research-flow-repair-2026-10-29.md,
+	// section 1): 44.8 MB of JSON, of which researchMaterials 17.8 MB in 1188 cards,
+	// manuscriptDocuments 6.6 MB and manuscripts 5.2 MB. The seed follows that
+	// split; the paper cache only fills what the other branches leave.
+	const TARGET_BYTES = 44.8e6;
+	let COMPOSITION = { source: 'docs/freeze-and-research-flow-repair-2026-10-29.md 第一节', bytes: TARGET_BYTES, researchMaterials: { bytes: 17.8e6, cards: 1188 }, manuscriptDocuments: { bytes: 6.6e6 }, manuscripts: { bytes: 5.2e6 } };
+	// Extra-field marks on the native rows this suite creates, so rows left by a
+	// killed run are found again (manuscript.js marks project rows the same way).
+	const PROJECT_MARKER = 'EasySch-Project: ' + PREFIX;
+	const PAPER_MARKER = 'EasySch-Perf-Paper: ' + PREFIX;
+	const INDEXED_PAPERS = 64;
 	const FREEZE_MS = 1000;
 	const TAIL_MS = 900;
 	const SAVED_LABEL = '已保存到本机';
 	const SAVING_LABEL = '保存中…';
 	// Generous ceilings: about twice the longest wait the existing research
-	// suites allow for the same route, plus room for a 40 MiB workspace.
+	// suites allow for the same route, plus room for a 45 MB workspace.
 	let LIMITS = { coldOpen: 45000, switchPage: 20000, openProject: 60000, stage: 20000, typing: 45000, material: 20000, notebookOpen: 45000, notebookTyping: 30000, storage: 30000 };
 	let { setTimeout: timerSetTimeout, clearTimeout: timerClearTimeout } = ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
+	let Sections = ChromeUtils.importESModule('chrome://zotero/content/research/shared/article-section-materials.mjs');
+	let { hasChinese } = ChromeUtils.importESModule('chrome://zotero/content/research/shared/material-language.mjs');
 	let win, folder, workspacePath, scopeKey = '', scopeSessionID = '';
 	let now = () => window.performance.now();
-	let stubs = [], commits = [], offCommits = null, cleanup = {}, phaseIDs = new Set();
+	let stubs = [], commits = [], offCommits = null, cleanup = {}, phaseIDs = new Set(), fragmentIDs = new Set();
 	let counters = { model: 0, network: 0, blocked: [], prompts: [], saveStarted: 0, saveDone: 0, saveMs: 0 };
 	let report = {
 		type: '大工作区原生交互性能：真实 Gecko 界面与合成数据；模型、联网与提示框为受控桩',
@@ -26,7 +38,7 @@ describe('Research native interaction performance in a large workspace', functio
 		workspace: {},
 		setup: {},
 		limitsMs: LIMITS,
-		limitBasis: '总耗时上限约为现有研究套件同类等待的两倍：工作区框架探测 20 s（R/shared/library-workspace.mjs），researchLibraryWorkspace、researchAssemblyWorkflow、researchManualAuthoring、researchMaterialBrowser 的等待循环 16-60 s，再为 40 MiB 工作区留余量。',
+		limitBasis: '总耗时上限约为现有研究套件同类等待的两倍：工作区框架探测 20 s（R/shared/library-workspace.mjs），researchLibraryWorkspace、researchAssemblyWorkflow、researchManualAuthoring、researchMaterialBrowser 的等待循环 16-60 s，再为约 45 MB 的工作区留余量。',
 		freezeThresholdMs: FREEZE_MS,
 		heartbeatMethod: {
 			window: 'win.setInterval(10 ms)，与 researchStoragePerformanceTest 相同。每个间隔按结束时刻归入 main（触发到就绪）或 tail（就绪后到防抖保存写完）。',
@@ -40,7 +52,7 @@ describe('Research native interaction performance in a large workspace', functio
 			wrapped: [
 				'装配页 ManuscriptUI（U）自身的函数属性，以及控制器对象 workflow、directionWorkspace、chapterReads、chapterReadView、selectionAssistant、writingRibbon、journalFormatPicker、aiOrb 等的函数属性。07 在 window.ManuscriptUI 赋值时接管 U，init 期间再补扫后来挂上的属性（wrapped.uiScans 为扫描次数）。',
 				'Zotero.Research 白名单函数（见测试文件 PROFILE_SERVICES）：manuscripts、notebook、store、workbenchConversations、assets、corpus 下装配页经属性查找调用的成员，以及 renderContent、previewImage、materialSourceInfo 等。manuscripts.all/readings/taskPlan/assetLibrary 与 notebook.state/materials 不包：别的成员靠引用比较它们来决定是否返回冻结的共享视图，包了会让它们改为克隆。',
-				'装配框架 realm 的布局读取：Element/Range 的 getBoundingClientRect、getClientRects，scrollIntoView、focus，client*/scroll*/offset*/innerText getter 与 scrollTop setter，window.getComputedStyle、CSSStyleDeclaration.getPropertyValue 与 paperOverflows 读取的 style.* getter。另计 JSON.stringify/parse、replaceChildren 的耗时与 createElement/createElementNS 的次数。',
+				'装配框架 realm 的布局读取：Element/Range 的 getBoundingClientRect、getClientRects，scrollIntoView、focus，client*/scroll*/offset*/innerText getter 与 scrollTop setter，window.getComputedStyle、CSSStyleDeclaration.getPropertyValue 与分页测量 measurePapers（editor.mjs）读取的 style.* getter。另计 JSON.stringify/parse、replaceChildren 的耗时与 createElement/createElementNS 的次数。',
 				'框架与主窗口 docShell 的 nsIReflowObserver：每次重排的耗时，并在重排时取 JS 调用栈。'
 			],
 			reading: {
@@ -55,7 +67,7 @@ describe('Research native interaction performance in a large workspace', functio
 				coverage: '心跳最长的几个间隔：coveredMs 为最外层被包装调用占用的时间；spanSelfMs 为测试点击区段里未被包装的同步代码；outsideMs 为两者之外的时间（init 等模块内的直接调用、await 后的续体、GC、其他窗口）；marks 为落在该间隔里的时间点。',
 				overheadMs: '取调用栈等探针自身的开销，已从 selfMs 与 totalMs 扣除，但仍包含在心跳间隔里。'
 			},
-			blindSpots: '模块内部的直接调用不经过属性查找，无法包装：main.mjs 的 init 直接调用 applyPanels、renderNavigation、renderEditor、renderChat、renderAssessment；装配阶段按钮直接调用 assembly-workflow.mjs 内部的 setStep（不经过 U.workflow.setStep，所以 08-11 没有 setStep 这一行，它的自身耗时在点击区段的 selfMs 里），setStep 又直接调用 applyPanels、renderNavigation 与内部 refresh；editor.mjs 的 paperOverflows、editable 与 assembly-tools.mjs 的 renderAssembly；material-library.mjs 的 renderResults、allMaterials；以及 shared 下的纯函数（assessmentSignature、threadContext、catalogFor 等）。它们的耗时计入调用方或点击区段的 selfMs，或 coverage.outsideMs；它们引起的布局读取与重排仍会在 layout.callers、reflows.callers 里带文件与行号出现。'
+			blindSpots: '模块内部的直接调用不经过属性查找，无法包装：main.mjs 的 init 直接调用 applyPanels、renderNavigation、renderEditor、renderChat、renderAssessment；装配阶段按钮直接调用 assembly-workflow.mjs 内部的 setStep（不经过 U.workflow.setStep，所以 08-11 没有 setStep 这一行，它的自身耗时在点击区段的 selfMs 里），setStep 又直接调用 applyPanels、renderNavigation 与内部 refresh；editor.mjs 的分页：renderEditor 直接调用 paginatePapers，它对全部页面做一次 measurePapers 测量，再用导出的纯函数 planPaperPages（内含 paperOverflows）排页、placePapers 移动正文块，这几步都不经过属性查找；U.paginateCanvas 只在画布由隐藏变为显示时补做分页，而 renderEditor 每次渲染都把它重新赋值为未包装的原函数，所以它出现在 wrapped.replacedDuringRun 里，分页的布局读取以 measurePapers 的调用栈出现在 layout.callers；editable 与 assembly-tools.mjs 的 renderAssembly；material-library.mjs 的 renderResults、allMaterials；以及 shared 下的纯函数（assessmentSignature、threadContext、catalogFor 等）。它们的耗时计入调用方或点击区段的 selfMs，或 coverage.outsideMs；它们引起的布局读取与重排仍会在 layout.callers、reflows.callers 里带文件与行号出现。'
 		},
 		environment: {},
 		calibration: [],
@@ -65,13 +77,15 @@ describe('Research native interaction performance in a large workspace', functio
 		limitations: []
 	};
 	report.limitations.push(
-		'工作区为合成数据：按产品接口与现有测试夹具的数据形状写入（manuscripts、researchMaterials、researchNotebooks、researchWorkbench、papers），内容由固定种子生成，不读取用户的真实 workspace.json。',
+		'工作区为合成数据，内容由固定种子生成，不读取用户的真实 workspace.json。researchMaterials、manuscriptDocuments、manuscripts 三个分支按真实工作区的实测大小造（见 workspace.composition）；researchWorkbench、researchNotebooks 的大小是估计值；papers 缓存只补足剩余体积，被测操作不读它，只在每次写盘和 02 冷启动的整库复制里经过。各分支实际字节数见 workspace.branches。',
+		'已索引论文是 ' + INDEXED_PAPERS + ' 条原生期刊文章及其 PDF 附件行，附件没有文件：原文检索、排除标记与来源标签只读条目行，不触发全文索引。论文原文写入 manuscriptIndex/manuscriptDocuments，章节卡由产品的 sectionMaterial 生成，旧版机器片段由产品自己的 ensureArticleSectionMaterials 归并；fileSignature 为合成值（queueArticle 是受控桩）。中文说明的键按 manuscript-index.js 内部的 descriptionKey 公式计算，能否被 summaryFor 读到见 setup.seed.descriptionsResolved。',
 		'模型请求、联网检索、PDF 与图片整理、中文简述生成均为受控桩，调用次数见 counters；fetch 与 Zotero.HTTP.request 对外部主机一律拒绝并计数。',
 		'输入用 beforeinput + execCommand(insertText) 或 input 事件逐字模拟，不是真实输入法组合；Services.prompt 的 alert/confirm 被替换，防止模态框挂住套件。',
 		'心跳可能在隐藏或未激活的窗口里被节流：同时运行不受窗口节流的 Timer.sys.mjs 对照心跳并记录 rAF 帧数、document.hidden 与 hasFocus，判定方法见 heartbeatMethod。',
 		'素材列表的分批加载由 IntersectionObserver 驱动；窗口不绘制时可能不加载下一批，此时 extras.appended 为 false 只说明这一点，不判失败。',
 		'耗时受本机负载、磁盘与杀毒扫描影响。只有主线程间隔超过 1000 ms 或总耗时超过宽松上限才判失败，其余数字只记录。',
-		'07-11 的 profile 字段来自函数包装与重排观察（见 profileMethod）。探针本身有开销（profile.overheadMs），这几项的心跳间隔会略大于不带探针时；模块内部的直接调用无法包装，只能从调用栈与 coverage 推断。'
+		'07-11 的 profile 字段来自函数包装与重排观察（见 profileMethod）。探针本身有开销（profile.overheadMs），这几项的心跳间隔会略大于不带探针时；模块内部的直接调用无法包装，只能从调用栈与 coverage 推断。',
+		'种子直接写入数据目录的 workspace.json 与 zotero.sqlite，清理在 after()。进程在清理前被结束时，interaction-performance/seed-in-progress.json 会留下；本套件下次运行时在挂接窗口前清除残留（setup.recovery），但同一数据目录里先运行的其他套件不会清理，所以本套件应使用独立的数据目录运行。'
 	);
 	let sleep = ms => new Promise(resolve => timerSetTimeout(resolve, ms));
 	let nextFrame = () => new Promise((resolve) => {
@@ -132,7 +146,19 @@ describe('Research native interaction performance in a large workspace', functio
 		'The baseline uses handcrafted cumulant features with a support vector classifier.',
 		'Cross-device evaluation reuses the trained weights without any fine-tuning.',
 		'Ablation removes the attention block and reports the change at low SNR.',
-		'The authors note that the conclusion is limited to simulated channels.'
+		'The authors note that the conclusion is limited to simulated channels.',
+		'Carrier frequency offset is estimated from the preamble before the classifier runs.',
+		'The receiver front end samples the baseband signal at twice the symbol rate.',
+		'Training uses the Adam optimizer with an initial learning rate of 0.001.',
+		'Each frame contains 1024 complex samples drawn from a single transmission.',
+		'Multipath fading is simulated with a Rayleigh channel and three delay taps.',
+		'The convolutional encoder is followed by two recurrent layers and a linear head.',
+		'Results on the held-out recording session are reported separately from the simulated set.',
+		'The confusion matrix shows that higher-order constellations dominate the remaining errors.',
+		'Inference latency is measured on an embedded board with batch size one.',
+		'The dataset is split by capture session so that no recording appears in both partitions.',
+		'Compared with the cumulant baseline, the learned features degrade more gracefully at low SNR.',
+		'The limitations section lists the absence of over-the-air tests with moving receivers.'
 	];
 	let TOPICS = ['调制识别', '低信噪比', '跨设备验证', '消融实验', '多径衰落', '推理延迟', '数据划分', '注意力模块'];
 	let pick = list => list[Math.floor(random() * list.length)];
@@ -147,8 +173,8 @@ describe('Research native interaction performance in a large workspace', functio
 	let withPhase = (body, on) => (on ? body.slice(0, 60) + '本段记录' + PHASE_QUERY + '在低信噪比下的效果。' + body.slice(60) : body);
 	let CATEGORIES = ['背景与问题', '方法', '实验设置', '结果', '讨论', '局限'];
 	let KINDS = ['semantic', 'annotation', 'experiment', 'note'];
-	let card = (id, index, phase, owner) => {
-		let M = E.manuscripts.model, sourceText = withPhase(text(500 + Math.floor(random() * 700)), phase);
+	let card = (id, index, phase, owner, length = 500 + Math.floor(random() * 700)) => {
+		let M = E.manuscripts.model, sourceText = withPhase(text(length), phase);
 		let m = M.material({
 			id,
 			kind: KINDS[index % KINDS.length],
@@ -165,8 +191,11 @@ describe('Research native interaction performance in a large workspace', functio
 		if (phase) phaseIDs.add(id);
 		return m;
 	};
+	// Library card lengths by kind, in KINDS order: annotations are short
+	// highlights, experiment records and notes run longer.
+	let LIBRARY_LENGTHS = [[780, 600], [170, 170], [1300, 950], [950, 780]];
 	let libraryCard = (index) => {
-		let id = PREFIX + 'asset-' + pad(index), m = card(id, index, index % 9 === 4, PREFIX + 'library');
+		let [low, spread] = LIBRARY_LENGTHS[index % KINDS.length], id = PREFIX + 'asset-' + pad(index), m = card(id, index, index % 9 === 4, PREFIX + 'library', low + Math.floor(random() * spread));
 		m.assetID = id;
 		return m;
 	};
@@ -180,7 +209,8 @@ describe('Research native interaction performance in a large workspace', functio
 			title: '第' + (i + 1) + '章 ' + SECTION_TOPICS[i % SECTION_TOPICS.length] + (i >= SECTION_TOPICS.length ? '（续）' : ''),
 			conclusion: ''
 		}));
-		p.materials = Array.from({ length: 400 }, (_, i) => card(PREFIX + 'material-big-' + pad(i), i, i % 10 === 3, BIG_ID));
+		// Project materials are copies of library cards, chapter cards included.
+		p.materials = Array.from({ length: 400 }, (_, i) => card(PREFIX + 'material-big-' + pad(i), i, i % 10 === 3, BIG_ID, 850 + Math.floor(random() * 1000)));
 		let blocks = [], used = new Set();
 		for (let [s, section] of p.sections.entries()) {
 			let pool = p.materials.filter((_, i) => i % p.sections.length === s), count = s < 16 ? 15 : 14;
@@ -252,7 +282,10 @@ describe('Research native interaction performance in a large workspace', functio
 		}
 		return message;
 	});
-	let buildConversations = () => Array.from({ length: 6 }, (_, n) => {
+	// Conversation history of a researcher a few weeks in (an estimate; the
+	// measured composition does not break this branch out).
+	const CONVERSATIONS = 24;
+	let buildConversations = () => Array.from({ length: CONVERSATIONS }, (_, n) => {
 		let id = PREFIX + 'conversation-' + n;
 		let session = { id, title: n ? '合成研究对话 ' + n : '大项目装配讨论', messages: conversationMessages(id, 40), attachments: [], mode: 'auto', draft: '', createdAt: ago(60 * 24 * (n + 1)), updatedAt: ago(10 * (n + 1)) };
 		if (n) Object.assign(session, { origin: 'workbench', libraryScopeKey: scopeKey, libraryFolder: '我的文库', libraryFiles: [] });
@@ -276,6 +309,125 @@ describe('Research native interaction performance in a large workspace', functio
 			warnings: []
 		}))
 	});
+	// Indexed papers: native rows, the parsed text the article index keeps
+	// (manuscriptIndex, manuscriptDocuments) and the cards built from it.
+	// 'sections' papers carry current chapter cards, 'legacy' papers only older
+	// one-paragraph machine fragments, which ensureArticleSectionMaterials groups
+	// into chapter cards, and 'mixed' papers both.
+	// Same value as PARSE in manuscript-index.js; chapter card IDs hash it.
+	const PARSE_VERSION = 'pymupdf-blocks-v3';
+	let EN_SECTIONS = [['Abstract', 2], ['1 Introduction', 7], ['2 Related Work', 8], ['3 Proposed Method', 9], ['3.1 Signal Model', 6], ['3.2 Network Architecture', 6], ['4 Experiments', 4], ['4.1 Dataset and Setup', 7], ['5 Results', 10], ['6 Discussion', 6], ['7 Conclusion', 3], ['References', 14]];
+	let CN_SECTIONS = [['摘要', 2], ['1 引言', 7], ['2 相关工作', 8], ['3 方法', 9], ['3.1 信号模型', 6], ['3.2 网络结构', 6], ['4 实验', 4], ['4.1 数据集与实验设置', 7], ['5 结果', 10], ['6 讨论', 6], ['7 结论', 3], ['参考文献', 14]];
+	let EN_TOPICS = ['automatic modulation classification', 'low-SNR signal recognition', 'cross-device generalization', 'attention ablation', 'multipath fading channels', 'embedded inference latency', 'dataset partitioning', 'attention-based receivers'];
+	let JOURNALS = ['IEEE Transactions on Wireless Communications', 'IEEE Communications Letters', 'IEEE Transactions on Signal Processing', 'IEEE Transactions on Cognitive Communications and Networking'];
+	let CN_JOURNALS = ['电子与信息学报', '通信学报', '信号处理'];
+	// Article groups (articleSections order: abstract, then chapters 1-7) that
+	// hold older machine fragments. A group listed twice gets two fragments.
+	let FRAGMENT_GROUPS = { legacy: [0, 1, 2, 3, 3, 4, 5, 5], mixed: [1, 3, 4, 5, 6, 7] };
+	let paperPlan = (d) => {
+		let chinese = d % 4 === 1 || d % 16 === 3, topic = d % TOPICS.length;
+		return {
+			index: d,
+			kind: d % 4 === 3 ? 'legacy' : d % 8 === 2 ? 'mixed' : 'sections',
+			chinese,
+			title: chinese ? TOPICS[topic] + '中的' + TOPICS[(topic + 3) % TOPICS.length] + '研究（合成论文 ' + (d + 1) + '）' : 'Synthetic indexed study ' + (d + 1) + ' on ' + EN_TOPICS[topic]
+		};
+	};
+	// PDF coordinates with the fractional digits PyMuPDF writes.
+	let paperRect = (d, i) => {
+		let top = 72.0347 + (i % 6) * 112.417 + (d % 7) * 0.8131;
+		return [56.6929 + (d % 3) * 1.4173, top, 538.5827 - (d % 5) * 0.7087, top + 96.5512 + (i % 4) * 3.2188];
+	};
+	// Paragraphs in the shape services/research-engine/manuscript/pdf_materials.py returns.
+	let paperParagraphs = (plan) => {
+		let rows = [], count = 0;
+		for (let [section, n] of plan.chinese ? CN_SECTIONS : EN_SECTIONS) {
+			let references = /^(References|参考文献)$/.test(section);
+			for (let j = 0; j < n; j++) {
+				let i = count++, pageIndex = Math.floor(i / 6), sourceText;
+				if (references) sourceText = '[' + (j + 1) + '] A. Author and B. Author, "Synthetic reference ' + (j + 1) + '," ' + JOURNALS[(plan.index + j) % JOURNALS.length] + ', vol. ' + (60 + j) + ', pp. ' + (100 + j * 13) + '-' + (112 + j * 13) + ', 2024.';
+				// A table caption: kept by the parser, too short for passage search.
+				else if (j === n - 1 && /^4\.1 /.test(section)) sourceText = plan.chinese ? '表 ' + (plan.index % 9 + 1) + ' 列出了零到二十分贝各信噪比下的样本数量、采集批次与接收机编号' : 'Table ' + (plan.index % 9 + 1) + '. Samples per SNR level and session.';
+				else sourceText = plan.chinese ? text(265 + Math.floor(random() * 370), 0.1) : text(760 + Math.floor(random() * 1050), 1);
+				rows.push({ sourceRecordID: 'page-' + pageIndex + '-block-' + i, sourceText, pageIndex, section, position: { pageIndex, rects: [paperRect(plan.index, i)] } });
+			}
+		}
+		// One results paragraph of every Chinese paper reports the queried method.
+		if (plan.chinese) {
+			let row = rows.find(item => item.section === '5 结果');
+			row.sourceText = withPhase(row.sourceText, true);
+		}
+		return rows;
+	};
+	let paperHash = d => PREFIX + 'pdf-' + pad(d) + '-' + (Math.imul(d + 1, 2654435761) >>> 0).toString(16).padStart(8, '0').repeat(7);
+	let fragmentCard = (plan, native, pdfHash, row, n) => {
+		let id = PREFIX + 'fragment-' + pad(plan.index) + '-' + n, topic = TOPICS[(plan.index + n) % TOPICS.length];
+		fragmentIDs.add(id);
+		return E.manuscripts.model.material({
+			id,
+			assetID: id,
+			kind: 'semantic',
+			aiGenerated: true,
+			revision: 1,
+			title: plan.chinese ? topic + ' · ' + row.section : row.section + ' · ' + plan.title,
+			summary: plan.chinese ? '这一段' + text(60 + Math.floor(random() * 60), 0) : pick(EN) + ' ' + pick(EN),
+			section: row.section,
+			category: '待整理',
+			verification: 'unverified',
+			paperTitle: plan.title,
+			sourceVersion: pdfHash,
+			sourceRecordID: row.sourceRecordID,
+			explicitTags: [topic],
+			createdAt: ago(60 * 24 * (120 + plan.index)),
+			anchor: { paperItemID: native.paperItemID, attachmentID: native.attachmentID, pageIndex: row.pageIndex, position: JSON.parse(JSON.stringify(row.position)), sourceText: row.sourceText, sourceVersion: pdfHash, section: row.section }
+		});
+	};
+	let indexedPaper = (plan, native) => {
+		let { attachmentID, paperItemID } = native, pdfHash = paperHash(plan.index), documentKey = pdfHash + ':' + PARSE_VERSION;
+		let paragraphs = paperParagraphs(plan), groups = Sections.articleSections(paragraphs), cards = [], fragments = [], seen = new Map();
+		if (plan.kind !== 'legacy') {
+			for (let group of groups) {
+				let id = 'section-' + E.assets.key([attachmentID, pdfHash, PARSE_VERSION, Sections.ARTICLE_SECTION_VERSION, group.key]);
+				let joined = group.paragraphs.map(row => row.sourceText).join('\n\n');
+				let summary = '本章' + (joined.includes(PHASE_QUERY) ? '报告了' + PHASE_QUERY + '在低信噪比下的效果，' : '') + text(100 + Math.floor(random() * 120), 0);
+				cards.push(E.manuscripts.model.material(Sections.sectionMaterial(group, { attachmentID, paperItemID, paperTitle: plan.title, pdfHash, parseVersion: PARSE_VERSION, id, summary, explicitTags: TOPICS.filter(tag => joined.includes(tag)), inferredTags: [{ label: TOPICS[(plan.index + cards.length) % TOPICS.length], status: 'ai-suggested' }] })));
+			}
+		}
+		for (let at of FRAGMENT_GROUPS[plan.kind] || []) {
+			let rows = groups[at].paragraphs.filter(row => row.sourceText.trim().length >= 45 && !row.sourceText.includes(PHASE_QUERY)), n = seen.get(at) || 0;
+			seen.set(at, n + 1);
+			fragments.push(fragmentCard(plan, native, pdfHash, rows[(plan.index * 5 + n * Math.ceil(rows.length / 2)) % rows.length], fragments.length));
+		}
+		let index = { status: 'complete', title: plan.title, documentKey, pdfHash, parseVersion: PARSE_VERSION, phase: '已入库', progress: groups.length + '/' + groups.length, count: (cards.length ? cards : fragments).length, assetIDs: (cards.length ? cards : fragments).map(m => m.id), fileSignature: (40960 + plan.index * 977) + ':' + (EPOCH - plan.index * 86400000), error: null, cacheHit: false, updatedAt: ago(60 * 24 * (plan.index + 1)) };
+		return { plan, attachmentID, documentKey, document: { paragraphs, pdfHash, parseVersion: PARSE_VERSION }, index, cards, fragments };
+	};
+	// One transaction for all rows, so the item tree refreshes once. The
+	// attachment rows carry no file: passage search, exclusion checks and source
+	// labels read the rows only, and no full-text job starts.
+	let seedIndexedPapers = async (plans) => {
+		let rows = [];
+		await Zotero.DB.executeTransaction(async () => {
+			for (let plan of plans) {
+				let paper = new Zotero.Item('journalArticle');
+				paper.libraryID = Zotero.Libraries.userLibraryID;
+				paper.setField('title', plan.title);
+				paper.setField('publicationTitle', plan.chinese ? CN_JOURNALS[plan.index % CN_JOURNALS.length] : JOURNALS[plan.index % JOURNALS.length]);
+				paper.setField('date', String(2016 + plan.index % 9));
+				paper.setField('extra', PAPER_MARKER + pad(plan.index));
+				await paper.save();
+				let attachment = new Zotero.Item('attachment');
+				attachment.libraryID = paper.libraryID;
+				attachment.parentID = paper.id;
+				attachment.attachmentLinkMode = Zotero.Attachments.LINK_MODE_IMPORTED_FILE;
+				attachment.attachmentContentType = 'application/pdf';
+				attachment.attachmentFilename = PREFIX + 'paper-' + pad(plan.index) + '.pdf';
+				attachment.setField('title', 'Full Text PDF');
+				await attachment.save();
+				rows.push({ paperItemID: paper.id, attachmentID: attachment.id });
+			}
+		});
+		return rows;
+	};
 	// Window heartbeat (setInterval on the measured window) plus a control
 	// heartbeat on an application timer that window throttling does not touch.
 	let heartbeat = () => {
@@ -450,8 +602,11 @@ describe('Research native interaction performance in a large workspace', functio
 		['Element', ['clientWidth', 'clientHeight', 'clientTop', 'clientLeft', 'scrollWidth', 'scrollHeight', 'scrollTop', 'scrollLeft']],
 		['HTMLElement', ['offsetWidth', 'offsetHeight', 'offsetTop', 'offsetLeft', 'offsetParent', 'innerText']]
 	];
-	// The computed style properties paperOverflows reads (editor.mjs:62-65).
-	let PROFILE_STYLE_GETTERS = ['paddingTop', 'paddingBottom', 'marginBottom', 'minHeight', 'boxSizing'];
+	// The computed style properties the one-pass pagination reads in editor.mjs
+	// measurePapers: page padding, min-height and box-sizing, the heading's
+	// bottom margin and each block's margins. The page height custom property
+	// goes through style.getPropertyValue.
+	let PROFILE_STYLE_GETTERS = ['paddingTop', 'paddingBottom', 'marginTop', 'marginBottom', 'minHeight', 'boxSizing'];
 	let PROFILE_UI_SKIP = new Set(['$', 'el']);
 	let PROFILE_UI_CONTROLLERS = ['workflow', 'directionWorkspace', 'chapterReads', 'chapterReadView', 'selectionAssistant', 'writingRibbon', 'journalFormatPicker', 'aiOrb', 'conversationSurface', 'assemblyCLUI', 'assemblyComposer', 'conversationFileWorkspace', 'manualWritingToolbar'];
 	let profileWrappers = new WeakSet(), activeProfiler = null;
@@ -1345,17 +1500,43 @@ describe('Research native interaction performance in a large workspace', functio
 			else cleanup.branches[key] = json;
 		}
 	};
+	// Removes everything this suite writes, also when a killed run left it behind:
+	// prefixed entries, the index rows of its attachments (keyed by item ID),
+	// its document cards (derived chapter cards are named 'section-' + hash and
+	// carry the suite's pdfHash as sourceVersion), their Chinese descriptions
+	// (keyed by a hash) and the section-view entries that point at removed cards.
+	let mine = id => typeof id === 'string' && id.startsWith(PREFIX);
+	// The key manuscript-index.js descriptionKey() gives a material's Chinese description.
+	let descriptionKey = m => E.assets.key([m.id, m.revision, m.summary || m.sourceText, 'zh-summary-v2']);
 	let purgeSynthetic = () => E.store.update((state) => {
-		for (let key of ['manuscripts', 'manuscriptTrash', 'researchNotebooks', 'manuscriptLibrary', 'researchMaterials', 'papers', 'readerNoteLinks', 'projectReadings', 'projectTaskPlans', 'manuscriptAssessments']) {
+		for (let key of ['manuscripts', 'manuscriptTrash', 'researchNotebooks', 'manuscriptLibrary', 'manuscriptDocuments', 'papers', 'readerNoteLinks', 'projectReadings', 'projectTaskPlans', 'manuscriptAssessments']) {
 			let branch = state[key];
 			if (!branch || typeof branch !== 'object') continue;
 			for (let id of Object.keys(branch)) {
-				if (id.startsWith(PREFIX)) delete branch[id];
+				if (mine(id)) delete branch[id];
 			}
 		}
+		for (let [id, row] of Object.entries(state.manuscriptIndex || {})) {
+			if (mine(row?.documentKey) || mine(row?.pdfHash)) delete state.manuscriptIndex[id];
+		}
+		let removed = new Set(), descriptions = state.materialDescriptions;
+		for (let [id, m] of Object.entries(state.researchMaterials || {})) {
+			if (!mine(id) && !mine(m?.sourceVersion)) continue;
+			if (descriptions && typeof m?.id === 'string') delete descriptions[descriptionKey(m)];
+			removed.add(id);
+			delete state.researchMaterials[id];
+		}
+		for (let key of cleanup.descriptionKeys || []) delete descriptions?.[key];
+		let gone = id => mine(id) || removed.has(id);
+		let view = state.manuscriptSectionView;
+		if (view && typeof view === 'object') {
+			for (let [id, target] of Object.entries(view)) {
+				if (gone(id) || gone(target)) delete view[id];
+			}
+		}
+		if (Array.isArray(state.manuscriptSectionReferences) && state.manuscriptSectionReferences.some(gone)) state.manuscriptSectionReferences = state.manuscriptSectionReferences.filter(id => !gone(id));
 		let workbench = state.researchWorkbench;
 		if (Array.isArray(workbench?.sessions)) {
-			let mine = id => typeof id === 'string' && id.startsWith(PREFIX);
 			if (workbench.sessions.some(row => mine(row?.id))) workbench.sessions = workbench.sessions.filter(row => !mine(row?.id));
 			for (let [scope, id] of Object.entries(workbench.scopeSessions || {})) {
 				if (mine(id)) delete workbench.scopeSessions[scope];
@@ -1380,19 +1561,31 @@ describe('Research native interaction performance in a large workspace', functio
 	};
 	// A fresh data directory has no workspace.json until the first committed write.
 	let fileBytes = async () => ((await IOUtils.exists(workspacePath)) ? (await IOUtils.stat(workspacePath)).size : 0);
+	// UTF-8 bytes of each committed branch: what reads of that branch cover, as
+	// opposed to the file size, which every write pays.
+	let branchBytes = async () => {
+		let keys = [], encoder = new TextEncoder(), out = {};
+		await E.store.update((state) => {
+			keys = Object.keys(state);
+		});
+		for (let key of keys) out[key] = encoder.encode(JSON.stringify(E.store.peek(key)) ?? '').length;
+		return Object.fromEntries(Object.entries(out).sort((a, b) => b[1] - a[1]));
+	};
 	let seedWorkspace = async () => {
 		let seedReport = report.setup.seed = { steps: [] }, bytes = await fileBytes(), initial = bytes;
-		let step = async (name, mutate) => {
-			let start = now();
-			await E.store.update(mutate);
+		// A step mutates the store or runs product code; either way it is flushed and measured.
+		let step = async (name, work) => {
+			let start = now(), result = await work();
 			await E.store.flush();
 			let after = await fileBytes();
 			seedReport.steps.push({ name, ms: Math.round(now() - start), bytesAdded: after - bytes });
 			bytes = after;
+			return result;
 		};
+		let update = mutate => () => E.store.update(mutate);
 		let conversations = buildConversations();
 		scopeSessionID = conversations[1].id;
-		await step('researchWorkbench', (state) => {
+		await step('researchWorkbench', update((state) => {
 			let workbench = state.researchWorkbench ||= { version: 2, activeSessionID: '', sessions: [], home: {}, scopeSessions: {} };
 			workbench.sessions ||= [];
 			workbench.scopeSessions ||= {};
@@ -1400,31 +1593,83 @@ describe('Research native interaction performance in a large workspace', functio
 			workbench.scopeSessions['project:' + BIG_ID] = conversations[0].id;
 			workbench.scopeSessions['library:' + scopeKey] = scopeSessionID;
 			workbench.activeSessionID = scopeSessionID;
-		});
-		await step('researchMaterials', (state) => {
+		}));
+		let plans = Array.from({ length: INDEXED_PAPERS }, (_, d) => paperPlan(d));
+		let natives = await step('native-papers', () => seedIndexedPapers(plans));
+		let indexed = plans.map((plan, d) => indexedPaper(plan, natives[d]));
+		await step('manuscriptDocuments+manuscriptIndex', update((state) => {
+			let documents = state.manuscriptDocuments ||= {}, index = state.manuscriptIndex ||= {};
+			for (let row of indexed) {
+				documents[row.documentKey] = row.document;
+				index[row.attachmentID] = row.index;
+			}
+		}));
+		// The app builds the journal contexts of indexed papers at startup (app.js).
+		let passageStart = now();
+		await E.preparePassageSearch?.();
+		seedReport.preparePassageSearchMs = Math.round(now() - passageStart);
+		// Library cards fill the shared library up to the measured card count,
+		// next to the indexed papers' cards and the chapter cards derived below.
+		let docCards = indexed.flatMap(row => [...row.cards, ...row.fragments]);
+		let derivedPlanned = indexed.filter(row => row.plan.kind === 'legacy').length * new Set(FRAGMENT_GROUPS.legacy).size;
+		let libraryCount = Math.max(400, COMPOSITION.researchMaterials.cards - docCards.length - derivedPlanned);
+		await step('researchMaterials', update((state) => {
 			let library = state.researchMaterials ||= {};
-			for (let i = 0; i < 1200; i++) {
+			for (let i = 0; i < libraryCount; i++) {
 				let m = libraryCard(i);
 				library[m.id] = m;
 			}
-		});
+			for (let m of docCards) library[m.id] = m;
+		}));
+		for (let m of docCards) {
+			if (m.analysisVersion === Sections.ARTICLE_SECTION_VERSION && m.sourceText.includes(PHASE_QUERY)) phaseIDs.add(m.id);
+		}
 		let big = buildBigProject(), small = Array.from({ length: 39 }, (_, n) => buildSmallProject(n));
-		await step('manuscripts+researchNotebooks', (state) => {
-			let manuscripts = state.manuscripts ||= {}, notebooks = state.researchNotebooks ||= {};
-			for (let p of [big, ...small]) {
-				manuscripts[p.id] = p;
-				notebooks[p.id] = notebookEntry(p.id, p.id === BIG_ID);
-			}
+		await step('manuscripts', update((state) => {
+			let manuscripts = state.manuscripts ||= {};
+			for (let p of [big, ...small]) manuscripts[p.id] = p;
+		}));
+		await step('researchNotebooks', update((state) => {
+			let notebooks = state.researchNotebooks ||= {};
+			for (let p of [big, ...small]) notebooks[p.id] = notebookEntry(p.id, p.id === BIG_ID);
+		}));
+		// The product groups the older machine fragments into chapter cards and
+		// writes manuscriptSectionView/manuscriptSectionReferences, as it does at
+		// startup (startArticleIndex) and after each indexed paper.
+		let sectionView = () => E.store.peek('manuscriptSectionView') || {};
+		await step('manuscriptSectionView', async () => {
+			await E.manuscripts.ensureArticleSectionMaterials();
+			// A derivation already running when the seed landed returns its own result.
+			if ([...fragmentIDs].some(id => !sectionView()[id])) await E.manuscripts.ensureArticleSectionMaterials();
 		});
+		let derived = Object.values(E.store.peek('researchMaterials') || {}).filter(m => m.generationStatus === 'derived' && mine(m.sourceVersion));
+		for (let m of derived) {
+			if (m.sourceText.includes(PHASE_QUERY)) phaseIDs.add(m.id);
+		}
+		// Chinese descriptions for the cards whose own summary is English, in the
+		// shape the description batches write (manuscript-index.js).
+		let described = Object.values(E.store.peek('researchMaterials') || {}).filter(m => mine(m.sourceVersion) && !hasChinese(m.summary)), written = new Map();
+		await step('materialDescriptions', update((state) => {
+			let descriptions = state.materialDescriptions ||= {};
+			for (let [i, m] of described.entries()) {
+				let key = descriptionKey(m), value = { titleZh: TOPICS[i % TOPICS.length] + '要点', summaryZh: '这一段说明' + text(30 + Math.floor(random() * 60), 0), summaryZhRevision: m.revision, model: 'perf-synthetic-model' };
+				descriptions[key] = value;
+				written.set(m, value.summaryZh);
+			}
+		}));
+		cleanup.descriptionKeys = described.map(descriptionKey);
+		seedReport.descriptionsResolved = [...written].filter(([m, summary]) => E.manuscripts.summaryFor(m) === summary).length;
+		seedReport.descriptionsWritten = written.size;
 		// The paper cache fills the rest, sized from one encoded sample entry.
 		let entryBytes = new TextEncoder().encode(JSON.stringify(paperEntry(0))).length;
-		let paperCount = Math.max(40, Math.min(1500, Math.ceil((TARGET_BYTES - bytes) / entryBytes)));
-		await step('papers', (state) => {
+		let paperCount = Math.max(20, Math.min(1500, Math.ceil((TARGET_BYTES - bytes) / entryBytes)));
+		await step('papers', update((state) => {
 			let papers = state.papers ||= {};
 			for (let i = 0; i < paperCount; i++) papers[PREFIX + 'paper-' + pad(i)] = paperEntry(i);
-		});
+		}));
 		// An app that has been open a while has frozen these caches in idle
-		// slices (storage.js IDLE_FREEZE); do the same so the first list read is warm.
+		// slices (storage.js IDLE_FREEZE); do the same so the first list read is
+		// warm. ensureArticleSectionMaterials above already froze the parts it read.
 		seedReport.idleFreeze = [];
 		for (let key of ['researchMaterials', 'manuscriptDocuments', 'manuscriptIndex', 'materialDescriptions', 'manuscriptSectionView', 'manuscriptSectionReferences']) {
 			let start = now(), slices = 0, done = !E.store.freezeIdle;
@@ -1440,17 +1685,33 @@ describe('Research native interaction performance in a large workspace', functio
 		await E.manuscripts.ensureLibraryItem(BIG_ID);
 		seedReport.ensureLibraryItemMs = Math.round(now() - libraryStart);
 		await E.store.flush();
-		let total = await fileBytes();
+		let total = await fileBytes(), branches = await branchBytes(), materials = Object.values(E.store.peek('researchMaterials') || {});
+		// The branches the measured operations read. papers is only serialized
+		// by each write and copied once by the 02 cold start.
+		let readBranches = ['researchMaterials', 'manuscriptDocuments', 'manuscriptIndex', 'materialDescriptions', 'manuscriptSectionView', 'manuscriptSectionReferences', 'manuscripts', 'researchNotebooks', 'researchWorkbench'];
+		let sum = keys => keys.reduce((n, key) => n + (branches[key] || 0), 0);
 		report.workspace = {
 			path: workspacePath,
 			bytesBefore: initial,
 			bytes: total,
+			megabytes: Math.round(total / 1e5) / 10,
 			mebibytes: Math.round(total / 1048576 * 10) / 10,
-			reference: 'docs/handoff-2026-10-30/README.md：用户真实的 workspace.json 约 45 MB',
+			reference: '真实工作区的分支构成见 composition（JSON 44.8 MB）；docs/handoff-2026-10-30/README.md 记为约 45 MB。readPathBytes 是被测操作读取的分支合计，papersBytes 只在写盘与 02 冷启动的整库复制里经过。',
+			composition: { ...COMPOSITION, actual: { bytes: total, researchMaterials: { bytes: branches.researchMaterials || 0, cards: materials.length }, manuscriptDocuments: { bytes: branches.manuscriptDocuments || 0 }, manuscripts: { bytes: branches.manuscripts || 0 } } },
+			branches,
+			readBranches,
+			readPathBytes: sum(readBranches),
+			papersBytes: branches.papers || 0,
 			projects: 1 + small.length,
 			bigProject: { id: BIG_ID, sections: big.sections.length, blocks: big.blocks.length, materials: big.materials.length, phaseMaterials: big.materials.filter(m => phaseIDs.has(m.id)).length },
 			smallProjects: { count: small.length, blocks: small.reduce((n, p) => n + p.blocks.length, 0), materials: small.reduce((n, p) => n + p.materials.length, 0) },
-			libraryCards: 1200,
+			libraryCards: libraryCount,
+			indexedPapers: { count: indexed.length, sections: plans.filter(plan => plan.kind === 'sections').length, mixed: plans.filter(plan => plan.kind === 'mixed').length, legacy: plans.filter(plan => plan.kind === 'legacy').length, chinese: plans.filter(plan => plan.chinese).length, paragraphs: indexed.reduce((n, row) => n + row.document.paragraphs.length, 0), phaseParagraphs: indexed.reduce((n, row) => n + row.document.paragraphs.filter(p => p.sourceText.includes(PHASE_QUERY)).length, 0) },
+			chapterCards: indexed.reduce((n, row) => n + row.cards.length, 0),
+			derivedChapterCards: derived.length,
+			machineFragments: fragmentIDs.size,
+			sectionViewEntries: Object.keys(sectionView()).length,
+			descriptions: { written: written.size, resolved: seedReport.descriptionsResolved },
 			phaseQuery: PHASE_QUERY,
 			phaseMatches: phaseIDs.size,
 			conversations: conversations.length,
@@ -1533,7 +1794,23 @@ describe('Research native interaction performance in a large workspace', functio
 		let windowStats = gapStats(beat.rows), controlStats = gapStats(beat.control);
 		report.calibration.push({ phase, window: windowStats, control: controlStats, frames: beat.frames, throttleSuspected: throttled(windowStats, controlStats), renderingStopped: beat.frames < 5, viewport: viewport() });
 	};
+	// The native rows this suite marks: its indexed papers (their attachments go
+	// with them) and the project rows ensureLibraryItem creates, also in the trash.
+	// Found by their Extra marks, so rows of a killed run are erased too.
+	let eraseMarkedItems = async () => {
+		let ids = new Set();
+		for (let marker of [PROJECT_MARKER, PAPER_MARKER]) {
+			let search = new Zotero.Search();
+			search.libraryID = Zotero.Libraries.userLibraryID;
+			search.addCondition('extra', 'contains', marker);
+			search.addCondition('includeDeleted', 'true');
+			for (let id of await search.search()) ids.add(id);
+		}
+		if (ids.size) await Zotero.Items.erase([...ids]);
+		return ids.size;
+	};
 	let eraseNativeObjects = async () => {
+		report.cleanup.erasedMarkedItems = await eraseMarkedItems();
 		if (!cleanup.itemIDs || !cleanup.collectionIDs) return;
 		let items = (await Zotero.DB.columnQueryAsync('SELECT itemID FROM items') || []).filter(id => !cleanup.itemIDs.has(id));
 		let collections = (await Zotero.DB.columnQueryAsync('SELECT collectionID FROM collections') || []).filter(id => !cleanup.collectionIDs.has(id));
@@ -1542,6 +1819,19 @@ describe('Research native interaction performance in a large workspace', functio
 		report.cleanup.erasedItems = items.length;
 		report.cleanup.erasedCollections = collections.length;
 	};
+	// Written before seeding and removed after cleanup succeeds. If it is still
+	// there, a run was killed before after() and left its seed in this data directory.
+	let seedMarker = () => PathUtils.join(folder, 'seed-in-progress.json');
+	// Clears what a killed run left, before any window is attached: attaching runs
+	// syncLibrary, which would give every leftover project a native row.
+	let recoverKilledRun = async () => {
+		let start = now(), marker = await IOUtils.exists(seedMarker()), bytes = await fileBytes();
+		await purgeSynthetic();
+		await E.store.flush();
+		let items = await eraseMarkedItems();
+		report.setup.recovery = { markerFound: marker, erasedMarkedItems: items, workspaceBytesBefore: bytes, workspaceBytesAfter: await fileBytes(), ms: Math.round(now() - start) };
+		if (marker) await IOUtils.remove(seedMarker());
+	};
 	before(async function () {
 		try {
 			folder = PathUtils.join(Zotero.DataDirectory.dir, 'interaction-performance');
@@ -1549,6 +1839,7 @@ describe('Research native interaction performance in a large workspace', functio
 			await IOUtils.makeDirectory(folder, { ignoreExisting: true });
 			installRuntimeGuards();
 			installEngineStubs();
+			await recoverKilledRun();
 			// Session restore must not reopen research tabs from an earlier suite.
 			let sessionWindows = Zotero.Session.state.windows;
 			Zotero.Session.state.windows = [];
@@ -1572,9 +1863,9 @@ describe('Research native interaction performance in a large workspace', functio
 			cleanup.itemIDs = new Set(await Zotero.DB.columnQueryAsync('SELECT itemID FROM items') || []);
 			cleanup.collectionIDs = new Set(await Zotero.DB.columnQueryAsync('SELECT collectionID FROM collections') || []);
 			await snapshotStore();
-			await purgeSynthetic();
 			let { libraryScopeKey } = ChromeUtils.importESModule('chrome://zotero/content/research/shared/library-scope.mjs');
 			scopeKey = libraryScopeKey(win.ZoteroPane.getCollectionTreeRows()) || 'L' + Zotero.Libraries.userLibraryID;
+			await IOUtils.writeUTF8(seedMarker(), JSON.stringify({ suite: 'researchInteractionPerformance', prefix: PREFIX, startedAt: new Date().toISOString(), workspace: workspacePath, note: '本文件存在表示上一次运行在清理前被结束：数据目录里仍有 ' + PREFIX + ' 的合成工作区与原生条目。下次运行本套件时 before() 会先清除它们。' }, null, 2));
 			await seedWorkspace();
 			report.environment = {
 				viewport: viewport(),
@@ -1632,6 +1923,8 @@ describe('Research native interaction performance in a large workspace', functio
 			await restoreStore();
 		});
 		await step('erase-native-objects', eraseNativeObjects);
+		// Only a complete cleanup clears the marker; otherwise the next run recovers.
+		if (folder && steps.includes('restore-store-again') && steps.includes('erase-native-objects')) await step('remove-seed-marker', () => IOUtils.remove(seedMarker(), { ignoreAbsent: true }));
 		offCommits?.();
 		unstub();
 		report.finishedAt = new Date().toISOString();
@@ -1740,8 +2033,9 @@ describe('Research native interaction performance in a large workspace', functio
 		let U = await ensureAssembly(from);
 		return measureStage(id, label, U, target);
 	};
-	// Whether the canvas was displayed decides whether renderEditor's per-block
-	// overflow check measured real boxes, so record it and the page count.
+	// Whether the canvas was displayed decides whether renderEditor paginated it
+	// (one measurePapers pass over all pages) or left one page per chapter until
+	// U.paginateCanvas runs when it is shown, so record it and the page count.
 	let canvasState = doc => ({
 		hidden: !!doc.getElementById('canvas')?.hidden,
 		papers: doc.querySelectorAll('#canvas .paper').length,
@@ -1838,7 +2132,7 @@ describe('Research native interaction performance in a large workspace', functio
 	};
 	it('13 searches the material library while typing a Chinese query', async function () {
 		let U = await setMaterialQuery('');
-		await measure('13-material-search', '素材库搜索（逐字输入“' + PHASE_QUERY + '”）', LIMITS.material, async ({ ready, extras }) => {
+		let entry = await measure('13-material-search', '素材库搜索（逐字输入“' + PHASE_QUERY + '”）', LIMITS.material, async ({ ready, extras }) => {
 			let input = materialDoc().getElementById('material-search'), view = input.ownerDocument.defaultView, delays = [0, 230, 90, 210, 120, 260];
 			input.focus();
 			for (let [i, char] of [...PHASE_QUERY].entries()) {
@@ -1848,9 +2142,26 @@ describe('Research native interaction performance in a large workspace', functio
 			}
 			await waitFor(() => U.materialQuery === PHASE_QUERY && shownCards().some(node => phaseIDs.has(node.dataset.material)), '素材搜索结果', { timeout: LIMITS.material });
 			ready();
-			let cards = shownCards();
-			Object.assign(extras, { shownCards: cards.length, shownPhaseCards: cards.filter(node => phaseIDs.has(node.dataset.material)).length, seededMatches: phaseIDs.size, hasMore: !!materialDoc().querySelector('#material-results .list-end-sentinel') });
+			let cards = shownCards(), passages = materialDoc().querySelector('#material-results .fulltext-matches summary');
+			Object.assign(extras, {
+				shownCards: cards.length,
+				shownPhaseCards: cards.filter(node => phaseIDs.has(node.dataset.material)).length,
+				seededMatches: phaseIDs.size,
+				hasMore: !!materialDoc().querySelector('#material-results .list-end-sentinel'),
+				// The full-text hits renderResults lists under the cards (findPaperPassages).
+				passageHits: materialDoc().querySelectorAll('#material-results .passage-result').length,
+				passageSummary: passages?.textContent || null
+			});
+		}, {
+			// After the heartbeat: the library view the list is built from, over the
+			// same shared library, shows how many machine fragments chapter cards hide.
+			verify: async () => {
+				let start = now(), visible = new Set(E.manuscripts.materialLibraryView(Object.values(E.manuscripts.assetLibraryView())).map(m => m.id));
+				return { libraryViewMs: Math.round(now() - start), collapsedFragments: [...fragmentIDs].filter(id => !visible.has(id)).length, seededFragments: fragmentIDs.size };
+			}
 		});
+		assert.isAbove(entry.extras.passageHits, 0, '素材搜索列出了已索引论文原文中的命中');
+		assert.isAbove(entry.verify?.collapsedFragments ?? 0, 0, '素材库把旧版机器片段收进了章节卡：' + (entry.verifyError || ''));
 	});
 	it('14 clears the material search and shows the whole library again', async function () {
 		let U = await setMaterialQuery(PHASE_QUERY);

@@ -178,6 +178,27 @@ test('新建文件夹 on a project from the earlier create dialog reuses its fol
 	finally{await page.close();}
 });
 
+// nb-selection:2: reusing the current folder records it as the project's own and
+// leaves an explicit choice of papers from other folders in scope.
+test('新建文件夹 that reuses the current folder keeps an explicit choice from other folders',async()=>{
+	for(let [name,createdPaperCollectionID] of [['图像测量研究',undefined],['图像测量研究 · 文献',undefined],['图像测量研究 · 文献',null]]){
+		let label=name+' / '+createdPaperCollectionID,f=libraryWorld({folders:[{id:60,name},{id:61,name:'另一课题'}],papers:[{id:7,title:'Image measurement',folders:[60]},{id:8,title:'Camera calibration',folders:[61]}],
+			materials:{m7:{id:'m7',kind:'semantic',revision:1,paperItemID:7,title:'测量方法',sourceText:'测量方法原文。'},m8:{id:'m8',kind:'semantic',revision:1,paperItemID:8,title:'标定方法',sourceText:'标定方法原文。'}},
+			project:{title:'图像测量研究',paperCollectionID:60,createdPaperCollectionID,materialPaperIDs:[7,8],paperSelectionExplicit:true,preparationSourceSelection:{collectionIDs:[60,61],paperIDs:[7,8],featuredPaperIDs:[]}},notebook:{view:'plan',workflowStage:'feasibility'}});
+		let page=await f.openPage();
+		try{
+			await page.$('project-new-folder').onclick();await f.quiet();
+			assert.deepEqual(f.created,[],'no new folder ('+label+')');
+			assert.match(page.$('status').textContent,/未重复新建/);
+			assert.equal(f.project.createdPaperCollectionID,60,'the folder is recorded as the project\'s own ('+label+')');
+			assert.deepEqual(f.project.materialPaperIDs,[7,8],'the paper from the other folder stays in scope ('+label+')');
+			assert.equal(f.project.paperSelectionExplicit,true);
+			assert.deepEqual(Array.from(f.N.materials(f.id),row=>row.id).sort(),['m7','m8'],'its materials stay listed ('+label+')');
+		}
+		finally{await page.close();}
+	}
+});
+
 test('a chosen folder that only shares the project title is not taken as the project\'s own folder',async()=>{
 	let f=libraryWorld({folders:[{id:60,name:'图像测量研究'}]}),p=await f.N.beginProject({title:'图像测量研究',collectionID:60,isCurrent:()=>false});
 	assert.equal(f.state.manuscripts[p.id].createdPaperCollectionID,null,'a chosen folder is recorded as chosen');

@@ -61,9 +61,12 @@ export function renderEditor(){
  }
  // A hidden canvas has no layout to measure; it is split when it is shown.
  if(!paginatePapers(layout))pendingPapers=layout;
- // Restoring the caret focuses the paragraph in Gecko: an open material title
- // editor would lose focus and save a half-typed title (U.materialRenaming).
- canvas.scrollTop=scroll;const active=canvas.querySelector(`[data-id="${U.p.ui.blockID}"] .editable`);if(active&&U.p.ui.caret&&!U.materialRenaming?.input?.isConnected){active.editableMath?.source();if(active.contentEditable==='true')restoreCaret(active,U.p.ui.caret);}renderDetails();
+ // Restoring the caret focuses the paragraph in Gecko, and its focus handler
+ // (selectBlock) would close the material shown in the details: renders and
+ // background refreshes leave a shown material and its editors alone. An open
+ // title editor would also save a half-typed title (U.materialRenaming); it can
+ // outlive the material for a moment (assembly-pages.mjs, assembly-framework.mjs).
+ canvas.scrollTop=scroll;const active=canvas.querySelector(`[data-id="${U.p.ui.blockID}"] .editable`);if(active&&U.p.ui.caret&&!U.previewMaterialID&&!U.materialRenaming?.input?.isConnected){active.editableMath?.source();if(active.contentEditable==='true')restoreCaret(active,U.p.ui.caret);}renderDetails();
 }
 function materialIndex(materials){const index=new Map();for(const m of materials||[])if(!index.has(m.id))index.set(m.id,m);return index;}
 // A canvas rendered while hidden keeps one page per chapter and manual page

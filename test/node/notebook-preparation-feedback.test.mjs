@@ -7,7 +7,7 @@
 // download report is not overwritten by a later render.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {libraryWorld,until} from './notebook-page-harness.mjs';
+import {libraryWorld,until,wait} from './notebook-page-harness.mjs';
 
 const scope={domain:'communications',primaryKeyword:'modulation recognition'};
 const plan={title:'比较调制识别方法',novelty:'比较低信噪比下的两种方法',significance:'支持重复实验',feasibility:'拟在现有数据上比较两种方法，实验尚未进行。',minimumValidation:'保留独立测试样本',hypotheses:[{id:'h1',claim:'信噪比可能影响识别准确率',falsification:'重复实验不支持该差异'}],experiments:[{id:'e1',hypothesisID:'h1',title:'重复识别实验',data:'现有数据'}],closest:[],pending:['补充采样记录'],openQuestions:['是否有独立测试样本']};
@@ -67,4 +67,50 @@ test('an online evaluation redraws the open online list, says what changed, and 
 		assert.ok(f.project.preparationSourceSelection.paperIDs.includes(200),'the downloaded paper joins the choice');
 	}
 	finally{await page.close();}
+});
+
+// nb-plan:2: a stopped collection keeps the earlier failure of a paper it did
+// not reach, drops the failure of a paper it organized, and a stop before any
+// failure leaves no record.
+let fourPapers=()=>[{id:1,title:'Paper one without a PDF',abstract:'Modulation recognition.',folders:[17]},{id:2,title:'Paper two',abstract:'Modulation recognition.',folders:[17]},{id:3,title:'Paper three',abstract:'Modulation recognition.',folders:[17]},{id:4,title:'Paper four without a PDF',abstract:'Modulation recognition.',folders:[17]}];
+// Papers in `missing` have no local PDF.
+let withoutPDF=(f,missing)=>{let localPDF=f.E.library.localPDF;f.E.library.localPDF=async paper=>missing.has(paper.id)?null:localPDF(paper);};
+// The index consumer as manuscript-index.js runs it: a paper still to be read
+// waits in the queue, and a stop rejects it with an AbortError.
+let holdIndex=(f,pending)=>{let entered,started=new Promise(resolve=>{entered=resolve;}),complete=f.A.indexState;f.A.indexState=()=>{let state=complete();for(let paperID of pending)state[paperID+10000]={status:'queued'};return state;};f.A.queueArticle=(_id,{signal}={})=>new Promise((_resolve,reject)=>{entered();signal?.addEventListener('abort',()=>reject(Object.assign(Error('已停止整理；已完成素材已保留'),{name:'AbortError'})),{once:true});});return started;};
+
+test('a collection stopped after a failure keeps the earlier failure of a paper it did not reach',async()=>{
+	let f=world({papers:fourPapers().slice(0,2)});withoutPDF(f,new Set([1,2]));
+	await f.N.collectProjectMaterials(f.id);
+	assert.deepEqual(f.notebook.materialCollectionFailures.map(row=>row.paperID),[1,2]);
+	let controller=new AbortController();
+	await assert.rejects(f.N.collectProjectMaterials(f.id,text=>{if(text.startsWith('整理未完成'))controller.abort();},controller.signal),/已停止/);
+	assert.deepEqual(f.notebook.materialCollectionFailures.map(row=>row.paperID),[1,2],'paper 2 was not organized again, so its line stays');
+});
+
+test('a collection stopped before any failure writes no failure record',async()=>{
+	let f=world({papers:fourPapers().slice(1,3)}),started=holdIndex(f,[2]),controller=new AbortController();
+	let collecting=f.N.collectProjectMaterials(f.id,()=>{},controller.signal);
+	await started;controller.abort();
+	await assert.rejects(collecting,/已停止/);
+	assert.equal(f.notebook.materialCollectionFailures,undefined);
+});
+
+test('a stopped collection keeps the line of a paper it did not reach and drops the one of a paper it organized',async()=>{
+	let f=world({papers:fourPapers()}),missing=new Set([1,2,4]);withoutPDF(f,missing);
+	await f.N.collectProjectMaterials(f.id);
+	let page=await f.openPage();
+	try{
+		assert.match(failureLine(page),/^整理未完成 3 篇：/);
+		// Paper 2 gets its PDF; the next run organizes it and is stopped while paper 3 is read.
+		missing.delete(2);let started=holdIndex(f,[3]);
+		let collecting=page.doc.querySelector('[data-action=collect-project-materials]').onclick();
+		await started;
+		assert.ok(f.notebook.materialCollectionFailures.some(row=>row.paperID===4),'while the run goes on (or if the app quits), a paper it has not reached keeps its line');
+		page.$('cancel').onclick();await collecting;await f.quiet();await wait(50);
+		assert.match(page.$('status').textContent,/已停止/);
+		assert.deepEqual(f.notebook.materialCollectionFailures.map(row=>row.paperID),[1,4],'paper 2 was organized and paper 4 was not reached');
+		assert.match(failureLine(page),/^整理未完成 2 篇：Paper one without a PDF · 没有本地 PDF.*；Paper four without a PDF · 没有本地 PDF/);
+	}
+	finally{page.doc.querySelector('#preparation-tools-dialog')?.close();await page.close();}
 });
