@@ -73,4 +73,5 @@ researchWritingInteraction
 researchDiscoveryAppearance
 researchNotebook
 manuscript
+researchLaptopLayout
 researchInteractionPerformance
