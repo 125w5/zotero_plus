@@ -227,6 +227,8 @@ html[data-appearance] .agent-clui[data-clui-persistent=true] .clui-native-shell{
 .agent-clui[data-clui-persistent=true] .agent-clui-body-content{height:100%;}
 .agent-clui[data-clui-persistent=true] .clui-native-input-row{flex:none;min-width:0;width:min(100%,calc(var(--agent-transcript-width) + var(--agent-transcript-gutter) * 2));align-self:center;margin:0;}
 html[data-appearance] .agent-workbench .agent-clui .agent-attachments{flex:none;min-height:38px;max-height:104px;padding:1px 2px 7px 0;}
+/* Laptop-height windows: two rows of file chips, the rest scroll, so the conversation keeps its height. */
+@media(max-height:920px){html[data-appearance] .agent-workbench .agent-clui .agent-attachments{max-height:70px}}
 html[data-appearance] .agent-workbench .agent-clui .agent-attachment-name{flex:1;min-height:0;padding:0;border:0;border-radius:3px;background:transparent;font:inherit;text-align:left;}
 html[data-appearance] .agent-workbench .agent-clui .agent-composer>textarea:focus-visible{outline:none;}
 html[data-appearance] .agent-clui[data-clui-persistent=true] .agent-message{font-size:14px;}
