@@ -1,4 +1,4 @@
-param([switch]$Test, [switch]$LiveServices, [switch]$LivePPT, [switch]$LiveConversation, [switch]$LiveLongHistory, [switch]$LiveEvidence, [string]$PDF, [string]$Suite = 'researchWorkstation', [string]$Grep, [ValidatePattern('^[a-zA-Z0-9-]{1,48}$')][string]$TestRunID)
+param([switch]$Test, [switch]$LiveServices, [switch]$LivePPT, [switch]$LiveConversation, [switch]$LiveLongHistory, [switch]$LiveEvidence, [string]$PDF, [string]$Suite = 'researchWorkstation', [string]$Grep, [ValidatePattern('^[a-zA-Z0-9-]{1,48}$')][string]$TestRunID, [ValidatePattern('^[a-z]{2}(-[A-Z]{2})?$')][string]$Locale = 'zh-CN')
 if ($PDF) { $PDF = [IO.Path]::GetFullPath($PDF) }
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -21,6 +21,15 @@ if ($running.Count) {
     exit 0
 }
 New-Item -ItemType Directory -Force $profile, $dataDir | Out-Null
+if (!$Test) {
+    # EasySch's own text is Chinese; without this, Zotero follows the first Windows
+    # language (often en-US) and the window mixes English menus with Chinese pages.
+    # prefs.js, not user.js, so a language later chosen in Zotero's settings is kept.
+    $userPrefs = Join-Path $profile 'prefs.js'
+    if (!(Test-Path -LiteralPath $userPrefs) -or !(Select-String -LiteralPath $userPrefs -SimpleMatch '"intl.locale.requested"' -Quiet)) {
+        Add-Content -LiteralPath $userPrefs -Value "`nuser_pref(`"intl.locale.requested`", `"$Locale`");" -Encoding utf8NoBOM
+    }
+}
 $dataJSON = ConvertTo-Json $dataDir -Compress
 $pandocJSON = ConvertTo-Json (Join-Path $toolsDir 'pandoc/pandoc-3.11/pandoc.exe') -Compress
 $engineNodeJSON = ConvertTo-Json (Get-Command node -ErrorAction Stop).Source -Compress

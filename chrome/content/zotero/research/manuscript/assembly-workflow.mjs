@@ -140,6 +140,14 @@ export function installAssemblyWorkflow(U,{el,button,persist,snapshot,changed,ap
 }
 // The stepper follows the canvas centre but stays between the title group and the export actions; with no room it takes its own row.
 export function assemblyStepsCenter({center,before,after,width,gap=8}){const low=before+gap+width/2,high=after-gap-width/2;return low>high?{wrap:true,center}:{wrap:false,center:Math.min(Math.max(center,low),high)};}
+// Side panes keep their saved widths while the canvas has its room; on a smaller window
+// (a 14-16 inch laptop gives 1280-1536 px) both shrink in proportion down to their minimum
+// widths instead of squeezing the paper. The saved widths are not changed.
+export function assemblyPaneWidths({width,left,right,leftOpen=true,rightOpen=true,canvas=620,leftMin=230,rightMin=280}){
+ const keep={left,right};if(!(width>0))return keep;
+ const shown=(leftOpen?left:0)+(rightOpen?right:0),room=width-canvas;if(!shown||shown<=room)return keep;
+ const scale=Math.max(0,room)/shown,fit=(saved,min)=>Math.max(Math.min(min,saved),Math.round(saved*scale));return {left:leftOpen?fit(left,leftMin):left,right:rightOpen?fit(right,rightMin):right};
+}
 const stepsLayouts=new WeakMap();
 export function placeAssemblySteps(doc,center){
  const steps=doc.getElementById('steps'),header=steps?.parentElement;if(!header)return;

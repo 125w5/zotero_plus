@@ -19,7 +19,7 @@ import {materialAnchors} from '../shared/material-clues.mjs';
 import {installAssemblyAIOrb} from './assembly-orb.mjs';
 import {installAssemblyConversation} from './assembly-conversation.mjs';
 import {pendingPlanEditMessage} from '../shared/plan-edit-proposal.mjs';
-import {installAssemblyWorkflow,placeAssemblySteps} from './assembly-workflow.mjs';
+import {installAssemblyWorkflow,placeAssemblySteps,assemblyPaneWidths} from './assembly-workflow.mjs';
 import {associateProjectMaterials} from '../shared/material-section-matching.mjs';
 import {isCurrentAssessment} from '../shared/manuscript-assessment.mjs';
 import {renderAssemblyNavigation,syncAssemblyLeftTabs} from './assembly-navigation.mjs';
@@ -149,7 +149,7 @@ export function applyPanels(){
  form.style.setProperty('--composer-height',(s.aiOpen?Math.min(100,Math.max(44,U.composerHeight||44)):28)+'px');
  document.body.style.setProperty('--assembly-chat-height',chatHeight+'px');
  document.body.style.setProperty('--assembly-footer-height',document.querySelector('footer').getBoundingClientRect().height+'px');
- $('left').hidden=!s.leftOpen;document.body.dataset.leftPane=s.leftOpen?'open':'closed';$('right').hidden=!s.rightOpen;$('left').style.width=s.leftWidth+'px';$('right').style.width=s.rightWidth+'px';
+ $('left').hidden=!s.leftOpen;document.body.dataset.leftPane=s.leftOpen?'open':'closed';$('right').hidden=!s.rightOpen;const panes=assemblyPaneWidths({width:globalThis.innerWidth,left:s.leftWidth,right:s.rightWidth,leftOpen:!!s.leftOpen,rightOpen:!!s.rightOpen});$('left').style.width=panes.left+'px';$('right').style.width=panes.right+'px';
  U.selectionAssistant?.sync();
  $('toggle-ai').replaceChildren();const logo=el('span',undefined,'easysch-symbol');logo.setAttribute('aria-hidden','true');$('toggle-ai').append(logo,el('span',s.aiOpen?'收起对话':'研究助手'));$('toggle-ai').title=s.aiOpen?'收起对话，保留输入栏':'展开研究助手';$('toggle-ai').setAttribute('aria-expanded',String(!!s.aiOpen));
  const main=$('workspace').querySelector('main').getBoundingClientRect();placeAssemblySteps(document,(main.left+main.right)/2);document.body.style.setProperty('--assembly-canvas-center',((main.left+main.right)/2)+'px');
@@ -392,7 +392,7 @@ async function init(){U.A=U.E.manuscripts;const id=window.frameElement.manuscrip
  installAssemblyComposer(U,{status,persist});
  U.conversationFileWorkspace=installAssemblyConversationFiles(U,{status,persist});
  U.disposeSelectionAssistant=installSelectionAssistant(U,{snapshot,persist,changed,status,saveMaterialHighlights});
- for(const grip of document.querySelectorAll('[data-panel],.ai-grip'))grip.onpointerdown=e=>{const key=grip.dataset.panel||'aiHeight',start=key==='aiHeight'?e.clientY:e.clientX,value=key==='aiHeight'?$('ai').getBoundingClientRect().height:U.p.ui[key],cluiHeight=U.assemblyCLUI?.detailHeight;grip.setPointerCapture(e.pointerId);grip.onpointermove=e=>{if(key==='aiHeight'&&U.assemblyCLUI){U.assemblyCLUI.setDetailHeight(cluiHeight+start-e.clientY);return;}if(key==='aiHeight'){U.chatExpanded=true;U.chatReadingHeight=0;U.chatReadingSessionID='';}U.p.ui[key]=Math.max(key==='aiHeight'?130:190,Math.min(640,value+((key==='leftWidth'?1:-1)*((key==='aiHeight'?e.clientY:e.clientX)-start))));applyPanels();};grip.onpointerup=()=>{grip.onpointermove=null;persist();};};
+ for(const grip of document.querySelectorAll('[data-panel],.ai-grip'))grip.onpointerdown=e=>{const key=grip.dataset.panel||'aiHeight',start=key==='aiHeight'?e.clientY:e.clientX,value=key==='aiHeight'?$('ai').getBoundingClientRect().height:$(key==='leftWidth'?'left':'right').getBoundingClientRect().width||U.p.ui[key],cluiHeight=U.assemblyCLUI?.detailHeight;grip.setPointerCapture(e.pointerId);grip.onpointermove=e=>{if(key==='aiHeight'&&U.assemblyCLUI){U.assemblyCLUI.setDetailHeight(cluiHeight+start-e.clientY);return;}if(key==='aiHeight'){U.chatExpanded=true;U.chatReadingHeight=0;U.chatReadingSessionID='';}U.p.ui[key]=Math.max(key==='aiHeight'?130:190,Math.min(640,value+((key==='leftWidth'?1:-1)*((key==='aiHeight'?e.clientY:e.clientX)-start))));applyPanels();};grip.onpointerup=()=>{grip.onpointermove=null;persist();};};
  U.unsubscribeMaterialExclusions=U.A.onMaterialExclusionsChanged?.(refreshMaterialExclusionViews,{attachmentIDs:U.materialExclusionAttachments||U.A.materialAttachmentIDs?.(U.p.materials)||[]});
  U.previewMaterialID=U.E.notebook.state(id).selectedMaterial||U.p.ui.materialID||null;if(reconcileMaterialSections())persist();applyPanels();renderNavigation();
  // A large project paints its navigation before the canvas, and the canvas before the chat, instead of blocking in one task.
