@@ -7,6 +7,7 @@
 // a script that puts the selection into an editable paragraph focuses that
 // paragraph and blurs the field that had focus; removing a focused field fires no blur.
 import vm from 'node:vm';
+import {paperScale} from '../../chrome/content/zotero/research/manuscript/paper-scale.mjs';
 import {readFile} from 'node:fs/promises';
 import * as M from '../../chrome/content/zotero/research/shared/manuscript-model.mjs';
 import * as Policy from '../../chrome/content/zotero/research/shared/research-ai-policy.mjs';
@@ -108,7 +109,7 @@ export async function fixture({assets=[asset('m1',7),asset('m2',8,{title:'第二
 	const el=(tag,text,cls)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
 	const U={E,A,M,ready:true,p:structuredClone(A.get('p')),undo:[],redo:[],saving:Promise.resolve(),busy:false,selectedCells:[],workflow:{closePanel(){},render(){}},assetBranches:new Set()};U.savedRevision=U.p.revision;U.materialExclusionAttachments=A.materialAttachmentIDs(U.p.materials);
 	const overviews=[],explanations=[],library={renders:0},math={sources:0};
-	const sandbox={U,M,$:key=>doc.getElementById(key),el,document:doc,window:win,getComputedStyle:win.getComputedStyle,NodeFilter:{SHOW_TEXT:4},Event:FakeEvent,setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,Date:time.Date,
+	const sandbox={U,M,pageZoom:()=>paperScale(U.p?.ui,U.paperFit),$:key=>doc.getElementById(key),el,document:doc,window:win,getComputedStyle:win.getComputedStyle,NodeFilter:{SHOW_TEXT:4},Event:FakeEvent,setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,Date:time.Date,
 		libraryAsset,materialAnchors,mergeMaterialAsset:Annotations.mergeMaterialAsset,saveProjectMaterialHighlights:Annotations.saveProjectMaterialHighlights,referencedAssetsChanged,rememberAssetViewDefaults,assetViewProjectSnapshot,descriptionOnlyChange,refreshMaterialDescriptions,assemblyCanvasMode,materialSearchScope,
 		// Collaborators these tests do not exercise.
 		field(){},changed(){},verifyBlock(){},findEvidence(){},openMaterial(){},refreshMaterial(){},insertMaterial(){},attachMaterial(){},materialPreview(){},applyPanels(){},renderAssessment(){},renderChat(){},renderLibrary:()=>{library.renders++;},

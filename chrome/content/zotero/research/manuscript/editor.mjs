@@ -1,6 +1,6 @@
 import {placeOnPaper} from './editor-interactions.mjs';
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
-import {U,$,el,button,field,modal,status,snapshot,changed,persist,selected,selectBlock,attachMaterial,verifyBlock,materialDetails,openMaterial,clearDetails} from './main.mjs';
+import {U,pageZoom,$,el,button,field,modal,status,snapshot,changed,persist,selected,selectBlock,attachMaterial,verifyBlock,materialDetails,openMaterial,clearDetails} from './main.mjs';
 import {renderAssembly,captureRange,findEvidence,organizeLayout} from './assembly-tools.mjs';
 import {renderTable,tableDetails} from './table.mjs';
 import {sliceRuns} from '../shared/richtext.mjs';
@@ -50,7 +50,7 @@ export function renderEditor(){
    const badgeText=b.review==='stale'?'来源变化 · 需要重新核验':b.claim?'论点 · '+(b.review==='verified'?'已核验':'待核验'):b.type==='table'?'实验表格':'';
    if(badgeText){const badge=el('span',badgeText,'badge');badge.draggable=true;badge.title='拖动以调整模块顺序';badge.ondragstart=e=>e.dataTransfer.setData('application/x-manuscript-block',b.id);node.append(badge);}
    if(b.type==='table')renderTable(node,b);
-   else if(b.type==='image'){const wrap=el('div',undefined,'canvas-image-wrap'),img=el('img');img.alt=b.text||'论文图片';applyImageGeometry(img,b);U.E.previewImage(b.imagePath).then(src=>{if(img.isConnected)img.src=src;}).catch(()=>{img.alt='图片无法读取，请替换文件';});wrap.append(img);node.append(wrap);U.imageResizeTools.push(installImageResize(wrap,img,b,{zoom:()=>U.p.ui.paperZoom||1,snapshot,save:()=>{persist();if(U.p.ui.blockID===b.id)renderDetails();},isCurrent:()=>U.p.blocks.includes(b),onError:error=>status(error.message,true)}));editable(node,b,'图片说明与来源');}
+   else if(b.type==='image'){const wrap=el('div',undefined,'canvas-image-wrap'),img=el('img');img.alt=b.text||'论文图片';applyImageGeometry(img,b);U.E.previewImage(b.imagePath).then(src=>{if(img.isConnected)img.src=src;}).catch(()=>{img.alt='图片无法读取，请替换文件';});wrap.append(img);node.append(wrap);U.imageResizeTools.push(installImageResize(wrap,img,b,{zoom:pageZoom,snapshot,save:()=>{persist();if(U.p.ui.blockID===b.id)renderDetails();},isCurrent:()=>U.p.blocks.includes(b),onError:error=>status(error.message,true)}));editable(node,b,'图片说明与来源');}
    else if(b.type==='citation')node.append(el('span','〔Zotero 引用〕'+b.text));
    else if(b.type==='formula'){const view=el('div',undefined,'manuscript-formula-preview');node.append(view);renderInlineFormula(view,{text:b.text,E:U.E,locked:!!b.locked,onSelect:()=>{if(U.previewMaterialID||U.p.ui.blockID!==b.id)selectBlock(b.id);},onChange:value=>saveFormulaText(b,value,{inline:true}),onError:error=>status(error.message,true)});}
    else if(b.type==='crossref')node.append(el('span','↗ '+b.text));
@@ -73,7 +73,7 @@ function materialIndex(materials){const index=new Map();for(const m of materials
 // until it is shown: setStep and the direction workspace call U.paginateCanvas,
 // and the resize observer covers any other way the canvas appears.
 let pendingPapers=null,canvasObserver=null,observedCanvas=null;
-function paperPage(section,number,continued){const page=el('article',undefined,'paper');page.dataset.page=String(number);page.dataset.section=section.id;page.dataset.continued=String(continued);page.append(el('h2',section.title));page.style.zoom=U.p.ui.paperZoom||1;page.ondragover=e=>{if(e.dataTransfer.types.some(t=>t.startsWith('application/x-manuscript-')))e.preventDefault();};page.ondrop=e=>placeOnPaper(e.currentTarget,e);return page;}
+function paperPage(section,number,continued){const page=el('article',undefined,'paper');page.dataset.page=String(number);page.dataset.section=section.id;page.dataset.continued=String(continued);page.append(el('h2',section.title));page.style.zoom=pageZoom();page.ondragover=e=>{if(e.dataTransfer.types.some(t=>t.startsWith('application/x-manuscript-')))e.preventDefault();};page.ondrop=e=>placeOnPaper(e.currentTarget,e);return page;}
 function observeCanvas(canvas){if(observedCanvas===canvas||typeof ResizeObserver==='undefined')return;canvasObserver?.disconnect();observedCanvas=canvas;canvasObserver=new ResizeObserver(()=>{if(pendingPapers)paginatePendingCanvas();});canvasObserver.observe(canvas);}
 function paginatePendingCanvas(){
  const layout=pendingPapers;if(!layout||layout.canvas.hidden)return false;if(!layout.sections.every(row=>row.pages.every(page=>page.isConnected))){pendingPapers=null;return false;}
@@ -97,7 +97,7 @@ function paginatePapers(layout){
 // a box bottom relative to its page top, divided by the zoom. Returns false when
 // the canvas is not displayed and null when its pages no longer hold the blocks.
 function measurePapers(layout){
- const zoom=U.p.ui.paperZoom||1,rows=layout.sections.filter(row=>row.entries.some(entry=>!entry.hidden)),tops=new Map();if(!rows.length)return true;
+ const zoom=pageZoom(),rows=layout.sections.filter(row=>row.entries.some(entry=>!entry.hidden)),tops=new Map();if(!rows.length)return true;
  const first=rows[0].pages[0],box=first.getBoundingClientRect();if(!box.height)return false;tops.set(first,box.top);
  const top=page=>{if(!tops.has(page))tops.set(page,page.getBoundingClientRect().top);return tops.get(page);};
  for(const row of rows){

@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {paperScale} from '../../chrome/content/zotero/research/manuscript/paper-scale.mjs';
 import { readFile } from 'node:fs/promises';
 import { makeTable } from '../../chrome/content/zotero/research/shared/manuscript-model.mjs';
 
@@ -22,7 +23,7 @@ function fixture() {
 	let el = (tag, text, className) => { let node = new Node(tag, text, className); if (className === 'cell-editor') editors.push(node); return node; };
 	let exports = {};
 	vm.runInNewContext(source, {
-		__exports: exports, U, el, snapshot: () => snapshots++, persist() {}, changed() {}, selectBlock() {}, status() {}, $: () => null, field() {}, modal() {}, insertBlock() {},
+		__exports: exports, U, pageZoom: () => paperScale(U.p?.ui, U.paperFit), el, snapshot: () => snapshots++, persist() {}, changed() {}, selectBlock() {}, status() {}, $: () => null, field() {}, modal() {}, insertBlock() {},
 		button: (text, fn, host, className) => { let node = el('button', text, className); host?.append(node); return node; },
 		appendEditableRuns() {}, tableCellRuns: () => [], saveTableCellContent: (cell, input) => { cell.text = input.textContent; }, mergedTableCellContent: () => ({}), datasetMaterial() {}, dataRoleSelect() {},
 		document: { execCommand() {} }

@@ -201,6 +201,24 @@ before(function () {
 		.forEach(key => TestOptions.customPrefs[key] = Zotero.Prefs.get(key));
 });
 
+// EasySch: extensions.easysch.testViewport ("1280x752") caps every window, including the
+// sizes tests ask for with resizeTo(), so layouts are checked at the size a 14-16 inch
+// laptop gives. The pref is outside the Zotero branch that resetPrefs() clears.
+function capWindowSize(win, width, height) {
+	if (!win || win.closed || win.easyschViewportCap) return;
+	let resizeTo = win.resizeTo.bind(win);
+	win.easyschViewportCap = { width, height };
+	win.resizeTo = (w, h) => resizeTo(Math.min(w, width), Math.min(h, height));
+	if (win.outerWidth > width || win.outerHeight > height) {
+		resizeTo(Math.min(win.outerWidth, width), Math.min(win.outerHeight, height));
+	}
+}
+beforeEach(function () {
+	let size = /^(\d+)x(\d+)$/.exec(Services.prefs.getStringPref('extensions.easysch.testViewport', ''));
+	if (!size) return;
+	for (let win of Services.wm.getEnumerator(null)) capWindowSize(win, Number(size[1]), Number(size[2]));
+});
+
 /**
  * Clear all prefs, and reset those set in runtests.sh to original values
  */

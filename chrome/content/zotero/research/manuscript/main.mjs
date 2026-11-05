@@ -20,6 +20,7 @@ import {installAssemblyAIOrb} from './assembly-orb.mjs';
 import {installAssemblyConversation} from './assembly-conversation.mjs';
 import {pendingPlanEditMessage} from '../shared/plan-edit-proposal.mjs';
 import {installAssemblyWorkflow,placeAssemblySteps,assemblyPaneWidths} from './assembly-workflow.mjs';
+import {paperFit,paperScale} from './paper-scale.mjs';
 import {associateProjectMaterials} from '../shared/material-section-matching.mjs';
 import {isCurrentAssessment} from '../shared/manuscript-assessment.mjs';
 import {renderAssemblyNavigation,syncAssemblyLeftTabs} from './assembly-navigation.mjs';
@@ -44,7 +45,9 @@ import {placedBlock} from './assembly-placement.mjs';
 import {datasetMaterial,dataRoleSelect,dataRoleLabel} from './dataset-role.mjs';
 export const $=id=>document.getElementById(id);
 export const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
-export const U={E:window.parent.Zotero.Research,M,$,el,ready:false,p:null,selectedCells:[],undo:[],redo:[],saving:Promise.resolve(),busy:false};
+export const U={E:window.parent.Zotero.Research,M,$,el,ready:false,p:null,selectedCells:[],undo:[],redo:[],saving:Promise.resolve(),busy:false,paperFit:1};
+// The zoom every page uses and every pointer measurement on a page divides by.
+export const pageZoom=()=>paperScale(U.p?.ui,U.paperFit);
 export function status(text,error=false){
  // The notice floats above the footer over the left rail; reserve its height
  // there so no material card scrolls underneath it (workspace-surface.css).
@@ -150,6 +153,7 @@ export function applyPanels(){
  document.body.style.setProperty('--assembly-chat-height',chatHeight+'px');
  document.body.style.setProperty('--assembly-footer-height',document.querySelector('footer').getBoundingClientRect().height+'px');
  $('left').hidden=!s.leftOpen;document.body.dataset.leftPane=s.leftOpen?'open':'closed';$('right').hidden=!s.rightOpen;const panes=assemblyPaneWidths({width:globalThis.innerWidth,left:s.leftWidth,right:s.rightWidth,leftOpen:!!s.leftOpen,rightOpen:!!s.rightOpen});$('left').style.width=panes.left+'px';$('right').style.width=panes.right+'px';
+ {const canvas=$('canvas'),pad=canvas&&getComputedStyle(canvas),fit=canvas?.clientWidth?paperFit(canvas.clientWidth-parseFloat(pad.paddingLeft)-parseFloat(pad.paddingRight)):U.paperFit;if(Math.abs(fit-U.paperFit)>=.01){U.paperFit=fit;const zoom=pageZoom();for(const page of canvas.querySelectorAll('.paper'))page.style.zoom=zoom;$('paper-zoom')?.replaceChildren(Math.round(zoom*100)+'%');}}
  U.selectionAssistant?.sync();
  $('toggle-ai').replaceChildren();const logo=el('span',undefined,'easysch-symbol');logo.setAttribute('aria-hidden','true');$('toggle-ai').append(logo,el('span',s.aiOpen?'收起对话':'研究助手'));$('toggle-ai').title=s.aiOpen?'收起对话，保留输入栏':'展开研究助手';$('toggle-ai').setAttribute('aria-expanded',String(!!s.aiOpen));
  const main=$('workspace').querySelector('main').getBoundingClientRect();placeAssemblySteps(document,(main.left+main.right)/2);document.body.style.setProperty('--assembly-canvas-center',((main.left+main.right)/2)+'px');

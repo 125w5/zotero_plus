@@ -1,4 +1,4 @@
-param([switch]$Test, [switch]$LiveServices, [switch]$LivePPT, [switch]$LiveConversation, [switch]$LiveLongHistory, [switch]$LiveEvidence, [string]$PDF, [string]$Suite = 'researchWorkstation', [string]$Grep, [ValidatePattern('^[a-zA-Z0-9-]{1,48}$')][string]$TestRunID, [ValidatePattern('^[a-z]{2}(-[A-Z]{2})?$')][string]$Locale = 'zh-CN')
+param([switch]$Test, [switch]$LiveServices, [switch]$LivePPT, [switch]$LiveConversation, [switch]$LiveLongHistory, [switch]$LiveEvidence, [string]$PDF, [string]$Suite = 'researchWorkstation', [string]$Grep, [ValidatePattern('^[a-zA-Z0-9-]{1,48}$')][string]$TestRunID, [ValidatePattern('^[a-z]{2}(-[A-Z]{2})?$')][string]$Locale = 'zh-CN', [ValidatePattern('^\d{3,4}x\d{3,4}$')][string]$TestViewport)
 if ($PDF) { $PDF = [IO.Path]::GetFullPath($PDF) }
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -62,6 +62,8 @@ if ($Test) {
     $prefs += "`nuser_pref(`"extensions.easysch.livePPTTest`", $($LivePPT.IsPresent.ToString().ToLowerInvariant()));`n"
     $prefs += "`nuser_pref(`"extensions.easysch.liveProviderTest`", $($LiveServices.IsPresent.ToString().ToLowerInvariant()));`n"
     $prefs += "user_pref(`"extensions.easysch.testPDF`", $(ConvertTo-Json $PDF -Compress));`n"
+    # Caps every test window (test/content/runtests.js), e.g. 1280x752 for a 14 inch laptop at 150%.
+    if ($TestViewport) { $prefs += "user_pref(`"extensions.easysch.testViewport`", `"$TestViewport`");`n" }
     $prefs += @'
 
 user_pref("extensions.zotero.integration.skipInstallation", true);

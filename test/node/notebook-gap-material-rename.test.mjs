@@ -10,6 +10,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {paperScale} from '../../chrome/content/zotero/research/manuscript/paper-scale.mjs';
 import {readFile} from 'node:fs/promises';
 import * as M from '../../chrome/content/zotero/research/shared/manuscript-model.mjs';
 import * as Policy from '../../chrome/content/zotero/research/shared/research-ai-policy.mjs';
@@ -102,7 +103,7 @@ async function fixture({assets=[asset('m1',7),asset('m2',8,{title:'第二份素�
 	const box=new Node('div'),nodes={details:box,library:new Node('div'),status:new Node('div'),'ai-notice':new Node('div'),'save-status':new Node('span'),canvas:new Node('div')};for(const node of Object.values(nodes))node.root=true;
 	const U={E,A,M,ready:true,p:structuredClone(A.get('p')),undo:[],redo:[],saving:Promise.resolve(),busy:false,workflow:{closePanel(){}},assetBranches:new Set()};U.savedRevision=U.p.revision;U.materialExclusionAttachments=A.materialAttachmentIDs(U.p.materials);
 	const overviews=[],explanations=[],library={renders:0};
-	const sandbox={U,M,$:id=>nodes[id]||null,el:(tag,text,cls)=>new Node(tag,text,cls),document:{querySelector:()=>null,querySelectorAll:()=>[]},window:{addEventListener(){}},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,Date:time.Date,
+	const sandbox={U,M,pageZoom:()=>paperScale(U.p?.ui,U.paperFit),$:id=>nodes[id]||null,el:(tag,text,cls)=>new Node(tag,text,cls),document:{querySelector:()=>null,querySelectorAll:()=>[]},window:{addEventListener(){}},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,Date:time.Date,
 		libraryAsset,materialAnchors,mergeMaterialAsset:Annotations.mergeMaterialAsset,saveProjectMaterialHighlights:Annotations.saveProjectMaterialHighlights,referencedAssetsChanged,rememberAssetViewDefaults,assetViewProjectSnapshot,descriptionOnlyChange,refreshMaterialDescriptions,assemblyCanvasMode,materialSearchScope,
 		disposeMediaPreviews(){},disposeInlineFormulas(){},disposeCanvasMedia(){},syncCanvasDisplay(){},applyPanels(){},renderAssessment(){},openMaterial(){},refreshMaterial(){},insertMaterial(){},attachMaterial(){},selectBlock(){},saveMaterialHighlights(){},materialPreview(){},renderLibrary:()=>{library.renders++;},
 		renderMaterialOverview:(host,display,options)=>{const root=new Node('section',display.sourceText,'material-clues');host.append(root);overviews.push({display,root,options});return {summaryHost:new Node('div'),dispose:()=>root.remove()};},

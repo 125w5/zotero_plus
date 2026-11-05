@@ -355,6 +355,8 @@ html[data-appearance] body #left {padding-bottom: var(--assembly-status-reserve,
 /* Set by applyPanels: a body-level :has() is re-matched on every node inserted into the page. */
 html[data-appearance] body:not([data-left-pane=closed]) footer #status {max-width: clamp(160px, calc(var(--assembly-console-sessions, 392px) - 32px), 660px);}
 html[data-appearance] footer #status.error {color: #a43838; border-color: #c58d8d;}
+/* applyPanels narrows the panes to 250 px on a laptop window (assemblyPaneWidths); surface.css's 300 px floor is for the other pages. */
+html[data-appearance] #workspace > #left {min-width: 250px;}
 html[data-appearance=dark] footer #status.error {color: #ffb7b7; border-color: #a26a6a;}
 /* Blur only the two persistent bars, never manuscript text or source previews. */
 @supports (backdrop-filter: blur(10px)) {
