@@ -44,16 +44,21 @@ test('OR groups go upstream as title/abstract clauses; a rejected grouped query 
  assert.equal(f.urls.length,3);assert.doesNotMatch(f.urls[2].searchParams.get('filter'),/ OR /,'the next page keeps the form its cursor came from');assert.equal(f.urls[2].searchParams.get('cursor'),first.nextCursor);
 });
 
-test('an unrestricted search prepares its query once and moves from an empty OpenAlex to Semantic Scholar with the plain terms',async()=>{
+// Rewritten for the multi-source search: an unrestricted discovery search no
+// longer waits for an empty OpenAlex before asking Semantic Scholar. The
+// indexes are asked together, once each, and one paper from two of them is one row.
+test('an unrestricted search prepares its query once, asks the indexes together and merges the same paper from two of them',async()=>{
  const source=await readFile(new URL('../../chrome/content/zotero/xpcom/research/discovery.js',import.meta.url),'utf8'),state={},urls=[];let models=0,prepares=0;
  const E={store:{get:(...path)=>path.reduce((value,name)=>value?.[name],state),update:async fn=>fn(state)},verifyDiscoveryPDF:async()=>({available:true,checkedAt:Date.now()}),studio:{request:async()=>{models++;return{value:{translations:{},synonyms:{primaryKeyword:['solute transfer']}}};}},
-  requestProvider:async url=>{const parsed=new URL(url);urls.push(parsed);return JSON.stringify(parsed.hostname==='api.openalex.org'?{results:[],meta:{count:0,next_cursor:null}}:{total:1,data:[{paperId:'s2-1',title:'Solute transport through macropore networks',abstract:'Measured breakthrough.',year:2025,openAccessPdf:{url:'https://example.org/s2.pdf'}}]});}};
+  requestProvider:async url=>{const parsed=new URL(url);urls.push(parsed);return JSON.stringify(parsed.hostname==='api.openalex.org'?{results:[],meta:{count:0,next_cursor:null}}:parsed.hostname==='api.crossref.org'?{message:{'total-results':1,items:[{DOI:'10.1000/s2',title:['Solute transport through macropore networks'],type:'journal-article','container-title':['Vadose Zone Journal'],ISSN:['1539-1663'],published:{'date-parts':[[2025,3,1]]}}]}}:{total:1,data:[{paperId:'s2-1',externalIds:{DOI:'10.1000/S2'},title:'Solute transport through macropore networks',abstract:'Measured breakthrough.',year:2025,openAccessPdf:{url:'https://example.org/s2.pdf'}}]});}};
  const Zotero={Research:E,Items:{getAll:async()=>[]},Libraries:{userLibraryID:1},addShutdownListener(){},Promise:{delay:async()=>{}}};
  Feed.installDiscoveryFeed(E,{Zotero});const prepare=E.prepareDiscoveryQuery;E.prepareDiscoveryQuery=(...args)=>{prepares++;return prepare(...args);};
  vm.runInNewContext(source,{Zotero,ChromeUtils:{importESModule:url=>url.includes('workspace-outputs')?WorkspaceOutputs:url.includes('discovery-feed')?{...Feed,installDiscoveryFeed(){}}:{}}});
  const result=await E.searchPaperPage('solute transport',{researchScope:SCOPE,limit:20,domainMatch:'rank',queryExpansion:'auto',scanBudget:{batches:10,ms:20000}});
  assert.equal(models,1,'translation and expansion share one model call');assert.equal(prepares,1,'every source uses the same prepared query');
- assert.equal(result.provider,'semantic');assert.equal(result.records.length,1);assert.deepEqual(urls.map(url=>url.hostname),['api.openalex.org','api.semanticscholar.org']);
- assert.equal(urls[0].searchParams.get('search'),'((solute transport) OR (solute transfer)) AND macropore','relevance sends the OR groups as search=');assert.equal(urls.filter(url=>url.hostname==='api.openalex.org').length,1,'a genuine zero is not retried in plain form');assert.equal(new URL(urls[1].href).searchParams.get('query'),'solute transport macropore','Semantic Scholar gets the plain terms');
- assert.deepEqual(result.queryExpansion.terms,{primaryKeyword:['solute transfer']});assert.equal(result.scan.scanned,1);
+ assert.deepEqual(urls.map(url=>url.hostname).sort(),['api.crossref.org','api.openalex.org','api.semanticscholar.org'],'each index once');
+ const openalex=urls.find(url=>url.hostname==='api.openalex.org');assert.equal(openalex.searchParams.get('search'),'((solute transport) OR (solute transfer)) AND macropore','relevance sends the OR groups as search=');assert.equal(openalex.searchParams.get('per-page'),'100');assert.doesNotMatch(openalex.searchParams.get('filter'),/is_oa/,'records are not limited to open access');
+ assert.equal(urls.find(url=>url.hostname==='api.semanticscholar.org').searchParams.get('query'),'solute transport macropore','Semantic Scholar gets the plain terms');
+ assert.equal(result.records.length,1);const [row]=result.records;assert.deepEqual(row.sources,['Crossref','Semantic Scholar']);assert.equal(row.journal,'Vadose Zone Journal');assert.equal(row.s2Id,'s2-1');assert.equal(row.abstract,'Measured breakthrough.');assert.equal(row.pdf,'https://example.org/s2.pdf');
+ assert.deepEqual(result.queryExpansion.terms,{primaryKeyword:['solute transfer']});assert.equal(result.scan.scanned,1);assert.deepEqual([...result.providers],['semantic','crossref']);
 });

@@ -101,21 +101,24 @@ test('a locate failure is shown on the row, including rows without a matched rec
  f.E.locateReference=async()=>({pageIndex:0});await menuCommand(f,matched,'定位本文引用');assert.equal(matched.querySelector('.reference-row-status').textContent,'','a later success clears the old reason');
 });
 
+// 获取公开全文 hands every reference to obtainPaper, which tries each open source in turn
+// (pdf-resolver.js, covered by pdf-resolver.test.mjs) and files nothing when none has a PDF.
+const noOpenPDF=()=>Error('已尝试 3 个来源（OpenAlex、Unpaywall、Semantic Scholar），均未找到可下载的开放获取 PDF。文库没有变化');
 test('获取公开全文 without a public PDF adds nothing to the library',async()=>{
  let f=fixture(),refs=[{id:'1',doi:'10.1234/closed',title:'Closed reference'}],obtained=[];
- f.E.obtainPaper=async record=>{obtained.push(record);return {itemID:1,attachmentID:2};};f.E.findAcademicItem=async()=>null;f.E.requestProvider=async url=>{assert.match(url,/api\.openalex\.org\/works\/https:\/\/doi\.org\/10\.1234%2Fclosed/);return JSON.stringify({best_oa_location:null,locations:[{is_oa:false}]});};
+ f.E.obtainPaper=async record=>{obtained.push(record);throw noOpenPDF();};f.E.findAcademicItem=async()=>null;
  let body=await renderPane(f,refs,[{title:'Closed reference',doi:'10.1234/closed',citationOrigins:[refs[0]]}]);let row=body.querySelector('.reference-row'),download=row.querySelector('.reference-download');
  await download.onclick();await tick();
- assert.equal(obtained.length,0,'no library item is created when no public PDF exists');assert.equal(row.dataset.state,'unavailable');assert.equal(download.title,'暂无公开 PDF');assert.match(download.getAttribute('aria-label'),/重试/);
+ assert.equal(obtained.length,1,'the reference goes to the open-source chain');assert.equal(row.dataset.state,'unavailable');assert.equal(download.title,'暂无公开 PDF');assert.match(download.getAttribute('aria-label'),/重试/);
 });
 
-test('获取公开全文 hands a resolved open PDF, an arXiv record or an existing local copy to obtainPaper',async()=>{
+test('获取公开全文 hands every reference, an arXiv record and an existing local copy to obtainPaper',async()=>{
  let f=fixture(),obtained=[];f.E.obtainPaper=async record=>{obtained.push(record);return {itemID:1,attachmentID:2};};f.E.findAcademicItem=async()=>null;
- f.E.requestProvider=async()=>JSON.stringify({best_oa_location:{is_oa:true,pdf_url:'https://example.org/open.pdf'}});
- await f.E.obtainReferencePaper({doi:'10.1234/open',title:'Open'},{open:false});assert.equal(obtained.at(-1).pdf,'https://example.org/open.pdf');
- f.E.requestProvider=async()=>{throw Error('arXiv needs no lookup');};await f.E.obtainReferencePaper({id:'2401.12345',title:'Preprint'},{open:false});assert.equal(obtained.at(-1).id,'2401.12345');
+ f.E.requestProvider=async()=>{throw Error('the reference pane no longer looks a PDF up itself');};
+ await f.E.obtainReferencePaper({doi:'10.1234/open',title:'Open'},{open:false});assert.equal(obtained.at(-1).doi,'10.1234/open');
+ await f.E.obtainReferencePaper({id:'2401.12345',title:'Preprint'},{open:false});assert.equal(obtained.at(-1).id,'2401.12345');
  f.E.findAcademicItem=async()=>({id:5});f.E.library.localPDF=async item=>item?.id===5?{id:6}:null;await f.E.obtainReferencePaper({doi:'10.1234/local',title:'Local'},{open:false});assert.equal(obtained.at(-1).doi,'10.1234/local');
- f.E.findAcademicItem=async()=>null;f.E.requestProvider=async()=>JSON.stringify({is_retracted:true});await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/retracted'},{}),/撤稿/);assert.equal(obtained.length,3);
+ f.E.findAcademicItem=async()=>null;await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/retracted',retracted:true},{}),/撤稿/);assert.equal(obtained.length,3,'a retracted reference is not downloaded');
 });
 
 test('a failed abstract read says so in the detail and its retry asks the sources again',async()=>{
@@ -129,32 +132,19 @@ test('a failed abstract read says so in the detail and its retry asks the source
  assert.equal(requests,4,'the retry bypasses the failure');assert.equal(retry.hidden,true);assert.equal(detail.querySelector('.reader-reference-abstract').textContent,'Original provider abstract.');
 });
 
-test('a closed-access pdf_url or a landing page is not taken for a public PDF',async()=>{
- let f=fixture(),obtained=[],lookups=[],probes=[];f.E.obtainPaper=async record=>{obtained.push(record);return {itemID:1,attachmentID:2};};f.E.findAcademicItem=async()=>null;
+test('a closed-access pdf_url is not handed on as a public PDF; a known open one is',async()=>{
+ let f=fixture(),obtained=[];f.E.obtainPaper=async record=>{obtained.push(record);return {itemID:1,attachmentID:2};};f.E.findAcademicItem=async()=>null;
  // An OpenAlex record cached by an earlier lookup can still carry a closed location's pdf_url.
- let closed={id:'https://openalex.org/W1',source:'OpenAlex',title:'A closed access cited method',pdf:'https://publisher.example/pdfdirect/closed.pdf'};
- f.E.requestProvider=async url=>{lookups.push(url);return JSON.stringify({best_oa_location:null,locations:[{is_oa:false,pdf_url:closed.pdf}]});};
- await assert.rejects(f.E.obtainReferencePaper(closed,{open:false}),/未找到公开 PDF；文库没有变化/);
- assert.deepEqual(lookups,['https://api.openalex.org/works/W1'],'the work is checked for an open-access location');assert.equal(obtained.length,0,'nothing is filed');
- f.E.verifyDiscoveryPDF=async url=>{probes.push(url);return {available:false,error:'来源返回非 PDF 内容，未保存附件'};};
- f.E.requestProvider=async()=>JSON.stringify({best_oa_location:{is_oa:true,pdf_url:'https://repository.example/landing'}});
- // A landing page that returns no PDF does so on every attempt: no retry is offered.
- await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/landing',title:'Landing'},{open:false}),/^Error: 来源返回非 PDF 内容；文库没有变化$/);
- assert.deepEqual(probes,['https://repository.example/landing']);assert.equal(obtained.length,0,'a URL that does not return a PDF files nothing');
- f.E.verifyDiscoveryPDF=async()=>({available:true});f.E.requestProvider=async()=>{throw Error('an open-access Semantic Scholar PDF needs no lookup');};
- await f.E.obtainReferencePaper({source:'Semantic Scholar',doi:'10.1234/s2',title:'S2',pdf:'https://s2.example/open.pdf'},{open:false});assert.equal(obtained.at(-1).pdf,'https://s2.example/open.pdf');
+ await f.E.obtainReferencePaper({id:'https://openalex.org/W1',source:'OpenAlex',title:'A closed access cited method',pdf:'https://publisher.example/pdfdirect/closed.pdf'},{open:false});
+ assert.equal(obtained.at(-1).pdf,undefined,'the closed location is dropped; the open-source chain looks for an open copy');
+ await f.E.obtainReferencePaper({source:'Semantic Scholar',doi:'10.1234/s2',title:'S2',pdf:'https://s2.example/open.pdf'},{open:false});
+ assert.equal(obtained.at(-1).pdf,'https://s2.example/open.pdf','a Semantic Scholar open-access PDF is kept');
 });
 
 test('获取公开全文 failures say what happened to the library',async()=>{
- let f=fixture(),library=[];f.E.findAcademicItem=async()=>library[0]||null;f.E.library.localPDF=async()=>null;f.E.obtainPaper=async()=>{throw Error('obtainPaper is not reached without a PDF');};
- f.E.requestProvider=async()=>JSON.stringify({best_oa_location:null,locations:[]});
- library.push({id:5});await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/kept',title:'Kept'},{open:false}),/^Error: 未找到公开 PDF；文库中的这条题录没有改动，可稍后重试$/);
- library=[];await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/new',title:'New'},{open:false}),/^Error: 未找到公开 PDF；文库没有变化，可稍后重试$/);
- f.E.requestProvider=async()=>{throw Object.assign(Error('无法连接服务，请检查网络或代理'),{name:'ProviderTransportError'});};
- await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/offline',title:'Offline'},{open:false}),/^Error: 公开全文查询未完成：无法连接服务，请检查网络或代理；文库没有变化，可稍后重试$/,'a failed lookup is not reported as a missing PDF');
- f.E.requestProvider=async()=>{throw Object.assign(Error('服务返回 HTTP 404'),{providerStatus:404});};
- await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/unindexed',title:'Unindexed'},{open:false}),/^Error: 未找到公开 PDF；/,'an unindexed DOI has no public PDF');
- f.E.requestProvider=async()=>JSON.stringify({best_oa_location:{is_oa:true,pdf_url:'https://repository.example/broken.pdf'}});f.E.verifyDiscoveryPDF=async()=>({available:true});
+ let f=fixture(),library=[];f.E.findAcademicItem=async()=>library[0]||null;f.E.library.localPDF=async()=>null;
+ f.E.obtainPaper=async()=>{throw noOpenPDF();};
+ await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/new',title:'New'},{open:false}),/均未找到可下载的开放获取 PDF。文库没有变化/,'the sources tried are named');
  f.E.obtainPaper=async()=>{library.push({id:9});throw Error('来源返回非 PDF 或空文件，未保存附件');};
  await assert.rejects(f.E.obtainReferencePaper({doi:'10.1234/broken',title:'Broken'},{open:false}),/^Error: 来源返回非 PDF 或空文件；题录已加入文库，尚无 PDF 附件$/,'a download that fails after filing says the record was added');
 });

@@ -8,10 +8,10 @@ import vm from 'node:vm';
 // arxiv.js and reader-panes.js run in the order of service.js over an in-memory library and a
 // minimal DOM; only the network is controlled.
 let root=new URL('../../chrome/content/zotero/',import.meta.url),modules={'paper-overview-data.mjs':{}},sources={};
-for(let name of ['paper-screening.mjs','reference-matcher.mjs','reference-metadata.mjs','discovery-feed.mjs','discovery-dates.mjs','arxiv.mjs','workspace-outputs.mjs','reader-reference-detail.mjs'])modules[name]=await import(new URL('research/shared/'+name,root));
+for(let name of ['paper-screening.mjs','reference-matcher.mjs','reference-metadata.mjs','discovery-feed.mjs','discovery-dates.mjs','arxiv.mjs','workspace-outputs.mjs','reader-reference-detail.mjs','pdf-resolver.mjs'])modules[name]=await import(new URL('research/shared/'+name,root));
 // The detail stylesheet comes from chrome://; it decides nothing here.
 modules['reader-reference-detail.mjs']={...modules['reader-reference-detail.mjs'],prepareReferenceDetailStyles:async()=>{}};
-for(let name of ['search.js','discovery.js','arxiv.js','reader-panes.js'])sources[name]=await readFile(new URL('xpcom/research/'+name,root),'utf8');
+for(let name of ['search.js','pdf-resolver.js','discovery.js','arxiv.js','reader-panes.js'])sources[name]=await readFile(new URL('xpcom/research/'+name,root),'utf8');
 let Metadata=modules['reference-metadata.mjs'],Matcher=modules['reference-matcher.mjs'],Arxiv=modules['arxiv.mjs'];
 let tick=async(n=12)=>{for(let i=0;i<n;i++)await new Promise(resolve=>setImmediate(resolve));};
 
@@ -64,6 +64,8 @@ function fixture({pdf,provider}){
 	};
 	let E={
 		fetchDiscoveryPDF:async(url,options)=>pdf(url,{probe:!!options?.headers?.Range,signal:options?.signal}),
+		// The DOI landing page pdf-resolver.js reads last; missing here.
+		fetchDiscoveryPage:async()=>new Response('',{status:404,headers:{'content-type':'text/html'}}),
 		requestProvider:async(url,...rest)=>provider(url,...rest),
 		store:{get:view,peek:view,update:async fn=>fn(state)},
 		library:{localPDF:async value=>{if(value===current||value===7)return current;let item=typeof value==='number'?items.get(value):value;return item?.isPDFAttachment?.()?item:items.get(item?.attachments?.[0])||null;},describe:item=>({id:item.id,title:'Current paper'})},
@@ -71,7 +73,7 @@ function fixture({pdf,provider}){
 	};
 	Zotero.Research=E;
 	let context=vm.createContext({Zotero,Cu:{cloneInto:value=>value,waiveXrays:value=>value,unwaiveXrays:value=>value},ChromeUtils:{importESModule:url=>{let value=modules[url.split('/').at(-1)];if(!value)throw Error('unexpected module '+url);return value;}},IOUtils:{exists:async()=>true,stat:async()=>({type:'regular',size:1024,lastModified:1}),write:async()=>{},remove:async()=>{}},PathUtils:{join:(...parts)=>parts.join('/')},URL,Uint8Array,AbortController});
-	for(let name of ['search.js','discovery.js','arxiv.js','reader-panes.js'])vm.runInContext(sources[name],context);
+	for(let name of ['search.js','pdf-resolver.js','discovery.js','arxiv.js','reader-panes.js'])vm.runInContext(sources[name],context);
 	return {E,doc,current,regular:()=>[...items.values()].filter(item=>item.isRegularItem())};
 }
 // One cited paper, matched to record, in the pane of the open PDF.
@@ -101,13 +103,17 @@ test('a failure that will repeat is shown on the reference row without offering 
 	for(let [name,record,provider,pdf,reason] of [
 		['arXiv PDF 404',arxivRecord,s2Provider,()=>reply({status:404}),'PDF 无法获取（HTTP 404）；文库没有变化'],
 		['arXiv PDF over 80 MB',arxivRecord,s2Provider,()=>reply({length:90000000}),'PDF 超过 80 MB，请从来源页面单独下载；文库没有变化'],
-		['open copy probe 404',doiRecord('10.5555/gone','Gone reference'),openCopy('https://repository.example/gone.pdf'),()=>reply({status:404}),'PDF 无法获取（HTTP 404）；文库没有变化'],
-		['open copy probe gets a web page',doiRecord('10.5555/landing','Landing reference'),openCopy('https://repository.example/landing'),()=>reply({type:'text/html; charset=utf-8',body:'<html>Human verification</html>'}),'来源返回网页或验证页面，未提供 PDF；文库没有变化'],
-		// The probe reads 1 KB and passes; only the full download meets the size limit.
-		['open copy download over 80 MB',doiRecord('10.5555/large','Large reference'),openCopy('https://repository.example/large.pdf'),(_url,{probe})=>probe?reply():reply({length:90000000}),'PDF 超过 80 MB，请从来源页面单独下载']
+		// The reference pane goes through obtainPaper's open-source chain, so its message names the sources tried.
+		['open copy probe 404',doiRecord('10.5555/gone','Gone reference'),openCopy('https://repository.example/gone.pdf'),()=>reply({status:404}),/^已尝试 \d 个来源（.*），均未找到可下载的开放获取 PDF。.*PDF 无法获取（HTTP 404）。文库没有变化$/],
+		// A publisher's 403 is no open copy, as on the search page (pdf-resolver.js candidateTransient).
+		['open copy probe refused',doiRecord('10.5555/refused','Refused reference'),openCopy('https://repository.example/refused.pdf'),()=>reply({status:403}),/^已尝试 \d 个来源（.*），均未找到可下载的开放获取 PDF。.*PDF 无法获取（HTTP 403）。文库没有变化$/],
+		['open copy probe gets a web page',doiRecord('10.5555/landing','Landing reference'),openCopy('https://repository.example/landing'),()=>reply({type:'text/html; charset=utf-8',body:'<html>Human verification</html>'}),/^已尝试 \d 个来源（.*），均未找到可下载的开放获取 PDF。.*来源返回网页或验证页面，未提供 PDF。文库没有变化$/],
+		// The probe reads 1 KB and passes; only the full download meets the size limit. obtainPaper
+		// (pdf-resolver.js) then asks the other sources too, and its message names them.
+		['open copy download over 80 MB',doiRecord('10.5555/large','Large reference'),openCopy('https://repository.example/large.pdf'),(_url,{probe})=>probe?reply():reply({length:90000000}),/^已尝试 \d 个来源（.*），均未找到可下载的开放获取 PDF。.*PDF 超过 80 MB，请从来源页面单独下载。文库没有变化$/]
 	]){
 		let f=fixture({pdf,provider}),row=await click(f,record);
-		assert.equal(row.state,'error',name);assert.equal(row.title,reason,name);assert.equal(row.label,reason,'the label says the reason only: '+name);assert.doesNotMatch(row.label,/重试/,name);
+		assert.equal(row.state,'error',name);const same=(value,label)=>reason instanceof RegExp?assert.match(value,reason,label):assert.equal(value,reason,label);same(row.title,name);same(row.label,'the label says the reason only: '+name);assert.doesNotMatch(row.label,/重试/,name);
 		assert.equal(row.icon,row.before,'the download icon stays, no retry arrow: '+name);assert.equal(f.regular().length,0,'nothing is filed: '+name);
 	}
 });
@@ -116,7 +122,6 @@ test('a failure that can pass still offers its retry on the reference row',async
 	for(let [name,record,provider,pdf,reason] of [
 		['no open copy',doiRecord('10.5555/closed','Closed reference'),closedAccess,()=>{throw Error('no PDF is requested');},'暂无公开 PDF'],
 		['arXiv rate limit',arxivRecord,s2Provider,()=>reply({status:429}),'公开 PDF 暂不可用：PDF 无法获取（HTTP 429）；文库没有变化，可稍后重试'],
-		['open copy probe refused',doiRecord('10.5555/refused','Refused reference'),openCopy('https://repository.example/refused.pdf'),()=>reply({status:403}),'公开 PDF 暂不可用：PDF 无法获取（HTTP 403）；文库没有变化，可稍后重试']
 	]){
 		let f=fixture({pdf,provider}),row=await click(f,record);
 		assert.equal(row.state,'unavailable',name);assert.equal(row.title,reason,name);assert.equal(row.label,reason+'，重试获取全文',name);assert.notEqual(row.icon,row.before,'the retry arrow: '+name);

@@ -107,20 +107,10 @@
   let target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{},pinned={...options,...target};
   let existing=E.findAcademicItem&&await E.findAcademicItem(record,pinned);
   if(existing&&await E.library.localPDF(existing))return E.obtainPaper(record,pinned);
-  let unchanged=existing?'文库中的这条题录没有改动':'文库没有变化',candidate={...record};
   if(record.retracted)throw Error('该论文标记为撤稿，已停止自动下载');
-  if(!openRecord(candidate)){
-   delete candidate.pdf;delete candidate.oa;let doi=Ref.cleanDOI(record.doi),work=record.source==='OpenAlex'&&String(record.id||'').match(/(?:^|openalex\.org\/)(W\d+)$/i)?.[1];
-   if(doi||work)try{
-    let data=JSON.parse(await E.requestProvider('https://api.openalex.org/works/'+(doi?'https://doi.org/'+encodeURIComponent(doi):work),{signal:options.signal},15000));
-    if(data.is_retracted)throw Error('该论文标记为撤稿，已停止自动下载');
-    let location=[data.best_oa_location,...(data.locations||[])].find(x=>x?.is_oa&&/^https:\/\//i.test(x.pdf_url||''));if(location)candidate={...candidate,pdf:location.pdf_url,oa:true};
-   }catch(error){if(error.message.includes('撤稿'))throw error;if(![404,410].includes(error.providerStatus)){Zotero.logError(error);throw Error('公开全文查询未完成：'+openReason(error)+'；'+unchanged+'，可稍后重试');}}
-  }
-  if(!candidate.pdf)throw Error('未找到公开 PDF；'+unchanged+'，可稍后重试');
-  if(Zotero.Libraries?.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件；'+unchanged);
-  // Worded as obtainPaper words its own check: a failure that will repeat is not offered for retry.
-  if(E.verifyDiscoveryPDF){let check=await E.verifyDiscoveryPDF(candidate.pdf,{signal:options.signal});if(!check?.available)throw E.discoveryPDFUnavailable(check?.error,unchanged);}
+  // A reference's own pdf is used only when it is a known open copy; obtainPaper then tries
+  // every open source in turn (pdf-resolver.js) and words a failure with the sources tried.
+  let candidate={...record};if(!openRecord(candidate)){delete candidate.pdf;delete candidate.oa;}
   try{return await E.obtainPaper(candidate,pinned);}
   catch(error){
    let added=!existing&&!/题录已保留|题录已加入/.test(error.message)&&E.findAcademicItem&&await E.findAcademicItem(record,pinned).catch(()=>null);
@@ -187,7 +177,7 @@
     const locate=async()=>{selectRow(state);hidePreview();let attempt=++state.locating;state.note.textContent='正在定位本文引用…';row.dataset.locate='loading';try{if(!attachment)throw Error('暂无本地 PDF，无法定位本文引用');await E.locateReference(attachment.id,state.ref);if(attempt===state.locating){state.note.textContent='';delete row.dataset.locate;}}catch(error){if(attempt!==state.locating)return;state.note.textContent=error.message;row.dataset.locate='error';if(detail?.state===state){detail.status.textContent=error.message;detail.status.hidden=false;}}};
     // Only a failure that can pass offers its retry. One that will repeat (error.lasting:
     // 404, a web page, not a PDF, over 80 MB) says its reason and keeps the download icon.
-    const obtain=async()=>{if(!state.record||state.downloading)return;selectRow(state);state.downloading=true;state.download.disabled=true;if(detail?.state===state)detail.download.disabled=true;rowStatus(row,'正在查找公开全文…','loading');try{await E.obtainReferencePaper(state.record,{open:false});rowStatus(row,'公开全文已保存','saved');}catch(error){rowStatus(row,/未找到公开\s*PDF|暂无.*公开.*PDF/.test(error.message)?'暂无公开 PDF':error.message,error.lasting?'error':'unavailable');}finally{state.downloading=false;state.download.disabled=false;if(detail?.state===state){detail.download.disabled=false;detail.download.title=state.download.title;detail.download.setAttribute('aria-label',state.download.getAttribute('aria-label'));referenceIcon(detail.download,row.dataset.state==='saved'?'saved':row.dataset.state==='unavailable'?'retry':'download');}}};
+    const obtain=async()=>{if(!state.record||state.downloading)return;selectRow(state);state.downloading=true;state.download.disabled=true;if(detail?.state===state)detail.download.disabled=true;rowStatus(row,'正在查找公开全文…','loading');try{await E.obtainReferencePaper(state.record,{open:false});rowStatus(row,'公开全文已保存','saved');}catch(error){rowStatus(row,/未找到公开\s*PDF|暂无.*公开.*PDF/.test(error.message)||!error.lasting&&!error.attempted?.length&&/均未找到可下载的开放获取\s*PDF/.test(error.message)?'暂无公开 PDF':error.message,error.lasting?'error':'unavailable');}finally{state.downloading=false;state.download.disabled=false;if(detail?.state===state){detail.download.disabled=false;detail.download.title=state.download.title;detail.download.setAttribute('aria-label',state.download.getAttribute('aria-label'));referenceIcon(detail.download,row.dataset.state==='saved'?'saved':row.dataset.state==='unavailable'?'retry':'download');}}};
     state.locate=locate;state.obtain=obtain;state.download=button(doc,row,'',obtain);state.download.className='reference-download';referenceIcon(state.download);state.download.setAttribute('aria-label','获取公开全文');state.download.title='获取公开全文';
     title.onclick=expand.onclick=()=>openDetail(state);row.onclick=event=>{if(!event.target.closest('button')&&!win.getSelection()?.toString())openDetail(state);};row.onpointerenter=()=>showPreview(state);row.onpointerleave=()=>{win.clearTimeout(previewTimer);hideTimer=win.setTimeout(hidePreview,140);};title.onfocus=()=>showPreview(state);row.onfocusout=event=>{if(!row.contains(event.relatedTarget))hidePreview();};
     row.onkeydown=event=>{if(event.key==='Escape'){hidePreview();return;}if(event.target===title&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const entries=[...rows.values()],at=entries.indexOf(state);entries[at+(event.key==='ArrowDown'?1:-1)]?.title.focus();}};

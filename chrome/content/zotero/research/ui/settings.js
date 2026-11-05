@@ -65,6 +65,27 @@ Object.assign(EasySchUI, {
 		});
 		this.settingsAction('metrics-save-key', async () => { if (!this.$('metrics-key').value.trim()) throw new Error('请输入密钥'); await this.E.saveMetricsKey(this.$('metrics-key').value.trim()); this.$('metrics-key').value = ''; this.status('指标密钥已保存至密码管理器'); });
 		this.settingsAction('metrics-remove-key', async () => { await this.E.saveMetricsKey(''); this.$('metrics-key').value = ''; this.status('指标密钥已删除'); });
+		if (this.$('scholarly-sources')) {
+			// An empty key field keeps the saved key; the saved keys are never read back into the page.
+			this.settingsAction('save-scholarly-sources', async () => {
+				let contact = this.$('scholarly-contact').value.trim();
+				if (contact && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) throw new Error('联系邮箱格式不正确');
+				for (let input of this.$('scholarly-sources').querySelectorAll('[data-scholarly-source]')) {
+					if (!input.value.trim()) continue;
+					await this.E.scholarly.save(input.dataset.scholarlySource, input.value.trim());
+					input.value = '';
+				}
+				let paidPDF = !!this.$('openalex-content-download')?.checked;
+				await this.E.store.update(s => { s.settings = { ...s.settings, scholarlyContact: contact, openalexContentDownload: paidPDF }; });
+				await this.loadScholarlySources();
+				this.status('文献数据源已保存');
+			});
+			this.settingsAction('test-scholarly-sources', async () => {
+				this.$('scholarly-sources-status').textContent = '正在测试文献数据源…';
+				let rows = await this.E.scholarly.test();
+				this.$('scholarly-sources-status').textContent = rows.map(row => row.label + '：' + row.message).join('；');
+			});
+		}
 		// Each group validates and saves on its own, so an invalid model entry
 		// does not block saving template paths, and the reverse.
 		this.settingsAction('save-settings', async () => {
@@ -199,8 +220,32 @@ Object.assign(EasySchUI, {
 		this.$('youdao-app-id').value = config.youdaoAppID || '';
 		this.$('image-endpoint').value = config.imageEndpoint || '';
 		this.$('image-model').value = config.imageModel || '';
+		if (this.$('scholarly-contact')) this.$('scholarly-contact').value = config.scholarlyContact || '';
+		if (this.$('openalex-content-download')) this.$('openalex-content-download').checked = config.openalexContentDownload === true;
+		this.loadScholarlySources().catch(e => this.status(e.message, true));
 		for (let name of ['endpoint', 'model', 'template', 'pandoc', 'csl', 'referenceDoc', 'latexTemplate', 'documentLanguage']) this.$(name).value = config[name];
 		this.E.compatibility().then(text => { this.$('compatibility').textContent = text; }).catch(e => this.status(e.message, true));
+	},
+	// Opens settings at 文献数据源 (from the search page's provider notice): its
+	// folded card is expanded and the OpenAlex key field focused.
+	openScholarlySettings() {
+		this.show('settings');
+		let card = this.$('scholarly-sources');
+		if (!card) return;
+		let fold = card.closest('details');
+		if (fold) fold.open = true;
+		card.scrollIntoView?.({ block: 'start' });
+		card.querySelector('[data-scholarly-source="openalex"]')?.focus?.({ preventScroll: true });
+	},
+	async loadScholarlySources() {
+		let host = this.$('scholarly-sources');
+		if (!host || !this.E.scholarly) return;
+		let rows = await this.E.scholarly.state();
+		for (let row of rows) {
+			let input = host.querySelector(`[data-scholarly-source="${row.id}"]`);
+			if (input) input.placeholder = row.saved ? '已保存，留空保留' : '未填写';
+		}
+		this.$('scholarly-sources-status').textContent = rows.map(row => row.label + '：' + (row.saved ? '已保存密钥' : '未填写')).join('；');
 	},
 	async loadProviderStatus() {
 		let flags = await this.E.providerStatus(), settings = this.E.settings();

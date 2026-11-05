@@ -19,16 +19,20 @@ function fixture(){
 // A journal article whose open copy is on arxiv.org: its own id and url are not arXiv.
 let journal={source:'OpenAlex',id:'https://openalex.org/W7',url:'https://doi.org/10.1234/arxiv-hosted',doi:'10.1234/arxiv-hosted',title:'A journal article with an arXiv copy',journal:'Controlled Journal',pdf:'https://arxiv.org/pdf/2401.12345v2'};
 
+// obtainPaper finds and checks the open copy (pdf-resolver.js); the reference pane only decides
+// which record and which known-open PDF it hands on.
 test('an arXiv pdf link alone does not make a journal article an arXiv preprint',async()=>{
-	let f=fixture();f.E.requestProvider=async url=>{f.lookups.push(url);return JSON.stringify({best_oa_location:null,locations:[{is_oa:false,pdf_url:journal.pdf}]});};
-	await assert.rejects(f.E.obtainReferencePaper(journal,{open:false}),/^Error: 未找到公开 PDF；文库没有变化，可稍后重试$/,'a pdf not marked open access is checked like any other');
-	assert.equal(f.lookups.length,1);assert.match(f.lookups[0],/^https:\/\/api\.openalex\.org\/works\/https:\/\/doi\.org\//);assert.equal(f.obtained.length,0,'nothing is filed');
+	let f=fixture();f.E.requestProvider=async()=>{throw Error('the reference pane no longer looks a PDF up itself');};
+	await f.E.obtainReferencePaper(journal,{open:false});
+	assert.equal(f.obtained.length,1);let {record}=f.obtained[0];
+	assert.equal(record.pdf,undefined,'a pdf not marked open access is not taken as the open copy');assert.equal(record.doi,journal.doi);assert.equal(record.journal,journal.journal,'still filed as the journal article');
+	assert.deepEqual(f.probes,[],'probing is left to obtainPaper');
 });
 
-test('a confirmed open arXiv copy is probed and handed on with the journal record',async()=>{
-	let f=fixture();f.E.requestProvider=async url=>{f.lookups.push(url);return JSON.stringify({best_oa_location:{is_oa:true,pdf_url:journal.pdf}});};
-	await f.E.obtainReferencePaper(journal,{open:false});
-	assert.deepEqual(f.probes,[journal.pdf],'the PDF is probed before obtainPaper');assert.equal(f.obtained.length,1);
+test('a confirmed open arXiv copy is handed on with the journal record',async()=>{
+	let f=fixture(),open={...journal,oa:true};f.E.requestProvider=async()=>{throw Error('no lookup');};
+	await f.E.obtainReferencePaper(open,{open:false});
+	assert.equal(f.obtained.length,1);
 	let {record}=f.obtained[0];assert.equal(record.pdf,journal.pdf);assert.equal(record.oa,true);assert.equal(record.doi,journal.doi);assert.equal(record.journal,journal.journal);assert.equal(record.url,journal.url,'the record keeps its own identity');
 });
 
@@ -52,8 +56,8 @@ test('an arXiv record known by its arXiv DOI or arXiv pdf, or an arXiv record na
 	assert.deepEqual(f.obtained.map(row=>row.record),records,'handed on unchanged');
 });
 
-test('a journal article whose landing page is on arxiv.org goes through the PDF checks with its own DOI and journal',async()=>{
+test('a journal article whose landing page is on arxiv.org is handed on with its own DOI and journal',async()=>{
 	let f=fixture(),record={source:'OpenAlex',id:'https://openalex.org/W4400000001',doi:'10.1103/physrevlett.132.000001',url:'https://arxiv.org/abs/2401.12345',journal:'Physical Review Letters',title:'A journal article',pdf:'https://arxiv.org/pdf/2401.12345',oa:true};
 	await f.E.obtainReferencePaper(record,{open:false});
-	assert.deepEqual(f.probes,[record.pdf],'probed like any other public PDF');assert.equal(f.obtained.length,1);assert.equal(f.obtained[0].record.journal,'Physical Review Letters');assert.equal(f.obtained[0].record.doi,record.doi);
+	assert.equal(f.obtained.length,1);assert.equal(f.obtained[0].record.pdf,record.pdf,'its open copy is handed on for obtainPaper to check');assert.equal(f.obtained[0].record.journal,'Physical Review Letters');assert.equal(f.obtained[0].record.doi,record.doi);
 });

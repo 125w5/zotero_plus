@@ -146,10 +146,12 @@ test('a load-more round whose papers first arrive through progress reports re-ar
  await observers[0]();assert.equal(ui.collectionResults.length,25);assert.equal(ui.discoveryEmptyRound,false,'papers shown by a progress report count as added');
  assert.equal(observers.length,2,'automatic loading is armed again');assert.equal(results.querySelector('.discovery-page-controls').children[0].textContent,'加载更多论文');assert.match(ui.collectionStatus.textContent,/^已显示 25 篇 · 下滑或点击加载更多/);
 });
-test('the status line names the model step while the query is expanded, then returns to the PDF search',async()=>{
+// The search lists records first and checks PDFs afterwards, so its step is
+// now named 正在检索论文 instead of 正在检索公开 PDF.
+test('the status line names the model step while the query is expanded, then returns to the paper search',async()=>{
  const seen=[],f=fixture(async(_query,options)=>{options.onProgress({records:[],phase:'expand',partial:true});seen.push(f.ui.collectionStatus.textContent);options.onProgress({records:[],phase:'search',partial:true});seen.push(f.ui.collectionStatus.textContent);return{records:rows(1,1),providerID:'openalex',page:1,hasMore:false};});
  f.ui.discoveryExpand={checked:true};await f.ui.searchCollection(false,{trigger:'submit'});
- assert.deepEqual(seen,['正在扩展检索词…','正在检索公开 PDF…']);
+ assert.deepEqual(seen,['正在扩展检索词…','正在检索论文…']);
 });
 test('a failed easyScholar lookup is named in the status line and the empty state, apart from journals without a record',async()=>{
  const f=fixture(async()=>({records:[],providerID:'openalex',page:1,hasMore:false,scan:{scanned:6,matched:6,total:6,removed:{topUnknown:6},relax:{topUnknown:6,top:6},metricLookup:'failed',metricFailed:2}})),{ui,results,renderDiscovery}=f;

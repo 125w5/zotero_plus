@@ -7,16 +7,17 @@ import vm from 'node:vm';
 // The real search.js, discovery.js, arxiv.js and reader-panes.js, loaded in the order of
 // service.js over an in-memory library. Only the network is controlled.
 let root=new URL('../../chrome/content/zotero/',import.meta.url),modules={'paper-overview-data.mjs':{}},sources={};
-for(let name of ['paper-screening.mjs','reference-matcher.mjs','reference-metadata.mjs','discovery-feed.mjs','discovery-dates.mjs','arxiv.mjs','workspace-outputs.mjs','reader-reference-detail.mjs'])modules[name]=await import(new URL('research/shared/'+name,root));
-for(let name of ['search.js','discovery.js','arxiv.js','reader-panes.js'])sources[name]=await readFile(new URL('xpcom/research/'+name,root),'utf8');
+for(let name of ['paper-screening.mjs','reference-matcher.mjs','reference-metadata.mjs','discovery-feed.mjs','discovery-dates.mjs','arxiv.mjs','workspace-outputs.mjs','reader-reference-detail.mjs','pdf-resolver.mjs'])modules[name]=await import(new URL('research/shared/'+name,root));
+for(let name of ['search.js','pdf-resolver.js','discovery.js','arxiv.js','reader-panes.js'])sources[name]=await readFile(new URL('xpcom/research/'+name,root),'utf8');
 let Feed=modules['discovery-feed.mjs'],Metadata=modules['reference-metadata.mjs'],Matcher=modules['reference-matcher.mjs'];
 let encode=text=>new TextEncoder().encode(text),pdfBytes=()=>encode('%PDF-1.7\n'+'controlled content '.repeat(80));
 // Real WHATWG Response objects, as the background PDF transport returns them.
 let reply=({status=200,type='application/pdf',length,body=status===200?pdfBytes():''}={})=>new Response(body,{status,headers:{...(type?{'content-type':type}:{}),...(length?{'content-length':String(length)}:{})}});
 let notFound=()=>{throw Object.assign(Error('服务返回 HTTP 404'),{providerStatus:404});};
 
-async function fixture({pdf=()=>reply(),provider=notFound}={}){
-	let items=new Map(),state={},downloads=[],probes=[],lookups=[],next=100;
+// page: the DOI landing page pdf-resolver.js reads last for citation_pdf_url; by default it is missing.
+async function fixture({pdf=()=>reply(),provider=notFound,page=()=>reply({status:404,type:'text/html'})}={}){
+	let items=new Map(),state={},downloads=[],probes=[],lookups=[],pages=[],next=100;
 	class Item{
 		constructor(type){this.itemType=type;this.fields={};this.creators=[];this.collections=[];this.attachments=[];this.libraryID=1;}
 		isRegularItem(){return this.itemType!=='attachment';}isPDFAttachment(){return this.itemType==='attachment';}getField(key){return this.fields[key]||'';}setField(key,value){this.fields[key]=value;}setCreators(value){this.creators=value;}setCollections(value){this.collections=[...value];}getCollections(){return [...this.collections];}addToCollection(id){if(!this.collections.includes(id))this.collections.push(id);}getAttachments(){return [...this.attachments];}async getFilePathAsync(){return this.path||null;}async getBestAttachment(){return items.get(this.attachments[0])||null;}
@@ -34,6 +35,7 @@ async function fixture({pdf=()=>reply(),provider=notFound}={}){
 	};
 	let E={
 		fetchDiscoveryPDF:async(url,options)=>{let probe=!!options?.headers?.Range;(probe?probes:downloads).push(url);return pdf(url,{probe,signal:options?.signal});},
+		fetchDiscoveryPage:async url=>{pages.push(url);return page(url);},
 		requestProvider:async(url,...rest)=>{lookups.push(url);return provider(url,...rest);},
 		store:{get:view,peek:view,update:async fn=>fn(state)},
 		library:{localPDF:async value=>{let item=typeof value==='number'?items.get(value):value;return item?.isPDFAttachment()?item:items.get(item?.attachments?.[0])||null;}},
@@ -41,8 +43,8 @@ async function fixture({pdf=()=>reply(),provider=notFound}={}){
 	};
 	Zotero.Research=E;
 	let context=vm.createContext({Zotero,Cu:{},ChromeUtils:{importESModule:url=>{let value=modules[url.split('/').at(-1)];if(!value)throw Error('unexpected module '+url);return value;}},IOUtils:{exists:async()=>true,stat:async()=>({type:'regular',size:1024,lastModified:1}),write:async()=>{},remove:async()=>{}},PathUtils:{join:(...parts)=>parts.join('/')},URL,Uint8Array,AbortController});
-	for(let name of ['search.js','discovery.js','arxiv.js','reader-panes.js'])vm.runInContext(sources[name],context);
-	return {E,items,state,downloads,probes,lookups,regular:()=>[...items.values()].filter(item=>item.isRegularItem())};
+	for(let name of ['search.js','pdf-resolver.js','discovery.js','arxiv.js','reader-panes.js'])vm.runInContext(sources[name],context);
+	return {E,items,state,downloads,probes,lookups,pages,regular:()=>[...items.values()].filter(item=>item.isRegularItem())};
 }
 let failures=f=>f.state.discoveryPDFFailures||{};
 // What the search pages do with a cached row: enrich it, then keep it only if it is offered as a download.
@@ -119,7 +121,7 @@ test('a reference matched only on Semantic Scholar keeps its journal, with or wi
 		assert.equal(record.url,'https://arxiv.org/abs/2401.67890','semanticRecord links the arXiv copy');assert.equal(record.id,paperId||'2401.67890');
 		let f=await fixture({provider}),saved=await f.E.obtainReferencePaper(record,{open:false}),item=f.items.get(saved.itemID);
 		assert.equal(item.itemType,'journalArticle','paperId '+JSON.stringify(paperId));assert.equal(item.getField('publicationTitle'),'Physical Review Letters');assert.equal(item.getField('DOI'),'10.1103/physrevlett.132.000001');
-		assert.deepEqual(f.probes,['https://arxiv.org/pdf/2401.67890'],'the open copy is probed like any other public PDF');
+		assert.equal(f.probes.length,0,'an arXiv copy is not probed separately: its download stops at a first 1 KB that is not a PDF (pdf-resolver.js)');
 	}
 });
 
@@ -193,61 +195,64 @@ let journalWithArxivCopy=()=>{
 // The Semantic Scholar row of the same paper links the same open copy.
 let s2Journal=row=>({source:'Semantic Scholar',id:'fedcba9876543210fedcba9876543210fedcba98',title:row.title,abstract:'',date:'2023-01-18',doi:row.doi,url:'https://www.semanticscholar.org/paper/fedcba9876543210fedcba9876543210fedcba98',journal:'Physical Review Letters',pdf:row.pdf,authors:[],oa:true,citationCount:3,retracted:null});
 
+// Rewritten for pdf-resolver.js: after the arXiv copy fails, OpenAlex, Semantic Scholar, Europe PMC and
+// the DOI page are asked too (Unpaywall and CORE are skipped: no contact email, no key), so the message
+// names every source tried. The arXiv copy now goes through arxiv.js's queue without a separate probe
+// (its download stops at the first kilobyte that is not a PDF), and a 429/503 there is waited out once.
+let journalSources='已尝试 5 个来源（arXiv、OpenAlex、Semantic Scholar、Europe PMC、出版社页面），均未找到可下载的开放获取 PDF';
 test('the arXiv copy of a journal article that can succeed later is not recorded, as on the arXiv path',async()=>{
-	for(let [name,pdf,error] of [
-		['HTTP 403',()=>reply({status:403}),{message:'PDF 无法获取（HTTP 403）'}],
-		['HTTP 429',()=>reply({status:429}),{message:'PDF 无法获取（HTTP 429）'}],
-		['HTTP 503',()=>reply({status:503}),{message:'PDF 无法获取（HTTP 503）'}],
-		['network',()=>{throw new TypeError('NetworkError when attempting to fetch resource.');},{name:'TypeError'}],
-		// The 20 s download deadline of requestDiscoveryPDF runs out while arxiv.org does not answer.
-		['timeout',(_url,{signal})=>new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(Object.assign(Error('aborted'),{name:'AbortError'})),{once:true})),{name:'TimeoutError'}]
+	for(let [name,pdf,reason,attempts] of [
+		['HTTP 403',()=>reply({status:403}),'PDF 无法获取（HTTP 403）',1],
+		['HTTP 429',()=>reply({status:429}),'PDF 无法获取（HTTP 429）',2],
+		['HTTP 503',()=>reply({status:503}),'PDF 无法获取（HTTP 503）',2],
+		['network',()=>{throw new TypeError('NetworkError when attempting to fetch resource.');},'暂时无法访问',1],
+		// arxiv.org does not answer within the first-byte deadline of requestDiscoveryPDF (20 s).
+		['timeout',(_url,{signal})=>new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(Object.assign(Error('aborted'),{name:'AbortError'})),{once:true})),'PDF 来源 20 秒没有响应（超时）',1]
 	]){
-		let f=await fixture({pdf:(url,options)=>options.probe?reply():pdf(url,options)}),row=journalWithArxivCopy();
-		if(name==='timeout')f.E.setTimeout=(fn,ms,...rest)=>setTimeout(fn,ms>=20000?1:ms,...rest);
-		await assert.rejects(f.E.obtainPaper(row,{open:false}),error,name);
-		assert.deepEqual(f.probes,[row.pdf],name);assert.deepEqual(f.downloads,[row.pdf],'the full download failed: '+name);
+		let f=await fixture({pdf}),row=journalWithArxivCopy();
+		if(name==='timeout')f.E.setTimeout=(fn,ms,...rest)=>setTimeout(fn,ms===20000?1:ms,...rest);
+		await assert.rejects(f.E.obtainPaper(row,{open:false}),{message:journalSources+'。arXiv：'+reason+'。文库没有变化，部分来源暂时无法访问，可稍后重试',lasting:false},name);
+		assert.deepEqual(f.probes,[],name);assert.deepEqual(f.downloads,Array(attempts).fill(row.pdf),'the queued download: '+name);
+		assert.deepEqual(f.pages,['https://doi.org/10.1103/physrevlett.130.036702'],'the DOI page is read last: '+name);
 		assert.equal(failures(f)[row.pdf],undefined,'not recorded: '+name);assert.equal(offered(f,row),true,'still offered: '+name);assert.equal(offered(f,s2Journal(row)),true,'the other row of this address too: '+name);assert.equal(f.regular().length,0);
 	}
 });
 
-test('the arXiv copy of a journal article that fails for good is still recorded',async()=>{
-	for(let [name,pdf,message] of [
-		['probe 404',()=>reply({status:404}),'PDF 无法获取（HTTP 404）；文库没有变化'],
-		['download 404',(_url,{probe})=>probe?reply():reply({status:404}),'PDF 无法获取（HTTP 404）'],
-		['download returns a web page',(_url,{probe})=>probe?reply():reply({type:'text/html; charset=utf-8',body:'<html>Human verification</html>'}),'来源返回网页或验证页面，未提供 PDF'],
-		['download over 80 MB',(_url,{probe})=>probe?reply():reply({length:90000000}),'PDF 超过 80 MB，请从来源页面单独下载']
+test('the arXiv copy of a journal article that fails for good is recorded once every source has answered',async()=>{
+	for(let [name,pdf,reason] of [
+		['404',()=>reply({status:404}),'PDF 无法获取（HTTP 404）'],
+		['a web page',()=>reply({type:'text/html; charset=utf-8',body:'<html>Human verification</html>'}),'来源返回网页或验证页面，未提供 PDF'],
+		['over 80 MB',()=>reply({length:90000000}),'PDF 超过 80 MB，请从来源页面单独下载']
 	]){
 		let f=await fixture({pdf}),row=journalWithArxivCopy();
-		await assert.rejects(f.E.obtainPaper(row,{open:false}),{message,lasting:true},name);
-		assert.ok(failures(f)[row.pdf],'recorded: '+name);assert.equal(offered(f,row),false,name);assert.equal(offered(f,s2Journal(row)),false,'every row of this address: '+name);assert.equal(f.regular().length,0);
+		await assert.rejects(f.E.obtainPaper(row,{open:false}),{message:journalSources+'。arXiv：'+reason+'。文库没有变化',lasting:true},name);
+		assert.ok(failures(f)[row.pdf],'recorded: '+name);assert.match(failures(f)[row.pdf].reason,/^已尝试 5 个来源/);assert.equal(offered(f,row),false,name);assert.equal(offered(f,s2Journal(row)),false,'every row of this address: '+name);assert.equal(f.regular().length,0);
 	}
-});
-
-test('a refused or rate-limited probe of the arXiv copy says it can be retried and is not recorded',async()=>{
-	for(let status of [403,429]){
-		let f=await fixture({pdf:()=>reply({status})}),row=journalWithArxivCopy();
-		await assert.rejects(f.E.obtainPaper(row,{open:false}),{message:'公开 PDF 暂不可用：PDF 无法获取（HTTP '+status+'）；文库没有变化，可稍后重试',lasting:false});
-		assert.deepEqual(f.probes,[row.pdf]);assert.deepEqual(f.downloads,[]);assert.equal(failures(f)[row.pdf],undefined,'not recorded: HTTP '+status);assert.equal(offered(f,row),true,'HTTP '+status);
-	}
+	// One source rate limited: nothing is recorded, whatever the arXiv copy said.
+	let f=await fixture({pdf:()=>reply({status:404}),provider:url=>url.includes('semanticscholar')?Promise.reject(Object.assign(Error('服务返回 HTTP 429'),{providerStatus:429})):notFound()}),row=journalWithArxivCopy();
+	await assert.rejects(f.E.obtainPaper(row,{open:false}),{lasting:false,message:/Semantic Scholar：服务返回 HTTP 429。文库没有变化，部分来源暂时无法访问，可稍后重试$/});
+	assert.deepEqual(failures(f),{});assert.equal(offered(f,row),true);
 });
 
 test('a failure that will repeat does not say it can be retried, on the open-access and the arXiv path alike',async()=>{
 	let oversized=()=>reply({length:90000000}),open={id:'https://openalex.org/W1',source:'OpenAlex',title:'Large open paper',doi:'10.1000/large',url:'https://doi.org/10.1000/large',pdf:'https://repository.example/large.pdf',oa:true,authors:[]};
 	// The probe reads 1 KB and passes; the full download is refused, and says it will repeat.
-	await assert.rejects((await fixture({pdf:oversized})).E.obtainPaper(open,{open:false}),{message:'PDF 超过 80 MB，请从来源页面单独下载',lasting:true});
+	// On the open-access path the message now names the sources tried (pdf-resolver.js) and keeps the reason.
+	await assert.rejects((await fixture({pdf:oversized})).E.obtainPaper(open,{open:false}),{message:'已尝试 4 个来源（OpenAlex、Semantic Scholar、Europe PMC、出版社页面），均未找到可下载的开放获取 PDF。OpenAlex：PDF 超过 80 MB，请从来源页面单独下载。文库没有变化',lasting:true});
 	await assert.rejects((await fixture({pdf:oversized})).E.obtainPaper(arxivRow('2401.40001'),{open:false}),{message:'PDF 超过 80 MB，请从来源页面单独下载；文库没有变化'});
 	let kept=await fixture({pdf:oversized});await kept.E.importAcademic(arxivRow('2401.40002'),{select:false});
 	await assert.rejects(kept.E.obtainPaper(arxivRow('2401.40002'),{open:false}),{message:'PDF 超过 80 MB，请从来源页面单独下载；文库中的这条题录没有改动'});
 	// A missing file: the open-access probe, the reference pane's probe and the arXiv download say the same.
 	let gone=()=>reply({status:404}),expected={message:'PDF 无法获取（HTTP 404）；文库没有变化'};
-	await assert.rejects((await fixture({pdf:gone})).E.obtainPaper({...open,id:'https://openalex.org/W2',doi:'10.1000/gone',url:'https://doi.org/10.1000/gone',pdf:'https://repository.example/gone.pdf'},{open:false}),expected);
-	await assert.rejects((await fixture({pdf:gone})).E.obtainReferencePaper({source:'Semantic Scholar',id:'abc',title:'Gone',doi:'10.1000/gone-ref',url:'https://www.semanticscholar.org/paper/abc',pdf:'https://repository.example/gone-ref.pdf'},{open:false}),expected);
+	await assert.rejects((await fixture({pdf:gone})).E.obtainPaper({...open,id:'https://openalex.org/W2',doi:'10.1000/gone',url:'https://doi.org/10.1000/gone',pdf:'https://repository.example/gone.pdf'},{open:false}),{message:'已尝试 4 个来源（OpenAlex、Semantic Scholar、Europe PMC、出版社页面），均未找到可下载的开放获取 PDF。OpenAlex：PDF 无法获取（HTTP 404）。文库没有变化',lasting:true});
+	// The reference pane goes through the same open-source chain and says which sources it tried.
+	await assert.rejects((await fixture({pdf:gone})).E.obtainReferencePaper({source:'Semantic Scholar',id:'abc',title:'Gone',doi:'10.1000/gone-ref',url:'https://www.semanticscholar.org/paper/abc',pdf:'https://repository.example/gone-ref.pdf'},{open:false}),error=>/均未找到可下载的开放获取 PDF。Semantic Scholar：PDF 无法获取（HTTP 404）。文库没有变化$/.test(error.message)&&error.lasting===true);
 	await assert.rejects((await fixture({pdf:gone})).E.obtainPaper(arxivRow('2401.40003'),{open:false}),expected);
 });
 
 test('a failure that can pass still says it can be retried, on every path',async()=>{
 	let limited=()=>reply({status:429}),expected={message:'公开 PDF 暂不可用：PDF 无法获取（HTTP 429）；文库没有变化，可稍后重试'};
-	await assert.rejects((await fixture({pdf:limited})).E.obtainPaper({id:'https://openalex.org/W3',source:'OpenAlex',title:'Busy',doi:'10.1000/busy',url:'https://doi.org/10.1000/busy',pdf:'https://repository.example/busy.pdf',oa:true,authors:[]},{open:false}),expected);
-	await assert.rejects((await fixture({pdf:limited})).E.obtainReferencePaper({source:'Semantic Scholar',id:'def',title:'Busy',doi:'10.1000/busy-ref',url:'https://www.semanticscholar.org/paper/def',pdf:'https://repository.example/busy-ref.pdf'},{open:false}),expected);
+	await assert.rejects((await fixture({pdf:limited})).E.obtainPaper({id:'https://openalex.org/W3',source:'OpenAlex',title:'Busy',doi:'10.1000/busy',url:'https://doi.org/10.1000/busy',pdf:'https://repository.example/busy.pdf',oa:true,authors:[]},{open:false}),{message:'已尝试 4 个来源（OpenAlex、Semantic Scholar、Europe PMC、出版社页面），均未找到可下载的开放获取 PDF。OpenAlex：PDF 无法获取（HTTP 429）。文库没有变化，部分来源暂时无法访问，可稍后重试',lasting:false});
+	await assert.rejects((await fixture({pdf:limited})).E.obtainReferencePaper({source:'Semantic Scholar',id:'def',title:'Busy',doi:'10.1000/busy-ref',url:'https://www.semanticscholar.org/paper/def',pdf:'https://repository.example/busy-ref.pdf'},{open:false}),error=>/HTTP 429.*可稍后重试/.test(error.message)&&!error.lasting,'a rate limit is offered for retry');
 	await assert.rejects((await fixture({pdf:limited})).E.obtainPaper(arxivRow('2401.50001'),{open:false}),expected);
 });

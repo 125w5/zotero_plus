@@ -62,7 +62,13 @@ export function wordStem(word){
 }
 function matchesTerm(haystack,term,fuzzy,stemmed=false){
  const needle=clean(term).toLowerCase();if(!needle)return true;
- if(/[\u3400-\u9fff]/.test(needle))return haystack.includes(needle);
+ if(/[\u3400-\u9fff]/.test(needle)){
+  if(haystack.includes(needle))return true;
+  // Opt-in (discovery): a Chinese phrase also matches when most of its
+  // two-character pieces appear, as \u76ee\u6807\u68c0\u6d4b\u56fe\u50cf for \u56fe\u50cf\u76ee\u6807\u68c0\u6d4b.
+  const text=needle.replace(/[^\u3400-\u9fff]/g,'');if(!fuzzy||!stemmed||text.length<4)return false;
+  const pairs=Array.from({length:text.length-1},(_,i)=>text.slice(i,i+2));return pairs.filter(pair=>haystack.includes(pair)).length/pairs.length>=0.7;
+ }
  // Acronyms such as CNN, AMC and QCD must not match parts of unrelated words.
  const words=haystack.match(/[a-z0-9]+/g)||[],parts=needle.match(/[a-z0-9]+/g)||[];
  if(!parts.length)return haystack.includes(needle);

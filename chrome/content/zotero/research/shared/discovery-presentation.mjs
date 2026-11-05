@@ -102,3 +102,25 @@ export function discoveryFilters(value = {}) {
   sourceIDs:[...new Set((value.sourceIDs || []).filter(id => typeof id === 'string' && /^https:\/\/openalex\.org\/S\d+$/.test(id)))],
   sort:['impact','citations','date'].includes(value.sort) ? value.sort : 'citations',...discoveryDateFilters(value)};
 }
+let PROVIDER_LABELS = {openalex: 'OpenAlex', semantic: 'Semantic Scholar', arxiv: 'arXiv', crossref: 'Crossref', core: 'CORE', springer: 'Springer Nature', europepmc: 'Europe PMC'};
+let clock = time => {let date = new Date(time); return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');};
+// One quiet line about OpenAlex without a key or rate-limited, and Semantic
+// Scholar rate-limited without a key; null when there is nothing to say.
+// settings: the line offers the 文献数据源 settings (a free key helps).
+export function discoveryProviderNotice(states, {now = Date.now()} = {}) {
+	if (!states || typeof states !== 'object') return null;
+	let state = name => {let row = states[name]; if (!row) return null; return row.status === 'limited' && row.until && row.until <= now ? {...row, status: 'ok'} : row;};
+	let openalex = state('openalex'), semantic = state('semantic');
+	let answered = [...new Set(Object.entries(states).filter(([name]) => name !== 'openalex-zh').map(([name]) => [name, state(name)]).filter(([, row]) => row.status === 'ok' && row.rows > 0).map(([name]) => PROVIDER_LABELS[name] || name))];
+	let from = answered.length ? '结果仅来自 ' + (answered.length > 1 ? answered.slice(0, -1).join('、') + ' 和 ' + answered.at(-1) : answered[0]) + '。' : '';
+	let parts = [], settings = false;
+	if (openalex?.status === 'limited') {
+		if (openalex.keyless !== false) {settings = true; parts.push(openalex.quota ? 'OpenAlex 未配置密钥，今日免费额度已用完' : 'OpenAlex 未配置密钥，暂时限流' + (openalex.until ? '（约 ' + clock(openalex.until) + ' 后恢复）' : ''));}
+		else parts.push('OpenAlex 暂时限流' + (openalex.until ? '（约 ' + clock(openalex.until) + ' 后恢复）' : ''));
+	}
+	else if (openalex?.status === 'failed' && openalex.keyless === true) {settings = true; parts.push('OpenAlex 未配置密钥，暂时无法访问');}
+	if (semantic?.status === 'limited' && semantic.keyless === true) {settings = true; parts.push('Semantic Scholar 未配置密钥，暂时限流' + (semantic.until ? '（约 ' + clock(semantic.until) + ' 后恢复）' : ''));}
+	if (parts.length) return {text: parts.join('；') + '，' + (from || '暂无其他来源的结果。') + (settings ? '在设置中填写免费密钥可恢复。' : ''), settings};
+	if (openalex?.keyless === true && openalex.status === 'ok') return {text: 'OpenAlex 未配置密钥，每天约可免费检索 10 次；在设置中填写免费密钥可提高额度。', settings: true};
+	return null;
+}

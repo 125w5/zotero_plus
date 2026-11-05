@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 (function (R) {
 	let nextRequest = 0, queue = Promise.resolve();
- const imports=new Map(),Screen=ChromeUtils.importESModule('chrome://zotero/content/research/shared/paper-screening.mjs');
+ let Resolver;const imports=new Map(),Screen=ChromeUtils.importESModule('chrome://zotero/content/research/shared/paper-screening.mjs');
  R.resolveAcademicTarget=async function(options={}){
   const pane=Zotero.getActiveZoteroPane(),explicit=Object.hasOwn(options,'collectionID'),chosen=explicit?options.collectionID:pane.getSelectedCollections?.()[0]?.id;
   let collection=null;if(chosen!=null&&chosen!==false){const id=Number(chosen);if(!Number.isInteger(id)||id<=0)throw Error('请选择有效的论文文件夹');collection=await Zotero.Collections.getAsync(id);if(!collection||collection.deleted)throw Error('论文文件夹已删除或不可用，请重新选择');}
@@ -88,15 +88,101 @@
 		let existing=await Zotero.Items.getAsync(await search.search());return existing.find(item=>item.isRegularItem()&&!item.deleted)||null;
 	}
 	R.findAcademicItem=async function(record,options={}){let target=await R.resolveAcademicTarget(options);return findRecord(record,target.libraryID);};
+	// The item's full metadata (all authors with given and family names, volume, issue, pages,
+	// ISSN) from Zotero's identifier translators, as Add Item by Identifier (lookup.js) does, but
+	// with libraryID false: the translator saves nothing and adds no attachment; importRecord files
+	// it. An arXiv record, or a record whose only DOI is arXiv's, asks the arXiv translator.
+	// obtainPaper starts the lookup while the PDF is sought; after METADATA_TIMEOUT from the start
+	// the hand-built item is used.
+	const METADATA_TIMEOUT = 15000, metadataTasks = new Map();
+	const identifierOf = record => {
+		let ctx = (Resolver ||= ChromeUtils.importESModule('chrome://zotero/content/research/shared/pdf-resolver.mjs')).pdfContext(record);
+		if (ctx.arxiv && (record.source === 'arXiv' || !ctx.doi || /^10\.48550\//.test(ctx.doi))) return { arXiv: ctx.arxiv };
+		return ctx.rawDOI ? { DOI: ctx.rawDOI } : null;
+	};
+	const later = (ms, fn) => { let set = typeof R.setTimeout === 'function' ? R.setTimeout : typeof setTimeout === 'function' ? setTimeout : null; if (!set) return () => {}; let clear = typeof R.clearTimeout === 'function' ? R.clearTimeout : typeof clearTimeout === 'function' ? clearTimeout : () => {}, id = set(fn, ms); return () => clear(id); };
+	async function translateIdentifier(identifier) {
+		let translate = new Zotero.Translate.Search();
+		translate.setIdentifier(identifier);
+		let translators = await translate.getTranslators();
+		if (!translators?.length) return null;
+		translate.setTranslator(translators);
+		let items = await translate.translate({ libraryID: false, saveAttachments: false });
+		return items?.find(item => item?.itemType && item.itemType !== 'note' && item.itemType !== 'attachment') || null;
+	}
+	R.prefetchPaperMetadata = function (record) {
+		if (typeof Zotero.Translate?.Search !== 'function') return null;
+		let identifier; try { identifier = identifierOf(record); } catch { identifier = null; }
+		if (!identifier) return null;
+		let key = JSON.stringify(identifier), task = metadataTasks.get(key);
+		if (!task) {
+			let stop = () => {};
+			task = Promise.race([translateIdentifier(identifier).catch(error => { Zotero.debug?.('EasySch: metadata lookup failed: ' + error); return null; }), new Promise(resolve => { stop = later(METADATA_TIMEOUT, () => resolve(null)); })]).finally(() => stop());
+			metadataTasks.set(key, task);
+			task.then(json => { if (!json && metadataTasks.get(key) === task) metadataTasks.delete(key); });
+			for (let old of [...metadataTasks.keys()].slice(0, -40)) metadataTasks.delete(old);
+		}
+		return task;
+	};
+	// Translator JSON as Zotero's ItemSaver takes it, without its attachments, notes or ids.
+	const importJSON = json => {
+		let copy = { ...json };
+		for (let field of ['attachments', 'notes', 'seeAlso', 'dateAdded', 'dateModified', 'version', 'id', 'itemID', 'key', 'path', 'collections', 'relations', 'libraryID']) delete copy[field];
+		if (copy.accessDate === 'CURRENT_TIMESTAMP') copy.accessDate = Zotero.Date?.dateToISO ? Zotero.Date.dateToISO(new Date()) : undefined;
+		if (copy.accessDate === undefined) delete copy.accessDate;
+		copy.creators = (copy.creators || []).filter(creator => creator && (creator.lastName || creator.firstName || creator.name)).map(creator => ({ ...creator, creatorType: creator.creatorType || 'author' }));
+		let automatic = Zotero.Prefs?.get ? Zotero.Prefs.get('automaticTags') !== false : true;
+		copy.tags = (copy.tags || []).map(tag => typeof tag === 'string' ? { tag } : tag).filter(tag => tag?.tag && String(tag.tag).trim() && (automatic || tag.type !== 1));
+		return copy;
+	};
+	const fillEmpty = (item, field, value) => {
+		if (!value) return;
+		try { if (Zotero.ItemFields?.isValidForType && !Zotero.ItemFields.isValidForType(Zotero.ItemFields.getID(field), item.itemTypeID)) return; if (!item.getField(field)) item.setField(field, value); } catch {}
+	};
+	// The translator's item, with what the search record knows filling the fields it left empty.
+	function translatedItem(json, record, libraryID) {
+		let item = new Zotero.Item(json.itemType); item.libraryID = libraryID;
+		item.fromJSON(importJSON(json));
+		let venue = record.journal || record.venue || record.pdfHints?.venue;
+		for (let [field, value] of Object.entries({ title: record.title, abstractNote: record.abstract, date: record.date, DOI: record.doi, url: record.url, publicationTitle: venue, proceedingsTitle: venue, repository: record.source === 'arXiv' ? 'arXiv' : '', ISSN: record.issn })) fillEmpty(item, field, value);
+		// The arXiv translator gives http:// addresses; the duplicate check and the reader use https.
+		if (record.source === 'arXiv' && record.url) { try { item.setField('url', record.url); if (!item.getField('archiveID')) item.setField('archiveID', record.id); } catch {} }
+		// The duplicate check (findRecord) searches the DOI as the search record wrote it.
+		try { if (record.doi && item.getField('DOI') && Screen.doiKey(item.getField('DOI')) === Screen.doiKey(record.doi)) item.setField('DOI', record.doi); } catch {}
+		let extra = String(item.getField('extra') || '');
+		if (record.source === 'PubMed' && record.id && !/^PMID:/m.test(extra)) item.setField('extra', (extra ? extra + '\n' : '') + 'PMID: ' + record.id);
+		if (!item.getCreators().length && record.authors?.length) item.setCreators(record.authors.map(a => ({ ...a, creatorType: 'author' })));
+		return item;
+	}
+	async function saveTranslatorNotes(json, item) {
+		for (let note of json?.notes || []) {
+			let text = typeof note === 'string' ? note : note?.note;
+			if (!text) continue;
+			try { let child = new Zotero.Item('note'); child.libraryID = item.libraryID; child.parentID = item.id; child.setNote(text); await child.saveTx({ skipSelect: true }); }
+			catch (error) { Zotero.logError(error); }
+		}
+	}
 	async function importRecord(record, options = {}) {
 		const {select=true}=options,target=await R.resolveAcademicTarget(options);let libraryID=target.libraryID;
 		const reuse=async found=>{await R.placeAcademicInCollection(found.id,{libraryID,collectionID:target.collectionID});if(select)await R.showLibraryItem(found.id,{noTabSwitch:true});return{id:found.id,existing:true,...target};};
 		let found=await findRecord(record,libraryID);if(found)return reuse(found);
 		if(!Screen.doiKey(record.doi)&&!record.url)throw Error('缺少 DOI 或可核验来源网址，无法判重入库');
-		let item = new Zotero.Item(record.source === 'arXiv' ? 'preprint' : 'journalArticle'); item.libraryID = libraryID;
+		let json = await R.prefetchPaperMetadata(record), item = null;
+		if (json) { try { item = translatedItem(json, record, libraryID); } catch (error) { Zotero.logError(error); item = null; } }
+		if (item) {
+			if (target.collectionID) item.setCollections([target.collectionID]);
+			await item.saveTx({ skipSelect: !select }); await saveTranslatorNotes(json, item);
+			if (select) await R.showLibraryItem(item.id, { noTabSwitch: true }); return { id: item.id, existing: false, metadata: 'translator', ...target };
+		}
+		// Conference paper, preprint or journal article, from the record's type and venue and what
+		// pdf-resolver.js learned (record.pdfHints).
+		let type = (Resolver ||= ChromeUtils.importESModule('chrome://zotero/content/research/shared/pdf-resolver.mjs')).paperItemType(record);
+		item = new Zotero.Item(type); item.libraryID = libraryID;
 		for (let [field, value] of Object.entries({ title: record.title, abstractNote: record.abstract, date: record.date, DOI: record.doi, url: record.url })) if (value) item.setField(field, value);
-		if (record.source !== 'arXiv') { if (record.journal) item.setField('publicationTitle', record.journal); if (record.issn) item.setField('ISSN', record.issn); if(record.source==='PubMed')item.setField('extra', 'PMID: ' + record.id); }
-		else { item.setField('repository', 'arXiv'); item.setField('archiveID', record.id); }
+		if (record.source === 'arXiv') { item.setField('repository', 'arXiv'); item.setField('archiveID', record.id); }
+		else if (type === 'preprint') { let repository = record.journal || record.venue || record.pdfHints?.venue; if (repository) item.setField('repository', repository); }
+		else { let venue = record.journal || record.venue || record.pdfHints?.venue; if (venue) item.setField(type === 'conferencePaper' ? 'proceedingsTitle' : 'publicationTitle', venue); if (record.issn) item.setField('ISSN', record.issn); }
+		if (record.source === 'PubMed') item.setField('extra', 'PMID: ' + record.id);
 		item.setCreators((record.authors||[]).map(a => ({ ...a, creatorType: 'author' })));
 		if(target.collectionID)item.setCollections([target.collectionID]);
 		await item.saveTx({skipSelect:!select});if(select)await R.showLibraryItem(item.id,{noTabSwitch:true});return{id:item.id,existing:false,...target};

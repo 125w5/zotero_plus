@@ -7,15 +7,20 @@ import * as WorkspaceOutputs from '../../chrome/content/zotero/research/shared/w
 import * as references from '../../chrome/content/zotero/research/shared/reference-matcher.mjs';
 import {installJournalSubscriptions,installJournalSubscriptionTimer} from '../../chrome/content/zotero/research/shared/discovery-journals.mjs';
 import * as Arxiv from '../../chrome/content/zotero/research/shared/arxiv.mjs';
+import * as Resolver from '../../chrome/content/zotero/research/shared/pdf-resolver.mjs';
 
 let source=new URL('../../chrome/content/zotero/xpcom/research/discovery.js',import.meta.url);
+let resolverSource=new URL('../../chrome/content/zotero/xpcom/research/pdf-resolver.js',import.meta.url);
 let arxivSource=new URL('../../chrome/content/zotero/xpcom/research/arxiv.js',import.meta.url);
 
 // obtainPaper with recorded stubs: every library write and network step is logged in order.
 // withArxiv also loads arxiv.js, whose obtainPaper wrapper is what the application calls.
+// pdf-resolver.js runs before discovery.js, as in service.js: 'lookup' is the OpenAlex request,
+// 'source' any other source it asks (none has the paper here), 'page' the DOI landing page.
 async function load({existing=null,lookup=null,probe=async()=>({available:true}),download=async()=>new Uint8Array([37,80,68,70,45]),withArxiv=false,filesEditable=true}={}){
 	let calls=[],stages=[],files=new Map(),nextID=40;
 	let item=id=>({id,saved:true,getAttachments:()=>[]});
+	let missing=()=>Object.assign(Error('服务返回 HTTP 404'),{providerStatus:404});
 	let E={
 		workspaceOutputs:{rememberDownload:async()=>{}},
 		store:{get:()=>({}),peek:()=>undefined,update:async fn=>fn({})},
@@ -25,7 +30,8 @@ async function load({existing=null,lookup=null,probe=async()=>({available:true})
 		findAcademicItem:async()=>{calls.push('find');return existing?item(existing.id):null;},
 		importAcademic:async()=>{calls.push('import');return {id:existing?.id||11};},
 		library:{localPDF:async value=>{let id=typeof value==='number'?value:value?.id;if(existing&&id===existing.id)return existing.pdf;return files.get(id)||null;}},
-		requestProvider:async url=>{calls.push('lookup');if(!lookup)throw Object.assign(Error('服务返回 HTTP 404'),{providerStatus:404});return JSON.stringify(lookup);},
+		requestProvider:async url=>{if(!url.includes('api.openalex.org')){calls.push('source');throw missing();}calls.push('lookup');if(!lookup)throw missing();return JSON.stringify(lookup);},
+		fetchDiscoveryPage:async()=>{calls.push('page');return {ok:false,status:404,headers:{get:()=>'text/html'},body:null};},
 		verifyDiscoveryPDF:async url=>{calls.push('probe');return probe(url);},
 		requestDiscoveryPDF:async url=>{calls.push('download');return download(url);},
 		markDiscoveryPDFFailure:async()=>{},
@@ -37,6 +43,7 @@ async function load({existing=null,lookup=null,probe=async()=>({available:true})
 		Items:{getAsync:async id=>item(id)},
 		Libraries:{get:()=>({filesEditable})},
 		Reader:{open:async()=>calls.push('open')},
+		Promise:{delay:async()=>{}},
 		Utilities:{randomString:()=>'x'},
 		getTempDirectory:()=>({path:'/tmp'}),
 		File:{pathToFile:path=>({path})},
@@ -46,25 +53,28 @@ async function load({existing=null,lookup=null,probe=async()=>({available:true})
 		Zotero,
 		IOUtils:{write:async()=>{},remove:async()=>{}},
 		PathUtils:{join:(...parts)=>parts.join('/')},
-		ChromeUtils:{importESModule:url=>url.includes('workspace-outputs')?WorkspaceOutputs:url.includes('reference-matcher')?references:url.endsWith('/arxiv.mjs')?Arxiv:{installDiscoveryFeed(){},installJournalSubscriptionTimer}}
+		ChromeUtils:{importESModule:url=>url.includes('workspace-outputs')?WorkspaceOutputs:url.includes('reference-matcher')?references:url.endsWith('/arxiv.mjs')?Arxiv:url.endsWith('/pdf-resolver.mjs')?Resolver:{installDiscoveryFeed(){},installJournalSubscriptionTimer}}
 	});
+	vm.runInContext(await readFile(resolverSource,'utf8'),context);
 	vm.runInContext(await readFile(source,'utf8'),context);
 	if(withArxiv)vm.runInContext(await readFile(arxivSource,'utf8'),context);
 	let progress=value=>stages.push(value.stage);
 	return {E,calls,stages,progress};
 }
 
+// Rewritten for pdf-resolver.js: after OpenAlex, Semantic Scholar, Europe PMC and the DOI page are
+// asked as well (Unpaywall and CORE have no contact email or key here), and the message names them.
 test('a reference without a public PDF files nothing in the library',async()=>{
 	let f=await load({lookup:{best_oa_location:null,locations:[{is_oa:false,pdf_url:'https://publisher.example/closed.pdf'}]}});
-	await assert.rejects(f.E.obtainPaper({id:'r1',doi:'10.1000/closed',title:'Closed'},{open:false,collectionID:7,onProgress:f.progress}),/^Error: 未找到公开 PDF；文库没有变化/);
-	assert.deepEqual(f.calls,['find','lookup'],'no import before a PDF is found');
+	await assert.rejects(f.E.obtainPaper({id:'r1',doi:'10.1000/closed',title:'Closed'},{open:false,collectionID:7,onProgress:f.progress}),{message:'已尝试 4 个来源（OpenAlex、Semantic Scholar、Europe PMC、出版社页面），均未找到可下载的开放获取 PDF。文库没有变化',lasting:false},'no source has an open copy yet; one can list it later, so the retry stays');
+	assert.deepEqual(f.calls,['find','lookup','source','source','page'],'no import before a PDF is found; the closed location is not tried');
 });
 
 test('a PDF address that fails the probe files nothing and downloads nothing',async()=>{
 	let f=await load({probe:async()=>({available:false,error:'来源返回网页或验证页面，未提供 PDF'})});
-	// A web page at the PDF address returns on every attempt, so no retry is offered.
-	await assert.rejects(f.E.obtainPaper({id:'r2',doi:'10.1000/landing',title:'Landing',pdf:'https://repository.example/landing'},{open:false,collectionID:7}),/^Error: 来源返回网页或验证页面，未提供 PDF；文库没有变化$/);
-	assert.deepEqual(f.calls,['find','probe']);
+	// A web page at the PDF address returns on every attempt; the other sources are asked next.
+	await assert.rejects(f.E.obtainPaper({id:'r2',doi:'10.1000/landing',title:'Landing',pdf:'https://repository.example/landing'},{open:false,collectionID:7}),{message:'已尝试 5 个来源（repository.example、OpenAlex、Semantic Scholar、Europe PMC、出版社页面），均未找到可下载的开放获取 PDF。repository.example：来源返回网页或验证页面，未提供 PDF。文库没有变化',lasting:true});
+	assert.deepEqual(f.calls,['find','probe','lookup','source','source','page']);
 });
 
 test('a download that fails after a passing probe files nothing',async()=>{
@@ -77,7 +87,9 @@ test('a download that fails after a passing probe files nothing',async()=>{
 test('a reachable PDF is probed and downloaded before the record is filed and attached',async()=>{
 	let f=await load({lookup:{best_oa_location:{is_oa:true,pdf_url:'https://repository.example/open.pdf'}}});
 	let result=await f.E.obtainPaper({id:'r4',doi:'10.1000/open',title:'Open'},{open:false,collectionID:7,onProgress:f.progress});
-	assert.deepEqual(f.calls,['find','lookup','probe','find','download','import','attach:11','place:11:7']);
+	// The download now comes before obtainOpenPaper's library match, which still precedes the import.
+	// The other services are asked together with OpenAlex ('source'), so they interleave.
+	assert.deepEqual(f.calls.filter(call=>call!=='source'),['find','lookup','probe','download','find','import','attach:11','place:11:7']);
 	assert.equal(result.attachmentID,40);assert.equal(result.downloaded,true);assert.equal(result.path,'/local/40.pdf');
 	assert.deepEqual(f.stages,['lookup','resolve','verify','download','save','saved']);
 });
@@ -104,7 +116,8 @@ test('a journal article whose open copy is an arXiv PDF is filed as that journal
 	await f.E.obtainPaper(record,{open:false,collectionID:7});
 	assert.equal(routed.length,0,'not sent to the arXiv preprint import');
 	assert.equal(imported.length,1);assert.equal(imported[0].source,'OpenAlex');assert.equal(imported[0].journal,'Physical Review Letters');assert.equal(imported[0].url,record.url);
-	assert.deepEqual(f.calls,['find','lookup','probe','find','download','import','attach:11','place:11:7']);
+	// An arxiv.org copy is not probed separately: its download (arxiv.js's queue) is the check.
+	assert.deepEqual(f.calls.filter(call=>call!=='source'),['find','lookup','download','find','import','attach:11','place:11:7']);
 });
 
 test('an arXiv record still uses the arXiv preprint import',async()=>{
@@ -153,7 +166,7 @@ test('with arxiv.js loaded, a record that is not an arXiv record keeps the origi
 		f.E.importAcademicPDF=async value=>{routed.push(value);return {itemID:99,attachmentID:98};};
 		await f.E.obtainPaper(record,{open:false,collectionID:7});
 		assert.equal(routed.length,0,'not sent to the arXiv preprint import: '+record.title);
-		assert.deepEqual(f.calls,['find','probe','find','download','import','attach:11','place:11:7']);
+		assert.deepEqual(f.calls,record===journal?['find','download','find','import','attach:11','place:11:7']:['find','probe','download','find','import','attach:11','place:11:7'],'an arxiv.org copy is checked by its queued download alone');
 		assert.equal(imported.length,1);assert.equal(imported[0].source,record.source);assert.equal(imported[0].url,record.url);assert.equal(imported[0].journal,record.journal);
 	}
 });

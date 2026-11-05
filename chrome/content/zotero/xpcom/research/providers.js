@@ -36,11 +36,29 @@
 		try {
 			const reading=(async()=>{
 				if(reason)throw stopError();
-				let response;try{response=await win.fetch(url,{...options,signal:controller.signal,redirect:'error'});}
-				catch(error){if(reason)throw stopError();throw Object.assign(new Error('无法连接服务，请检查网络或代理'),{name:'ProviderTransportError'});}
+				// Scholarly APIs (scholarly-sources.js) get their key, contact email and spacing.
+				// A rate limit or busy server that asks for at most 8 s is retried twice; a longer
+				// Retry-After or a spent OpenAlex daily budget fails at once with the retry time,
+				// so the caller can rest that service while the others answer.
+				const scholarly=R.scholarly?.matches?.(url)?await R.scholarly.prepare(url,options).catch(()=>null):null;let response,limit=null;
+				for(let attempt=0;;attempt++){
+					if(scholarly)await scholarly.wait();
+					if(reason)throw stopError();
+					limit=null;
+					try{response=await win.fetch(scholarly?.url||url,{...(scholarly?.options||options),signal:controller.signal,redirect:scholarly?.redirect||'error'});}
+					catch(error){if(reason)throw stopError();throw Object.assign(new Error('无法连接服务，请检查网络或代理'),{name:'ProviderTransportError'});}
+					if(!scholarly||response.ok||![429,500,502,503,504].includes(response.status))break;
+					const header=name=>response.headers?.get?.(name),raw=String(header('Retry-After')||'').trim(),wait=!raw?null:/^\d+$/.test(raw)?Number(raw)*1000:Math.max(0,Date.parse(raw)-Date.now());
+					const left=header('X-RateLimit-Remaining'),cost=header('X-RateLimit-Credits-Required'),spent=response.status===429&&left!=null&&left!==''&&Number(left)<Math.max(1,Number(cost)||1);
+					// A 503 with Retry-After is a pause too (OpenAlex pauses keyless search that way).
+					if(response.status===429||Number.isFinite(wait)&&wait!==null)limit={rateLimited:true,quotaExhausted:spent,keyless:!scholarly.keyed,scholarlySource:scholarly.id,...(Number.isFinite(wait)&&wait!==null?{retryAfterMs:wait,retryAt:Date.now()+wait}:{})};
+					if(attempt>=2||spent||Number.isFinite(wait)&&wait>8000)break;
+					try{await response.body?.cancel?.();}catch(_){}
+					await new Promise(resolve=>timers.setTimeout(resolve,Number.isFinite(wait)&&wait!==null?wait:1500*(attempt+1)));
+				}
 				if(reason)throw stopError();
 				if(firstTimer!==undefined){timers.clearTimeout(firstTimer);firstTimer=undefined;}
-				if(!response.ok){const errors=ChromeUtils.importESModule('chrome://zotero/content/research/shared/provider-error.mjs');throw await errors.providerResponseError(response);}
+				if(!response.ok){const errors=ChromeUtils.importESModule('chrome://zotero/content/research/shared/provider-error.mjs'),error=await errors.providerResponseError(response);throw limit?Object.assign(error,limit):error;}
 				return await readResponse(response,activity);
 			})();
 			// Covers headers, response.text() and custom streaming readers. Abort

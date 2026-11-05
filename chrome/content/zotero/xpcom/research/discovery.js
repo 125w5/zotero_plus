@@ -105,12 +105,28 @@
   // A discovery search prepares its query once, with at most one model call
   // (translation and expansion together); every source then uses that result.
   let prepared=discovery?await E.prepareDiscoveryQuery(inputQuery,scope,signal,{domainMatch,queryExpansion,onPhase:phase=>onProgress?.({records:[],phase,partial:true})}):null;
-  const choice=Feed.discoveryFilters(filters),topicRestricts=!!scope.topicID&&!(prepared?.domainMatch==='rank'&&prepared.groups?.length),restricted=choice.journalOnly||choice.sourceIDs.length||choice.topOnly||topicRestricts,key='pdf-search-v9-verified:'+JSON.stringify([prepared?prepared.query:query,provider,page,cursor,choice,limit,prepared?prepared.researchScope:scope,fillPage,prepared?.domainMatch||'',prepared?Number(scanBudget?.batches)||0:0]);if(topicRestricts&&provider&&provider!=='openalex')throw Error('所选在线研究主题需要 OpenAlex；可改用自定义领域名称检索其他来源。');if(['semantic','arxiv'].includes(provider)&&(choice.journalOnly||choice.sourceIDs.length))throw Error('当前来源不支持精确期刊筛选，请选择 OpenAlex、Crossref 或 Europe PMC。');if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});let active=pageTasks.get(key),task=active&&!active.signal?.aborted?active.promise:null;
+  // The literature search page lists records first (pdfOnly false unless 只显示可下载 is ticked).
+  const choice=Feed.discoveryFilters(discovery&&filters.pdfOnly===undefined?{...filters,pdfOnly:false}:filters),topicRestricts=!!scope.topicID&&!(prepared?.domainMatch==='rank'&&prepared.groups?.length),restricted=choice.journalOnly||choice.sourceIDs.length||choice.topOnly||topicRestricts,multi=discovery&&!restricted&&!!E.searchDiscoverySources&&(!provider||['openalex','semantic','arxiv','crossref'].includes(provider)),key='paper-search-v10:'+JSON.stringify([prepared?prepared.query:query,provider,page,cursor,choice,limit,prepared?prepared.researchScope:scope,fillPage,prepared?.domainMatch||'',prepared?Number(scanBudget?.batches)||0:0]);if(topicRestricts&&provider&&provider!=='openalex')throw Error('所选在线研究主题需要 OpenAlex；可改用自定义领域名称检索其他来源。');if(['semantic','arxiv'].includes(provider)&&(choice.journalOnly||choice.sourceIDs.length))throw Error('当前来源不支持精确期刊筛选，请选择 OpenAlex、Crossref 或 Europe PMC。');if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});let active=pageTasks.get(key),task=active&&!active.signal?.aborted?active.promise:null;
   // A cached page whose journal lookup failed or had no key is fetched again, as in the feed.
   if(!task){task=(async()=>{const cache=Feed.discoveryBranch(E,'paperSearchPages',key);if(!refresh&&cache?.result?.records?.length&&Date.now()-cache.at<3600000&&!['failed','no-key'].includes(cache.result.scan?.metricLookup)){const snapshot=Feed.discoveryEnrichment(E);return{...cache.result,records:Feed.applyDiscoveryFilters(cache.result.records.map(row=>Feed.enrichDiscoveryRecord(row,E,snapshot)),choice),cacheHit:true};}
    // Each request already carries cancellation and provider cooldowns. A
    // global one-second queue here delayed unrelated and obsolete searches.
    if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});
+   // Without journal, TOP or topic filters the indexes are searched together and
+   // merged. An untranslated Chinese query goes to OpenAlex and Crossref, which
+   // index Chinese titles (Semantic Scholar and arXiv do not); a translated one
+   // also asks OpenAlex with the typed Chinese words, so Chinese papers are kept.
+   if(multi){
+    const typedChinese=/\p{Script=Han}/u.test(prepared.originalQuery||'');
+    const indexes=provider?[provider]:prepared.untranslated?['openalex','crossref']:['openalex','semantic',...(E.arxivSearchPage?['arxiv']:[]),'crossref',...(typedChinese?['openalex-zh']:[])];
+    if(!provider&&!prepared.untranslated&&E.scholarly?.has){const [core,springer]=await Promise.all(['core','springer-meta'].map(id=>Promise.resolve(E.scholarly.has(id)).catch(()=>false)));if(core)indexes.push('core');if(springer)indexes.push('springer');}
+    const merged={...await E.searchDiscoverySources({prepared,filters:choice,indexes,cursor,limit,signal,refresh,onProgress,scanBudget}),page,nextPage:page+1,provider:provider||''};
+    if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});
+    // Only a first page that every index answered is kept; later pages continue the
+    // in-memory merged pool, and a page missing a rate-limited index is fetched again.
+    if(page===1&&!cursor&&merged.records.length&&!merged.fallback&&!merged.providerErrors?.length)await E.store.update(s=>{s.paperSearchPages||={};s.paperSearchPages[key]={at:Date.now(),result:merged};const keys=Object.keys(s.paperSearchPages);for(const k of keys.slice(0,Math.max(0,keys.length-80)))delete s.paperSearchPages[k];});
+    return merged;
+   }
    const started=Date.now(),scans=[];let result,fallback,errors=[];for(const name of provider?[provider]:restricted?['openalex']:['openalex','semantic','arxiv'])try{
     const offset=(page-1)*limit;let rows=[],more=false,total=0;
     if(['openalex','crossref','europepmc'].includes(name)){
@@ -140,28 +156,30 @@
  };
  E.candidateMetric=async(record,{needTop=false}={})=>{if(!record.journal)return null;const item=new Zotero.Item('journalArticle');item.setField('publicationTitle',record.journal);if(record.issn)item.setField('ISSN',record.issn);return await E.ensurePaperMetrics(item,{needTop});};
  // Saves PDF bytes that have already arrived as the item's attachment; arxiv.js
- // uses the same step after its own download.
- E.attachDiscoveryPDF=async(item,bytes,record)=>{const path=PathUtils.join(Zotero.getTempDirectory().path,'easysch-oa-'+Zotero.Utilities.randomString(12)+'.pdf');try{await IOUtils.write(path,bytes);const attachment=await Zotero.Attachments.importFromFile({file:Zotero.File.pathToFile(path),parentItemID:item.id,contentType:'application/pdf',title:record.title});attachment.setField('url',record.pdf);await attachment.saveTx({skipSelect:true});return attachment;}finally{await IOUtils.remove(path,{ignoreAbsent:true});}};
+ // uses the same step after its own download. The attachment title names the
+ // source of a copy found by pdf-resolver.js (record.pdfSource).
+ E.attachDiscoveryPDF=async(item,bytes,record)=>{const path=PathUtils.join(Zotero.getTempDirectory().path,'easysch-oa-'+Zotero.Utilities.randomString(12)+'.pdf');try{await IOUtils.write(path,bytes);const attachment=await Zotero.Attachments.importFromFile({file:Zotero.File.pathToFile(path),parentItemID:item.id,contentType:'application/pdf',title:record.title+(record.pdfSource?'（来源：'+record.pdfSource+'）':'')});attachment.setField('url',record.pdf);await attachment.saveTx({skipSelect:true});return attachment;}finally{await IOUtils.remove(path,{ignoreAbsent:true});}};
  const oaTasks=new Map();
+ // options.pdfBytes: the PDF obtainPaper has already downloaded (record.pdf is its address).
+ // Without it the record's own addresses are tried in order (resolveOpenPDF with lookup:false).
  E.obtainOpenPaper=async(record,options={})=>{
-  const {onProgress=()=>{},signal}=options,target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID,collectionID:options.collectionID};
+  const {onProgress=()=>{},signal,pdfBytes}=options,target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID,collectionID:options.collectionID};
   if(!record.oa||record.retracted)throw Error('此候选未确认可公开获取，或已标记撤稿；请先核对来源。');
   const key=String(target.libraryID||'')+':'+(record.doi||record.url||record.id);if(oaTasks.has(key)){const result=await oaTasks.get(key);if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);return{...result,...target};}
   const task=(async()=>{
    // Only an arXiv record (arxivRecordID) is filed as an arXiv preprint. A journal
    // article whose open copy is on arxiv.org keeps its own item type and journal.
-   if(Ref.arxivRecordID(record))return E.importAcademicPDF(record,{open:false,onProgress,signal,...target});
+   if(Ref.arxivRecordID(record))return E.importAcademicPDF(record,{open:false,onProgress,signal,pdfBytes,...target});
    // The record is filed only after its PDF bytes have arrived.
    let found=E.findAcademicItem&&await E.findAcademicItem(record,target),attachment=found&&await E.library.localPDF(found);if(attachment){await E.placeAcademicInCollection?.(found.id,target);return{itemID:found.id,attachmentID:attachment.id,reused:true,...target};}
-   if(!record.pdf||!/^https:\/\//.test(record.pdf))throw Error('暂无直接公开 PDF；文库没有变化，可打开来源页面。');
-   if(Zotero.Libraries?.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件');if(signal?.aborted)throw Error('已取消');onProgress({stage:'download',text:'正在下载 PDF…'});
-   // A failed download is recorded by the rule of the probe in obtainPaper (see arxivPDF). Its
-   // error.lasting, as on discoveryPDFUnavailable's errors, tells the reference pane not to offer a retry.
-   let bytes;try{bytes=await E.requestDiscoveryPDF(record.pdf,{signal,onProgress:progress=>onProgress({stage:'download',text:'正在下载 PDF…',...progress})});}catch(error){if(signal?.aborted||error?.name==='AbortError')throw error;let lasting=lastingPDF(String(error?.message??error));if(!arxivPDF(record.pdf)||lasting)await E.markDiscoveryPDFFailure?.(record.pdf,error);if(error&&typeof error==='object')error.lasting=lasting;throw error;}
+   if(!pdfBytes&&![record.pdf,...(record.pdfCandidates||[])].some(url=>/^https:\/\//i.test(url||'')))throw Error('暂无直接公开 PDF；文库没有变化，可打开来源页面。');
+   if(Zotero.Libraries?.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件');if(signal?.aborted)throw Error('已取消');
+   let bytes=pdfBytes,saving=record;
+   if(!bytes){const found=await E.resolveOpenPDF(record,{signal,onProgress,lookup:false,unchanged:'文库没有变化'});bytes=found.bytes;saving=found.record;}
    onProgress({stage:'save',text:'正在保存 PDF…'});
-   let saved=await E.importAcademic(record,{select:false,...target}),item=await Zotero.Items.getAsync(saved.id);attachment=await E.library.localPDF(item);if(attachment)return{itemID:item.id,attachmentID:attachment.id,reused:true,...target};
-   attachment=await E.attachDiscoveryPDF(item,bytes,record);
-   await E.clearDiscoveryPDFFailure?.(record.pdf);E.manuscripts.queueArticle(attachment.id);return{itemID:item.id,attachmentID:attachment.id,downloaded:true,...target};
+   let saved=await E.importAcademic(saving,{select:false,...target}),item=await Zotero.Items.getAsync(saved.id);attachment=await E.library.localPDF(item);if(attachment)return{itemID:item.id,attachmentID:attachment.id,reused:true,...target};
+   attachment=await E.attachDiscoveryPDF(item,bytes,saving);
+   E.manuscripts.queueArticle(attachment.id);return{itemID:item.id,attachmentID:attachment.id,downloaded:true,pdfSource:saving.pdfSource||'',...target};
   })();oaTasks.set(key,task);try{return await task;}finally{oaTasks.delete(key);}
  };
 
@@ -231,14 +249,43 @@
  // A failure that repeats on every attempt at this address: 404/410, a web or
  // verification page, content that is not a PDF, or more than the 80 MB limit.
  let lastingPDF=text=>/（HTTP 4(?:04|10)）|返回网页或验证页面|返回非 PDF|超过 80 MB/.test(text);
- // arxiv.org turns automated access away for a while (403, 429, 5xx) and then lets it in again.
- // As in arxiv.js, an address there is recorded only for a failure that will repeat, whichever
- // row reached it; another host's refusal is recorded as before.
- let arxivPDF=url=>/^https:\/\/(?:export\.|www\.)?arxiv\.org\//i.test(url||'');
  // One wording for a public PDF that could not be fetched; unchanged says what
  // happened to the library. Only a failure that can pass says it can be retried;
  // the error's lasting says which, for a caller that records the address.
  E.discoveryPDFUnavailable=(error,unchanged)=>{let text=String(error?.message??error??''),lasting=lastingPDF(text),reason=pdfReason(text);return Object.assign(Error(lasting?reason+'；'+unchanged:'公开 PDF 暂不可用：'+reason+'；'+unchanged+'，可稍后重试'),{lasting});};
+ // pdf-status.mjs's {state,label,reason} on every result and error of obtainPaper.
+ let Status;const pdfStatusOf=value=>{try{Status||=ChromeUtils.importESModule('chrome://zotero/content/research/shared/pdf-resolver.mjs');return typeof Status.pdfStatus==='function'?Status.pdfStatus(value):null;}catch{return null;}};
+ const withStatus=error=>{if(error&&typeof error==='object'&&!error.state){const value=pdfStatusOf(error);if(value)Object.assign(error,value);}return error;};
+ const delay=(ms,fn)=>{const set=typeof E.setTimeout==='function'?E.setTimeout:typeof setTimeout==='function'?setTimeout:null,clear=typeof E.clearTimeout==='function'?E.clearTimeout:typeof clearTimeout==='function'?clearTimeout:()=>{};if(!set)return ()=>{};const id=set(fn,ms);return ()=>clear(id);};
+ const eraseQuietly=async object=>{try{if(object&&!object.deleted)await object.eraseTx?.();}catch(error){Zotero.logError?.(error);}};
+ const isPDF=attachment=>!!attachment&&(typeof attachment.isPDFAttachment!=='function'||attachment.isPDFAttachment());
+ const ZOTERO_FIND_TIMEOUT=60000;
+ // Zotero's own Find Available PDF (the DOI and URL pages through the user's proxy and
+ // institution settings, Zotero's open-access lookup, custom resolvers), once every open copy
+ // above has failed. It needs an item: a new one is erased again when no PDF arrives, so the
+ // library is as it was; an existing one keeps only a PDF that arrives, even a late one.
+ const findWithZotero=async(record,{existing,target,signal,onProgress})=>{
+  const Attachments=Zotero.Attachments;if(typeof Attachments?.addAvailableFile!=='function'||signal?.aborted)return null;
+  if(!Ref.cleanDOI(record.doi)&&!/^https?:\/\//i.test(record.url||''))return null;
+  onProgress({stage:'resolve',text:'正在用 Zotero 的“查找可用 PDF”查找（使用 Zotero 中的代理与机构设置）…'});
+  let item=existing,created=false;
+  if(!item){const saved=await E.importAcademic(record,{select:false,...target});item=await Zotero.Items.getAsync(saved.id);created=!saved.existing;}
+  if(!item)return null;
+  const attempt=Promise.resolve().then(()=>Attachments.addAvailableFile(item));attempt.catch(()=>{});
+  let attachment=null,failure=null,stopTimer=()=>{},abort;
+  try{attachment=await Promise.race([attempt,new Promise((_,fail)=>{stopTimer=delay(ZOTERO_FIND_TIMEOUT,()=>fail(Object.assign(Error('Zotero 查找可用 PDF 超时'),{name:'TimeoutError'})));}),new Promise((_,fail)=>{if(!signal)return;abort=()=>fail(Object.assign(Error('已取消 PDF 获取'),{name:'AbortError'}));signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();})]);}
+  catch(error){failure=error;}
+  finally{stopTimer();if(abort)signal.removeEventListener('abort',abort);}
+  if(attachment&&!isPDF(attachment)){await eraseQuietly(attachment);attachment=null;}
+  if(attachment){E.manuscripts?.queueArticle?.(attachment.id);return {itemID:item.id,attachmentID:attachment.id,downloaded:true,viaZotero:true,pdfSource:'Zotero 查找可用 PDF',...target};}
+  if(failure&&failure.name!=='TimeoutError'&&failure.name!=='AbortError')Zotero.logError?.(failure);
+  // A file that arrives after the timeout is kept on an existing item if it is a PDF; on an item
+  // erased here it is erased too.
+  attempt.then(late=>{if(late&&(created||!isPDF(late)))return eraseQuietly(late);}).catch(()=>{});
+  if(created)await eraseQuietly(item);
+  if(failure?.name==='AbortError')throw failure;
+  return null;
+ };
  E.obtainPaper=async(record,options={})=>{
   const{open=true,onProgress=()=>{},signal}=options,target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID,collectionID:options.collectionID},key=String(target.libraryID||'')+':'+(Ref.cleanDOI(record.doi)||record.url||record.id);
   let task=obtaining.get(key);
@@ -248,24 +295,37 @@
    // files the record only after the download.
    let existing=E.findAcademicItem&&await E.findAcademicItem(record,target),local=existing&&await E.library.localPDF(existing);
    if(local)return {itemID:existing.id,attachmentID:local.id,reused:true,path:await local.getFilePathAsync()};
-   let unchanged=existing?'文库中的这条题录没有改动':'文库没有变化',candidate={...record};
-   if(candidate.retracted)throw Error('该论文标记为撤稿，已停止自动下载');
-   if(!/^https:\/\//i.test(candidate.pdf||'')&&candidate.doi){
-    onProgress({stage:'resolve',text:'正在查找公开全文…'});
-    try{const data=JSON.parse(await E.requestProvider('https://api.openalex.org/works/https://doi.org/'+encodeURIComponent(candidate.doi),{signal},15000));
-     if(data.is_retracted)throw Error('该论文标记为撤稿，已停止自动下载');
-     const location=[data.best_oa_location,...(data.locations||[])].find(x=>x?.is_oa&&/^https:\/\//i.test(x.pdf_url||''));
-     if(location)candidate={...candidate,pdf:location.pdf_url,oa:true};
-    }catch(error){if(error.message.includes('撤稿'))throw error;}
+   let unchanged=existing?'文库中的这条题录没有改动':'文库没有变化';
+   if(record.retracted)throw Error('该论文标记为撤稿，已停止自动下载');
+   if(Zotero.Libraries?.get?.(target.libraryID)?.filesEditable===false)throw Error('目标文库不能保存附件；'+unchanged);
+   // The item's metadata (Zotero's DOI or arXiv translator, search.js) is looked up while the
+   // PDF is sought, so filing it does not wait.
+   if(!existing)E.prefetchPaperMetadata?.(record);
+   // Every open copy at once (pdf-resolver.js): the record's own addresses, OpenAlex, Unpaywall,
+   // Semantic Scholar, CORE, arXiv, Europe PMC, Springer Nature, then the DOI page. Its error says
+   // which sources were tried; failures are recorded there. Then Zotero's own resolver, then,
+   // only when the setting allows it, OpenAlex's paid copy.
+   let found;
+   try{found=await E.resolveOpenPDF(record,{signal,onProgress,unchanged});}
+   catch(error){
+    if(signal?.aborted||error?.name==='AbortError'||error?.stop)throw error;
+    const viaZotero=await findWithZotero(record,{existing,target,signal,onProgress});
+    if(viaZotero){const attachment=await E.library.localPDF(viaZotero.attachmentID);if(attachment)return {...viaZotero,path:await attachment.getFilePathAsync()};}
+    else if(typeof Zotero.Attachments?.addAvailableFile==='function'&&(Ref.cleanDOI(record.doi)||/^https?:\/\//i.test(record.url||''))){error.zotero=true;error.message+='（Zotero 的“查找可用 PDF”也未找到）';}
+    const bytes=error.paidPDF&&E.openAlexContentPDF?await E.openAlexContentPDF(error.paidPDF,{signal,onProgress}).catch(paid=>{if(signal?.aborted||paid?.name==='AbortError')throw paid;Zotero.logError?.(paid);return null;}):null;
+    if(!bytes)throw error;
+    found={bytes,record:{...record,pdf:error.paidPDF,pdfSource:'OpenAlex 全文（付费）',pdfHints:error.pdfHints||{},oa:true},paid:true};
    }
-   if(!/^https:\/\//i.test(candidate.pdf||''))throw Error('未找到公开 PDF；'+unchanged+'，可稍后重试');
-   if(E.verifyDiscoveryPDF){onProgress({stage:'verify',text:'正在检查公开 PDF…'});let check=await E.verifyDiscoveryPDF(candidate.pdf,{signal});if(!check?.available){let failure=E.discoveryPDFUnavailable(check?.error,unchanged);if(arxivPDF(candidate.pdf)?failure.lasting:!check?.transient)await E.markDiscoveryPDFFailure?.(candidate.pdf,check?.error);throw failure;}}
-   const result=await E.obtainOpenPaper({...candidate,oa:true},{onProgress,signal,...target});
+   const result=await E.obtainOpenPaper(found.record,{onProgress,signal,pdfBytes:found.bytes,...target});
    const attachment=await E.library.localPDF(result.attachmentID);
    if(!attachment)throw Error('附件保存失败：本机文件不可用；题录已保留');
-   return {...result,path:await attachment.getFilePathAsync()};
+   return {...result,...(found.paid?{paid:true}:{}),path:await attachment.getFilePathAsync()};
   })();obtaining.set(key,task);task.finally(()=>obtaining.delete(key)).catch(()=>{});}
-  const result=await task;if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);if(signal?.aborted)throw Error('已取消');const saved={...result,...target};await E.workspaceOutputs.rememberDownload(record,saved);onProgress({stage:'saved',text:'PDF 已保存'});if(open)await Zotero.Reader.open(result.attachmentID);return saved;
+  let result;try{result=await task;}catch(error){throw withStatus(error);}
+  if(E.placeAcademicInCollection)await E.placeAcademicInCollection(result.itemID,target);if(signal?.aborted)throw withStatus(Object.assign(Error('已取消'),{name:'AbortError'}));const saved={...result,...target,...(pdfStatusOf('pdf')||{})};await E.workspaceOutputs.rememberDownload(record,saved);onProgress({stage:'saved',text:'PDF 已保存'});
+  // A download into a project's folder fills that project's corpus in the background (corpus-intake.js).
+  E.corpusIntake?.afterDownload(saved,{projectID:options.projectID,collectionID:target.collectionID});
+  if(open)await Zotero.Reader.open(result.attachmentID);return saved;
  };
  Feed.installDiscoveryFeed(E,{Zotero});
  const searchPage=E.searchPaperPage;E.searchPaperPage=(query,options={})=>E.runDiscoverySearchTask?E.runDiscoverySearchTask((signal,onProgress)=>searchPage(query,{...options,signal,onProgress}),options):searchPage(query,options);

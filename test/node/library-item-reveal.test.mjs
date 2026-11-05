@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import * as Screen from '../../chrome/content/zotero/research/shared/paper-screening.mjs';
+import * as Resolver from '../../chrome/content/zotero/research/shared/pdf-resolver.mjs';
 import * as ItemScope from '../../chrome/content/zotero/research/shared/library-item-scope.mjs';
 import * as M from '../../chrome/content/zotero/research/shared/manuscript-model.mjs';
 import * as Policy from '../../chrome/content/zotero/research/shared/research-ai-policy.mjs';
@@ -29,7 +30,7 @@ function fixture({mode='notebook',itemScope='papers',workspace=true,selectedTab=
  const Zotero={Research:{store:{get:key=>state[key]}},getActiveZoteroPane:()=>pane,getMainWindow:()=>win,logError:error=>errors.push(error),Item,
   Items:{get:id=>items.get(id),getAsync:async ids=>Array.isArray(ids)?ids.map(id=>items.get(id)).filter(Boolean):items.get(ids)},
   Libraries:{userLibraryID:1,get:()=>({editable:true})},Collections:{getAsync:async()=>null},Search:class{addCondition(){}async search(){return found;}}};
- const modules={'paper-screening.mjs':Screen,'library-item-scope.mjs':ItemScope};
+ const modules={'paper-screening.mjs':Screen,'library-item-scope.mjs':ItemScope,'pdf-resolver.mjs':Resolver};
  vm.runInNewContext(searchSource,{Zotero,ChromeUtils:{importESModule:url=>{const value=modules[url.split('/').at(-1)];if(!value)throw Error('Unexpected test module: '+url);return value;}}});
  return {E:Zotero.Research,calls,errors,items,space};
 }
