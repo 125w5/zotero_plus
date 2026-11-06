@@ -1,4 +1,4 @@
-# 交接说明（2026-10-30，11-01 更新）
+# 交接说明（2026-10-30，11-01、11-05 更新）
 
 ## 取代码
 
@@ -12,7 +12,36 @@ npm install
 
 - `reader` 子模块指向本仓库的 `easysch-reader` 分支（见 `.gitmodules`），阅读器的 EasySch 改动都在那里。其他子模块仍指向 Zotero 上游。
 - 新电脑上的构建步骤见下文“在新电脑上构建”。`scripts/build-native.ps1` 不再写死旧电脑的路径：MSYS2 由 `MSYS2_ROOT` 指定（默认 `C:\msys64`），git 和 node 从 PATH 查找。
-- `scripts/launch-research.ps1` 需要仓库外的 `../.tools/`（pandoc、LibreOffice、poppler、`pdf-assets-env` Python）。
+- `scripts/launch-research.ps1` 需要仓库外的 `../.tools/`（pandoc、LibreOffice、poppler、`pdf-assets-env` Python）。双击仓库根目录的 `start-easysch.cmd` 可直接打开日常用的客户端。
+
+## 11-05：论文检索与下载重做
+
+提交 b874af01c（重做）和 69880117f（复核确认的 14 个问题）。
+
+**原因**：OpenAlex 自 2026-02-13 起要求密钥，不填密钥每天只有约 10 次检索额度，被限流时要求等 37-60 秒；原来的代码最多等 8 秒就把它停用。Semantic Scholar 无密钥的公共额度也经常被占满。结果检索实际只靠 arXiv 和 Crossref。
+
+**检索**：被限流的来源按它要求的时间休息，其他来源照常返回，页面用一行字说明哪个来源缺密钥或被限流，并可直接打开设置填写。中文关键词按词翻译（不配置翻译模型也能用内置术语表），同时用中文原词检索 OpenAlex。筛选从“每个词都必须出现”改为按概念命中比例打分。排序按标题、关键词、摘要加权的文本相关度。arXiv 按标题和摘要逐词检索，Crossref 改用 `query.bibliographic`。结果默认列出全部论文，勾选“只显示可下载”只列出能下载 PDF 的。
+
+**下载**：各开放获取来源并行查找，同一网站不并发，第一个通过 PDF 检查的胜出，最多 30 秒。免费来源都失败时调用 Zotero 自带的“查找可用 PDF”（会用 Zotero 里配置的机构代理）；仍然失败时只删除这次临时建的、没被共用也没被改动的条目。有 DOI 或 arXiv 编号时用 Zotero 的转换器生成完整题录。每篇结果显示“可下载 / 只有落地页 / 需要机构权限 / 没有公开全文 / 下载失败”和原因。设置里有一个默认关闭的付费兜底：OpenAlex 缓存 PDF，约 0.01 美元/篇。
+
+**实测（都没有填密钥）**：
+
+| | 重做前 | 重做后 |
+|---|---|---|
+| 四组检索词每页结果 | “光通信相位噪声补偿”14 篇，“调制识别 深度学习”2 篇 | 四组都是满页 40 篇 |
+| 检索用时 | 最长约 22 秒 | 2.7-7 秒 |
+| 同一批 30 篇论文真正下载到 PDF | 22 篇 | 24-25 篇，每篇中位 1.4 秒 |
+
+**需要你做的**：在设置 → 文献数据源里填写免费密钥和联系邮箱。OpenAlex：[openalex.org/signup](https://openalex.org/signup)，密钥在 [openalex.org/settings/api-key](https://openalex.org/settings/api-key)。Semantic Scholar：[semanticscholar.org/product/api](https://www.semanticscholar.org/product/api)。CORE：[core.ac.uk/services/api](https://core.ac.uk/services/api)。Springer（可选）：[dev.springernature.com](https://dev.springernature.com/)。联系邮箱供 Unpaywall 和 Crossref 使用。填好后点“测试文献数据源”。不填密钥也能用，但 OpenAlex 每天只有约 10 次检索。
+
+**测试**：Node 2453/2453 通过。与检索、下载、文库、参考文献、研究对话相关的 16 个原生套件 122/125，未通过的 3 项是 `researchReferenceFlow`，重做前就失败（需要旧电脑的真实文献）。
+
+**还没做的**：
+- 填了密钥之后的效果还没在你的电脑上实测（目前只有无密钥的数据）。
+- Zotero“查找可用 PDF”兜底和机构代理只在模拟测试里验证过，没在真实网络上跑过。
+- 勾选“只显示可下载”时，可下载论文很少的检索每页约 10 篇（原来能凑到 20 篇）。
+- 中文检索的筛选仍偏宽：只提到“深度学习”的中文论文有时也会通过，排在 20 名以后。
+- 知网、万方没有公开接口，中文来源只能靠 OpenAlex 的中文收录；AMiner 可以作为可选来源接入，需要注册。
 
 ## 现在的状态（11-01）
 

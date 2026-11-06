@@ -30,7 +30,7 @@ export function pdfFailuresStatus(failures=[],{transient=false}={}){
  const named=state=>[...new Set(rows.filter(row=>row.status.state===state).map(row=>row.source).filter(Boolean))].slice(0,3).join('、');
  for(const state of ['access','landing'])if(rows.some(row=>row.status.state===state))return status(state,(named(state)?named(state)+'：':'')+REASONS[state]);
  const failed=rows.find(row=>row.status.state==='failed');
- if(failed||transient)return status('failed',failed?(failed.source?failed.source+'：':'')+failed.status.reason+(transient?'；可稍后重试':''):REASONS.failed);
+ if(failed||transient)return status('failed',failed?(failed.source?failed.source+'：':'')+failed.status.reason+(transient&&!/可稍后重试$/.test(failed.status.reason)?'；可稍后重试':''):REASONS.failed);
  return status('none');
 }
 // Any outcome: an error from resolveOpenPDF/obtainPaper, their result, a probe result from

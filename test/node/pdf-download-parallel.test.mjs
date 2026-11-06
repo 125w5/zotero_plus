@@ -90,6 +90,8 @@ test('the status classifier names each outcome',()=>{
 	assert.equal(mixed.state,'access','a source asking for access is named before a landing page');assert.match(mixed.reason,/^Unpaywall：/);
 	assert.equal(Status.pdfFailuresStatus([{source:'OpenAlex',url:'https://a.example/1.pdf',error:Error('PDF 无法获取（HTTP 404）')}]).state,'none');
 	assert.equal(Status.pdfFailuresStatus([],{transient:true}).state,'failed');
+	// A source whose own wording already says to retry is not told twice (seen live: "…可稍后重试；可稍后重试").
+	assert.equal(Status.pdfFailuresStatus([{source:'OpenAlex',error:Error('来源暂时无法访问，可稍后重试'),transient:true}],{transient:true}).reason,'OpenAlex：来源暂时无法访问，可稍后重试');
 	for(let value of Object.values(Status.PDF_STATUS_LABELS))assert.ok(value);
 	for(let outcome of [{available:true},{},{checking:true}]){let row=Status.pdfStatus(outcome);assert.deepEqual(Object.keys(row),['state','label','reason']);assert.ok(/\p{Script=Han}/u.test(row.reason));}
 });
