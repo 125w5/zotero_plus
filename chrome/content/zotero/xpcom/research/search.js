@@ -2,6 +2,14 @@
 (function (R) {
 	let nextRequest = 0, queue = Promise.resolve();
  let Resolver;const imports=new Map(),Screen=ChromeUtils.importESModule('chrome://zotero/content/research/shared/paper-screening.mjs');
+ // Items filed only so Zotero's Find Available PDF can attach to them (discovery.js findWithZotero):
+ // id -> {key,claimed}. Any other caller that gets one back claims it, and a claimed item is kept.
+ // erasing: id -> the erase under way; the duplicate check waits for it.
+ const provisional=new Map(),erasing=new Map(),claim=id=>{const entry=provisional.get(id);if(entry)entry.claimed=true;};
+ R.releaseProvisionalItem=id=>provisional.delete(id);
+ // Erases a provisional item no other caller has had; false when it is kept.
+ R.discardProvisionalItem=item=>{const entry=provisional.get(item?.id);provisional.delete(item?.id);if(!entry||entry.claimed||imports.has(entry.key))return Promise.resolve(false);
+  const erase=(async()=>{try{if(!item.deleted)await item.eraseTx();return true;}catch(error){Zotero.logError(error);return false;}finally{erasing.delete(item.id);}})();erasing.set(item.id,erase);return erase;};
  R.resolveAcademicTarget=async function(options={}){
   const pane=Zotero.getActiveZoteroPane(),explicit=Object.hasOwn(options,'collectionID'),chosen=explicit?options.collectionID:pane.getSelectedCollections?.()[0]?.id;
   let collection=null;if(chosen!=null&&chosen!==false){const id=Number(chosen);if(!Number.isInteger(id)||id<=0)throw Error('请选择有效的论文文件夹');collection=await Zotero.Collections.getAsync(id);if(!collection||collection.deleted)throw Error('论文文件夹已删除或不可用，请重新选择');}
@@ -83,11 +91,16 @@
 	};
 	// Import and the reference pane's full-text check share one duplicate rule.
 	async function findRecord(record, libraryID) {
+		let found=await matchRecord(record,libraryID);
+		if(found&&erasing.has(found.id)){await erasing.get(found.id);return findRecord(record,libraryID);}
+		return found;
+	}
+	async function matchRecord(record, libraryID) {
 		let identity=Screen.paperIdentity(record);if(identity?.startsWith('arxiv:')){let base=identity.slice(6).replace(/v\d+$/,'');let byURL=new Zotero.Search();byURL.libraryID=libraryID;byURL.addCondition('url','contains','arxiv.org/abs/'+base);let matches=await Zotero.Items.getAsync(await byURL.search());let found=matches.find(x=>x.isRegularItem()&&!x.deleted&&Screen.paperIdentity({url:x.getField('url')})?.replace(/v\d+$/,'')==='arxiv:'+base);if(found)return found;}
 		let doi=Screen.doiKey(record.doi);if(!doi&&!record.url)return null;let search=new Zotero.Search();search.libraryID=libraryID;search.addCondition(doi?'DOI':'url','is',doi||record.url);
 		let existing=await Zotero.Items.getAsync(await search.search());return existing.find(item=>item.isRegularItem()&&!item.deleted)||null;
 	}
-	R.findAcademicItem=async function(record,options={}){let target=await R.resolveAcademicTarget(options);return findRecord(record,target.libraryID);};
+	R.findAcademicItem=async function(record,options={}){let target=await R.resolveAcademicTarget(options),found=await findRecord(record,target.libraryID);if(found)claim(found.id);return found;};
 	// The item's full metadata (all authors with given and family names, volume, issue, pages,
 	// ISSN) from Zotero's identifier translators, as Add Item by Identifier (lookup.js) does, but
 	// with libraryID false: the translator saves nothing and adds no attachment; importRecord files
@@ -164,7 +177,7 @@
 	}
 	async function importRecord(record, options = {}) {
 		const {select=true}=options,target=await R.resolveAcademicTarget(options);let libraryID=target.libraryID;
-		const reuse=async found=>{await R.placeAcademicInCollection(found.id,{libraryID,collectionID:target.collectionID});if(select)await R.showLibraryItem(found.id,{noTabSwitch:true});return{id:found.id,existing:true,...target};};
+		const reuse=async found=>{claim(found.id);await R.placeAcademicInCollection(found.id,{libraryID,collectionID:target.collectionID});if(select)await R.showLibraryItem(found.id,{noTabSwitch:true});return{id:found.id,existing:true,...target};};
 		let found=await findRecord(record,libraryID);if(found)return reuse(found);
 		if(!Screen.doiKey(record.doi)&&!record.url)throw Error('缺少 DOI 或可核验来源网址，无法判重入库');
 		let json = await R.prefetchPaperMetadata(record), item = null;
@@ -187,5 +200,7 @@
 		if(target.collectionID)item.setCollections([target.collectionID]);
 		await item.saveTx({skipSelect:!select});if(select)await R.showLibraryItem(item.id,{noTabSwitch:true});return{id:item.id,existing:false,...target};
 	};
- R.importAcademic=async function(record,options={}){const target=await R.resolveAcademicTarget(options),key=target.libraryID+':'+Screen.paperIdentity(record);let task=imports.get(key);if(!task){task=importRecord(record,{...options,...target});imports.set(key,task);task.finally(()=>imports.delete(key)).catch(()=>{});}const result=await task;await R.placeAcademicInCollection(result.id,target);return{...result,...target};};
+ // options.provisional (findWithZotero): a new item is registered as provisional before any caller
+ // sees it. A caller that joins another caller's import gets joined:true and claims the item.
+ R.importAcademic=async function(record,options={}){const target=await R.resolveAcademicTarget(options),key=target.libraryID+':'+Screen.paperIdentity(record);let task=imports.get(key),joined=!!task;if(!task){task=importRecord(record,{...options,...target}).then(result=>{if(options.provisional&&!result.existing)provisional.set(result.id,{key,claimed:false});return result;});imports.set(key,task);task.finally(()=>imports.delete(key)).catch(()=>{});}const result=await task;if(joined||!options.provisional)claim(result.id);await R.placeAcademicInCollection(result.id,target);return{...result,...target,...(joined?{joined:true}:{})};};
 })(Zotero.Research);

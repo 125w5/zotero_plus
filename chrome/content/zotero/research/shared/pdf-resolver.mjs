@@ -111,15 +111,17 @@ export function transientLookup(error){const status=Number(error?.providerStatus
 // arxiv.org refuses automated access for a while and then lets it in again.
 export function candidateTransient(error,url=''){const text=String(error?.message??error??'');return !lastingPDFError(text)&&!(/（HTTP 40[13]）/.test(text)&&!/^https:\/\/(?:export\.|www\.)?arxiv\.org\//i.test(url));}
 const reasonText=error=>{const text=String(error?.message??error??'').replace(/[，,]\s*(?:请重试|未保存为?附件)$/,'');return /\p{Script=Han}/u.test(text)?text:'暂时无法访问';};
-export function pdfSourcesFailure({tried=[],failures=[],transient=false}={},unchanged='文库没有变化'){
- if(!tried.length)return Object.assign(Error('未找到公开 PDF；'+unchanged+'，可稍后重试'),{lasting:false,sources:[],attempted:[]},transient?pdfFailuresStatus(failures,{transient}):pdfStatus('none'));
+// incomplete: the search ended before every open copy was tried (the budget ran out, or a copy
+// failed in a way that can pass), so a paid copy is not a fallback yet.
+export function pdfSourcesFailure({tried=[],failures=[],transient=false,incomplete=false}={},unchanged='文库没有变化'){
+ if(!tried.length)return Object.assign(Error('未找到公开 PDF；'+unchanged+'，可稍后重试'),{lasting:false,incomplete:!!incomplete,sources:[],attempted:[]},transient?pdfFailuresStatus(failures,{transient}):pdfStatus('none'));
  const details=unique(failures.map(row=>row.source+'：'+reasonText(row.error))).slice(0,3);
  const text='已尝试 '+tried.length+' 个来源（'+tried.join('、')+'），均未找到可下载的开放获取 PDF'+(details.length?'。'+details.join('；'):'')+'。'+unchanged+(transient?'，部分来源暂时无法访问，可稍后重试':'');
  // Only a PDF address that failed for good is lasting; sources that answered with no open copy
  // can list one later, so that outcome keeps its retry. An address skipped because it failed
  // in the last day is not recorded again, so its day is not extended.
  const attempted=unique(failures.filter(row=>!row.cached).map(row=>row.url).filter(Boolean));
- return Object.assign(Error(text),{lasting:!transient&&attempted.length>0,sources:tried,attempted},pdfFailuresStatus(failures,{transient}));
+ return Object.assign(Error(text),{lasting:!transient&&attempted.length>0,incomplete:!!incomplete,sources:tried,attempted},pdfFailuresStatus(failures,{transient}));
 }
 const hostOf=url=>{try{return new URL(url).hostname.toLowerCase().replace(/^(?:www|export)\./,'');}catch{return '';}};
 // Repositories serve their files to any client; these publishers often answer a plain request
@@ -142,7 +144,7 @@ export const PDF_RESOLVE_TIMING=Object.freeze({budget:30000,headStart:2500,landi
 // download (exempt, arXiv), runs on to its own limits.
 export async function resolvePDFSources(stages,{probe,download,exempt=()=>false,skip=()=>null,signal,onSource=()=>{},unchanged,timing={},setTimeout:later=globalThis.setTimeout,clearTimeout:clear=globalThis.clearTimeout}={}){
  const time={...PDF_RESOLVE_TIMING,...timing},master=controller(),timers=[],seen=new Set(),pending=[],ready=[],probing=new Map(),lookups=new Set(),order=new Map(),tried=new Set(),failures=[],started=new Set();
- const state=new Map(stages.map(stage=>[stage,'idle']));let seq=0,transient=false,expired=false,downloading=false,settled=false,resolve,reject;
+ const state=new Map(stages.map(stage=>[stage,'idle']));let seq=0,transient=false,incomplete=false,expired=false,downloading=false,settled=false,resolve,reject;
  const rank=(name,stage)=>{if(!order.has(name))order.set(name,[stage?stages.indexOf(stage):-1,seq++]);};
  const note=(name,stage)=>{rank(name,stage);tried.add(name);};
  const done=new Promise((ok,fail)=>{resolve=ok;reject=fail;});
@@ -201,7 +203,7 @@ export async function resolvePDFSources(stages,{probe,download,exempt=()=>false,
   },error=>{
    probing.delete(row);if(settled)return;if(signal?.aborted)return finish(cancelled());
    const timedOut=expired&&!entry.exempt||error?.name==='AbortError';
-   transient||=timedOut||!!error?.transient||candidateTransient(error,row.url);
+   const passing=timedOut||!!error?.transient||candidateTransient(error,row.url);transient||=passing;incomplete||=passing;
    failures.push({source:row.source,url:row.url,error:timedOut&&error?.name==='AbortError'?Object.assign(Error('核验 PDF 超时'),{name:'TimeoutError'}):error,transient:timedOut||!!error?.transient,stage:row.stage});pump();
   });
  };
@@ -209,12 +211,12 @@ export async function resolvePDFSources(stages,{probe,download,exempt=()=>false,
   downloading=true;const sub=child();
   Promise.race([Promise.resolve().then(()=>download(row.url,row.source,sub.signal)),whenAborted(sub.signal)]).then(bytes=>finish(null,{bytes,url:row.url,source:row.source}),error=>{
    downloading=false;if(settled)return;if(signal?.aborted)return finish(cancelled());
-   transient||=candidateTransient(error,row.url);failures.push({source:row.source,url:row.url,error,stage:row.stage});pump();
+   const passing=candidateTransient(error,row.url);transient||=passing;incomplete||=passing;failures.push({source:row.source,url:row.url,error,stage:row.stage});pump();
   });
  };
  const fail=()=>{
   const rows=[...failures].sort((a,b)=>before(a.source,b.source));
-  finish(pdfSourcesFailure({tried:[...tried].sort(before),failures:rows,transient},unchanged));
+  finish(pdfSourcesFailure({tried:[...tried].sort(before),failures:rows,transient,incomplete},unchanged));
  };
  const pump=()=>{
   if(settled)return;
@@ -233,7 +235,7 @@ export async function resolvePDFSources(stages,{probe,download,exempt=()=>false,
  // some sources could not be reached in time.
  const expire=()=>{
   if(settled)return;expired=true;
-  if(lookups.size||[...probing.values()].some(entry=>!entry.exempt)||pending.length||phases.some(phase=>!started.has(phase))){transient=true;if(!failures.some(row=>row.budget))failures.push({source:'查找',error:Object.assign(Error('查找超过 '+Math.round(time.budget/1000)+' 秒，部分来源未完成'),{name:'TimeoutError'}),budget:true,transient:true});}
+  if(lookups.size||[...probing.values()].some(entry=>!entry.exempt)||pending.length||phases.some(phase=>!started.has(phase))){transient=true;incomplete=true;if(!failures.some(row=>row.budget))failures.push({source:'查找',error:Object.assign(Error('查找超过 '+Math.round(time.budget/1000)+' 秒，部分来源未完成'),{name:'TimeoutError'}),budget:true,transient:true});}
   pending.length=0;for(const entry of [...lookups])entry.sub.abort();for(const entry of probing.values())if(!entry.exempt)entry.sub.abort();
   for(const stage of stages)if(['blocked','waiting','waiting-run'].includes(state.get(stage)))state.set(stage,'done');
   pump();

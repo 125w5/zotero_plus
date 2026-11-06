@@ -129,7 +129,7 @@ export async function checkDiscoveryPDFs(E,rows,{signal,concurrency=4,flush=true
    if(signal?.aborted)return null;const failure=failures?.[url];if(failure&&Date.now()-failure.at<86400000)continue;
    let result;try{result=await E.verifyDiscoveryPDF?.(url,{signal});}catch{if(signal?.aborted)return null;continue;}
    if(result?.available){row.pdf=url;row.pdfVerified=true;row.pdfVerifiedAt=result.checkedAt;row.pdfUnavailable=false;delete row.pdfStatus;return'available';}
-   if(result)last=result;
+   if(result)last={...result,url};
   }
   // The card names why the checked addresses gave no file (article page, login or human check).
   if(last&&!signal?.aborted)row.pdfStatus=pdfStatus(last);
@@ -199,7 +199,7 @@ export function installDiscoveryFeed(E,{Zotero}){
  E.removeDiscoveryQueryTerm=(signature,term)=>removeDiscoveryQueryTerm(E,signature,term);
  // plainQueries: grouped queries the index rejected or matched nothing with;
  // later pages of the same search keep the plain form their cursor came from.
- const pending=new Map(),sourceTasks=new Map(),topicTasks=new Map(),summaries=new Map(),cooldowns=new Map(),metricTasks=new Map(),metricMisses=new Map(),plainQueries=new Set();let fieldTask;
+ const pending=new Map(),sourceTasks=new Map(),topicTasks=new Map(),summaries=new Map(),cooldowns=new Map(),metricTasks=new Map(),metricMisses=new Map(),plainQueries=new Set();let fieldTask,cooldownSeq=0;
  const settle=(promise,ms,signal)=>new Promise(resolve=>{let done=false;const finish=value=>{if(done)return;done=true;runtime.clearTimeout(timer);signal?.removeEventListener('abort',stop);resolve(value);},stop=()=>finish(undefined),timer=runtime.setTimeout(stop,Math.max(0,ms));signal?.addEventListener('abort',stop,{once:true});Promise.resolve(promise).then(finish,()=>finish(undefined));});
  // The TOP filter needs records for journals that have no card yet. Look up at
  // most 40 journals per batch (one page), three at a time, within 5 s and the
@@ -415,13 +415,16 @@ export function installDiscoveryFeed(E,{Zotero}){
   // Whether OpenAlex and Semantic Scholar have a saved key; undefined when unknown.
   const keyed=Object.fromEntries(await Promise.all(['openalex','semantic'].map(async id=>[id,E.scholarly?.has?await Promise.resolve(E.scholarly.has(id)).catch(()=>undefined):undefined])));
   let finished=false;
+  // Both OpenAlex indexes share one rest: a success clears only a rest set before its
+  // request left, and a failure never shortens a longer rest still running.
   const launch=name=>{
    const state=pool.indexes[name];if(state.task)return state.task;if(!state.more||pool.errors.has(name))return null;
-   const cooldown=cooldowns.get(cooldownKey(name));if(cooldown&&Date.now()<cooldown.until&&(!refresh||cooldown.failure.limited)){pool.errors.set(name,cooldown.failure);return null;}
+   const key=cooldownKey(name),cooldown=cooldowns.get(key);if(cooldown&&Date.now()<cooldown.until&&(!refresh||cooldown.failure.limited)){pool.errors.set(name,cooldown.failure);return null;}
+   const sent=++cooldownSeq;
    state.task=fetchIndex(name,state,pool,signal).then(result=>{
-    pool.merged.add(name,result.rows,state.fetched);state.fetched+=result.rows.length;state.more=result.more;state.total=Math.max(state.total,result.total);stats.batches++;cooldowns.delete(cooldownKey(name));
+    pool.merged.add(name,result.rows,state.fetched);state.fetched+=result.rows.length;state.more=result.more;state.total=Math.max(state.total,result.total);stats.batches++;if((cooldowns.get(key)?.seq??0)<sent)cooldowns.delete(key);
     if(!finished&&onProgress&&result.rows.length){const preview=select(false);if(preview.records.length)onProgress({records:preview.records,provider:'',providerID:'',partial:true,hasMore:true,query:prepared.query,effectiveResearchScope:prepared.researchScope});}
-   },error=>{if(signal?.aborted||error?.name==='AbortError')return;const rest=discoveryCooldown(name,error);pool.errors.set(name,rest);cooldowns.set(cooldownKey(name),{until:rest.until,failure:rest});}).finally(()=>{state.task=null;});
+   },error=>{if(signal?.aborted||error?.name==='AbortError')return;const rest=discoveryCooldown(name,error),old=cooldowns.get(key);pool.errors.set(name,rest);if(!(old&&Date.now()<old.until&&old.until>=rest.until&&(old.failure.limited||!rest.limited)))cooldowns.set(key,{until:rest.until,failure:rest,seq:++cooldownSeq});}).finally(()=>{state.task=null;});
    return state.task;
   };
   // At most two rounds of index pages per call, within the time budget; an

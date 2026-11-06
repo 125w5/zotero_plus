@@ -19,16 +19,19 @@
 		const win=providerTransport();
 		if(!win?.fetch||!win.AbortController)throw new Error('后台网络环境不可用，请重新打开软件');
 		const timers=R.setTimeout&&R.clearTimeout?R:ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
-		const controller=new win.AbortController(),external=options.signal;let reason,timer,rejectStopped;
+		const controller=new win.AbortController(),external=options.signal;let reason,timer,rejectStopped,lastLimit=null;
 		// A number keeps the legacy single deadline. {firstByte,idle,total}
 		// lets a streamed answer run long while a stalled one still stops.
 		let limits=typeof timeout==='object'&&timeout?{firstByte:Number(timeout.firstByte)||0,idle:Number(timeout.idle)||0,total:Number(timeout.total)||0}:{firstByte:0,idle:0,total:Number(timeout)||30000},firstTimer,idleTimer;
 		let stopMessages={cancel:'服务请求已取消',timeout:'服务请求超时，请重试','first-byte':'模型较长时间没有开始回复，请重试或降低思考强度',idle:'模型输出中断时间过长，请重试',total:'本次生成超过时长上限，请重试或降低思考强度'};
-		const stopError=()=>{const error=new Error(stopMessages[reason]||stopMessages.timeout);error.name=reason==='cancel'?'AbortError':'TimeoutError';if(reason!=='cancel'&&reason!=='timeout')error.timeoutStage=reason;return error;};
+		// A deadline that ends while a rate-limited service is being waited out keeps the
+		// limit, so the caller rests that service instead of seeing a plain timeout.
+		const stopError=()=>{const error=new Error(stopMessages[reason]||stopMessages.timeout);error.name=reason==='cancel'?'AbortError':'TimeoutError';if(reason!=='cancel'&&reason!=='timeout')error.timeoutStage=reason;if(lastLimit&&(reason==='timeout'||reason==='total'))Object.assign(error,lastLimit);return error;};
 		const stopped=new Promise((_,reject)=>{rejectStopped=reject;});
 		const stop=cause=>{if(reason)return;reason=cause;controller.abort();rejectStopped(stopError());};
 		const abort=()=>stop('cancel');external?.addEventListener('abort',abort,{once:true});if(external?.aborted)abort();
 		if(!reason&&limits.total)timer=timers.setTimeout(()=>stop(limits.firstByte||limits.idle?'total':'timeout'),limits.total);
+		const deadlineAt=limits.total?Date.now()+limits.total:Infinity;
 		if(!reason&&limits.firstByte)firstTimer=timers.setTimeout(()=>stop('first-byte'),limits.firstByte);
 		// Readers report streamed chunks; silent reasoning before the first
 		// chunk is covered by the total deadline, not the idle timer.
@@ -47,14 +50,17 @@
 					limit=null;
 					try{response=await win.fetch(scholarly?.url||url,{...(scholarly?.options||options),signal:controller.signal,redirect:scholarly?.redirect||'error'});}
 					catch(error){if(reason)throw stopError();throw Object.assign(new Error('无法连接服务，请检查网络或代理'),{name:'ProviderTransportError'});}
-					if(!scholarly||response.ok||![429,500,502,503,504].includes(response.status))break;
+					if(!scholarly||response.ok||![429,500,502,503,504].includes(response.status)){if(response.ok)lastLimit=null;break;}
 					const header=name=>response.headers?.get?.(name),raw=String(header('Retry-After')||'').trim(),wait=!raw?null:/^\d+$/.test(raw)?Number(raw)*1000:Math.max(0,Date.parse(raw)-Date.now());
 					const left=header('X-RateLimit-Remaining'),cost=header('X-RateLimit-Credits-Required'),spent=response.status===429&&left!=null&&left!==''&&Number(left)<Math.max(1,Number(cost)||1);
 					// A 503 with Retry-After is a pause too (OpenAlex pauses keyless search that way).
-					if(response.status===429||Number.isFinite(wait)&&wait!==null)limit={rateLimited:true,quotaExhausted:spent,keyless:!scholarly.keyed,scholarlySource:scholarly.id,...(Number.isFinite(wait)&&wait!==null?{retryAfterMs:wait,retryAt:Date.now()+wait}:{})};
-					if(attempt>=2||spent||Number.isFinite(wait)&&wait>8000)break;
+					if(response.status===429||Number.isFinite(wait)&&wait!==null)lastLimit=limit={rateLimited:true,quotaExhausted:spent,keyless:!scholarly.keyed,scholarlySource:scholarly.id,...(Number.isFinite(wait)&&wait!==null?{retryAfterMs:wait,retryAt:Date.now()+wait}:{})};
+					// The pause, the request spacing and about 2 s for the next answer must fit
+					// before the caller's deadline; otherwise the limit is reported now.
+					const pause=Number.isFinite(wait)&&wait!==null?wait:1500*(attempt+1);
+					if(attempt>=2||spent||Number.isFinite(wait)&&wait>8000||Date.now()+Math.max(pause,3100)+2000>=deadlineAt)break;
 					try{await response.body?.cancel?.();}catch(_){}
-					await new Promise(resolve=>timers.setTimeout(resolve,Number.isFinite(wait)&&wait!==null?wait:1500*(attempt+1)));
+					await new Promise(resolve=>timers.setTimeout(resolve,pause));
 				}
 				if(reason)throw stopError();
 				if(firstTimer!==undefined){timers.clearTimeout(firstTimer);firstTimer=undefined;}

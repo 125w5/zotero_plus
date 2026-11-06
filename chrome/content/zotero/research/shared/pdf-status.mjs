@@ -42,8 +42,8 @@ export function pdfStatus(outcome){
  if(outcome.state&&PDF_STATUS_LABELS[outcome.state])return status(outcome.state,outcome.reason);
  if(outcome.checking||outcome.pdfChecking)return status('checking');
  if(outcome.bytes||outcome.attachmentID||outcome.localPDF||outcome.available===true||outcome.pdfVerified)return status('pdf');
- if(outcome.available===false)return pdfErrorStatus(outcome.error,{transient:outcome.transient});
- if(outcome.error)return pdfErrorStatus(outcome.error);
+ if(outcome.available===false)return pdfErrorStatus(outcome.error,{url:outcome.url||outcome.finalURL||'',transient:outcome.transient});
+ if(outcome.error)return pdfErrorStatus(outcome.error,{url:outcome.url||''});
  if(outcome.pdfUnavailable)return status('none','这个公开地址近一天内无法下载；下载时会再查其他开放获取来源');
  return outcome.pdf||outcome.pdfCandidates?.length?status('checking','公开地址尚未核验；下载时会先检查文件'):status('none');
 }

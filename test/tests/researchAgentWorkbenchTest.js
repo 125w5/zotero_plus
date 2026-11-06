@@ -17,7 +17,7 @@ describe('Research-only agent workbench', function () {
 	}
 	before(async () => {
 		await Zotero.Libraries.get(Zotero.Libraries.userLibraryID).waitForDataLoad('item');
-		prior = { selection: E.library.selection, candidates: E.library.readingCandidates, overview: E.renderPaperOverview, search: E.searchPaperPage, obtain: E.obtainPaper, ask: E.askPaper, request: E.studio.request, assets: E.manuscripts.assetLibrary, materials: E.notebook.materials, prepare: E.manuscripts.prepareTranslation, metadata: E.completePaperMetadata, metrics: E.ensurePaperMetrics, open: E.library.openSource, runTask: E.runWorkbenchTask, models: E.workbenchModels, pane: E.mountWorkbenchSourcePane };
+		prior = { selection: E.library.selection, candidates: E.library.readingCandidates, scope: E.library.workspaceScope, overview: E.renderPaperOverview, search: E.searchPaperPage, obtain: E.obtainPaper, ask: E.askPaper, request: E.studio.request, assets: E.manuscripts.assetLibrary, materials: E.notebook.materials, prepare: E.manuscripts.prepareTranslation, metadata: E.completePaperMetadata, metrics: E.ensurePaperMetrics, open: E.library.openSource, runTask: E.runWorkbenchTask, models: E.workbenchModels, pane: E.mountWorkbenchSourcePane };
 		priorState = E.store.get('researchWorkbench');
 		E.manuscripts.prepareTranslation = async () => null; E.completePaperMetadata = async () => {}; E.ensurePaperMetrics = async () => null;
 		const first = new Zotero.Item('journalArticle'); first.libraryID = Zotero.Libraries.userLibraryID; first.setField('title', '受控来源：跨设备识别'); first.setField('abstractNote', '受控摘要，不代表真实研究结果。'); await first.saveTx();
@@ -26,6 +26,12 @@ describe('Research-only agent workbench', function () {
 		project = E.manuscripts.model.createProject('受控工作台项目', 'imrad'); project.materials = JSON.parse(JSON.stringify(materials));
 		await E.store.update(state => { state.manuscripts ||= {}; state.manuscripts[project.id] = project; state.researchWorkbench = { mode: 'auto', projectID: project.id, selectedID: '', messages: [] }; });
 		E.library.selection = () => []; E.library.readingCandidates = async () => papers;
+		// The conversation bound to the native My Library scope lists that library's
+		// file attachments as conversation files. Files left by suites that ran
+		// earlier in the same data directory would make the controlled conversation
+		// non-empty (runAgentTask then requires the unified task bridge); this suite
+		// attaches its own conversation files explicitly.
+		E.library.workspaceScope = async () => [];
 		E.manuscripts.assetLibrary = () => Object.fromEntries(materials.map(material => [material.id, material])); E.notebook.materials = () => materials;
 		const renderOverview = async (host, item) => { overviewCalls.push(item?.id); host.setAttribute('data-preview-paper-id', String(item.id)); host.textContent = '受控首页与摘要：' + item.getField('title'); };
 		E.renderPaperOverview = renderOverview;
@@ -52,7 +58,7 @@ describe('Research-only agent workbench', function () {
 		// attachWindow can finish loading application modules. Install this
 		// controlled renderer after startup; native boot jobs remain blocked and
 		// are recorded separately from requests made by the tested workbench.
-		E.renderPaperOverview = renderOverview;
+		E.renderPaperOverview = renderOverview; E.library.workspaceScope = async () => [];
 		E.runWorkbenchTask = undefined; E.workbenchModels = () => [{ id: 'controlled-model', label: '受控模型' }]; E.mountWorkbenchSourcePane = undefined;
 		folder = PathUtils.join(Zotero.DataDirectory.dir, 'agent-workbench-acceptance'); await IOUtils.makeDirectory(folder, { ignoreExisting: true });
 		await E.openResearchAgent(); await wait(() => { frame = win.document.getElementById('easysch-library-discovery-frame'); ui = frame?.contentWindow.EasySchUI; return ui?.ready && !frame.inert && ui.agentSources.length === 2; }, '原生同页工作台页面');
@@ -60,7 +66,7 @@ describe('Research-only agent workbench', function () {
 	});
 	afterEach(async function () { report.tests.push({ name: this.currentTest.title, state: this.currentTest.state, error: this.currentTest.err?.message }); report.modelRequests = { workbench: modelCalls, unrelatedStartupBlocked: backgroundModelCalls }; report.previewCalls = overviewCalls; await IOUtils.writeUTF8(PathUtils.join(folder, 'report.json'), JSON.stringify(report, null, 2)); });
 	after(async () => {
-		E.library.selection = prior.selection; E.library.readingCandidates = prior.candidates; E.renderPaperOverview = prior.overview; E.searchPaperPage = prior.search; E.obtainPaper = prior.obtain; E.askPaper = prior.ask; E.studio.request = prior.request; E.manuscripts.assetLibrary = prior.assets; E.notebook.materials = prior.materials; E.manuscripts.prepareTranslation = prior.prepare; E.completePaperMetadata = prior.metadata; E.ensurePaperMetrics = prior.metrics; E.library.openSource = prior.open;
+		E.library.selection = prior.selection; E.library.readingCandidates = prior.candidates; E.library.workspaceScope = prior.scope; E.renderPaperOverview = prior.overview; E.searchPaperPage = prior.search; E.obtainPaper = prior.obtain; E.askPaper = prior.ask; E.studio.request = prior.request; E.manuscripts.assetLibrary = prior.assets; E.notebook.materials = prior.materials; E.manuscripts.prepareTranslation = prior.prepare; E.completePaperMetadata = prior.metadata; E.ensurePaperMetrics = prior.metrics; E.library.openSource = prior.open;
 		E.runWorkbenchTask = prior.runTask; E.workbenchModels = prior.models; E.mountWorkbenchSourcePane = prior.pane;
 		await E.store.update(state => { if (priorState === undefined) delete state.researchWorkbench; else state.researchWorkbench = priorState; delete state.manuscripts[project.id]; });
 		await Zotero.Items.trashTx(papers.map(paper => paper.id)); await E.store.flush(); win?.close();

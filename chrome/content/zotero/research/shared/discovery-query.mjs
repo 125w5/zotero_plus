@@ -23,17 +23,24 @@ const aliases=new Map(Object.entries({
 }));
 const chinese=value=>/[\u3400-\u9fff]/.test(value);
 const clean=value=>String(value||'').normalize('NFKC').replace(/\s+/g,' ').trim();
-export function translateDiscoveryTerm(value){
+const wordChar=/[\p{L}\p{N}]/u,hanChar=/\p{Script=Han}/u;
+// compose: also build a run from known pieces (相位噪声补偿). That guess is only a
+// fallback, since a compound is often one English word (生物化学 is biochemistry).
+export function translateDiscoveryTerm(value,{compose=true}={}){
  const text=clean(value);
- return text.split(/[;；]/).map(part=>{const translated=part.trim().replace(/\p{Script=Han}+/gu,translateRun);return chinese(translated)?translated:translated.replace(/、/g,' ').replace(/\s+/g,' ').trim();}).join('; ');
+ return text.split(/[;；]/).map(part=>{
+  // A translated run is set apart from a letter or digit typed against it (CNN调制识别).
+  const translated=part.trim().replace(/\p{Script=Han}+/gu,(run,at,whole)=>{const out=translateRun(run,compose);if(out===run)return run;const before=whole[at-1]||'',after=whole[at+run.length]||'';return (wordChar.test(before)&&!hanChar.test(before)?' ':'')+out+(wordChar.test(after)&&!hanChar.test(after)?' ':'');});
+  return chinese(translated)?translated.replace(/\s+/g,' ').trim():translated.replace(/、/g,' ').replace(/\s+/g,' ').trim();
+ }).join('; ');
 }
-// A Han run the table has as a whole, or else as the longest known pieces in
-// turn; a run with any unknown piece stays as typed. Each word is looked up on
+// A Han run the table has as a whole, or (compose) else as the longest known pieces
+// in turn; a run with any unknown piece stays as typed. Each word is looked up on
 // its own (spaces, '；', '，' and '、' separate words), so 调制识别 深度学习 becomes
 // modulation recognition deep learning; the separators stay, so alternatives
 // remain alternatives.
-function translateRun(run){
- if(aliases.has(run))return aliases.get(run);
+function translateRun(run,compose=true){
+ if(aliases.has(run))return aliases.get(run);if(!compose)return run;
  const parts=[];for(let at=0;at<run.length;){let size=Math.min(8,run.length-at);while(size>1&&!aliases.has(run.slice(at,at+size)))size--;const piece=run.slice(at,at+size);if(!aliases.has(piece))return run;parts.push(aliases.get(piece));at+=size;}
  return parts.join(' ');
 }
@@ -46,12 +53,21 @@ function domainOf(record,prepared){
  if(matchesResearchDomain(record,effective,{stemmed:true})||matchesResearchDomain(record,original,{stemmed:true}))return true;
  return !effective.topicID&&!PRESET_DOMAINS.has(effective.domain)&&chinese(effective.domain)&&!chinese(researchRecordText(record));
 }
+// An exclusion of several Latin words removes a record only where they stand
+// together in order (signal-detection, signal, detection), not anywhere apart.
+function excludes(record,term){
+ const parts=clean(term).toLowerCase().match(/[a-z0-9]+/g)||[];
+ if(chinese(term)||parts.length<2)return !matchesResearchScope(record,{excludedKeywords:[term]});
+ const words=researchRecordText(record).match(/[a-z0-9]+/g)||[];
+ for(let i=0;i+parts.length<=words.length;i++)if(parts.every((part,j)=>words[i+j]===part))return true;
+ return false;
+}
 // 'excluded', 'keywords', 'domain' or 'match'. Discovery passes domainMatch
 // 'rank' (domain only ranks) or 'strict'; other callers keep the old check.
 export function discoveryScopeVerdict(record,prepared){
  const effective=prepared.researchScope,original=prepared.originalResearchScope||effective,mode=prepared.domainMatch||'legacy';
  const excluded=[...new Set([...(effective.excludedKeywords||[]),...(original.excludedKeywords||[])])];
- if(excluded.some(term=>!matchesResearchScope(record,{excludedKeywords:[term]})))return 'excluded';
+ if(excluded.some(term=>excludes(record,term)))return 'excluded';
  if(mode==='legacy'){
   if(matchesResearchScope(record,{...effective,excludedKeywords:[]})||matchesResearchScope(record,{...original,excludedKeywords:[]}))return 'match';
   return matchesResearchScope(record,{...effective,excludedKeywords:[]},{domain:false})||matchesResearchScope(record,{...original,excludedKeywords:[]},{domain:false})?'domain':'keywords';
@@ -100,24 +116,27 @@ export function discoveryConceptGroups(prepared){
  groupCache.set(prepared,groups);return groups;
 }
 // Thresholds of the topic score (share of each concept's words found, averaged
-// over the concepts). An abstract gives more chances to match, so a record
-// with one needs more; title-only records are judged on title and keywords.
+// over the concepts). Words in the title or keywords need half; words that also
+// count the abstract (any length, three quarters each) need 0.6, so more text
+// never turns a pass into a fail.
 export const DISCOVERY_SCOPE_THRESHOLDS=Object.freeze({abstract:0.6,title:0.5});
 export function discoveryScopeMatch(record,prepared){
- const groups=discoveryConceptGroups(prepared),fields=recordFields(record),fuzzy=(prepared.researchScope||{}).fuzzy!==false,hasAbstract=fields.abstract.words.length>=20||chinese(fields.abstract.text)&&fields.abstract.text.length>=40;
+ const groups=discoveryConceptGroups(prepared),fields=recordFields(record),fuzzy=(prepared.researchScope||{}).fuzzy!==false,hasAbstract=fields.abstract.words.length>=20||chinese(fields.abstract.text)&&fields.abstract.text.length>=40,anyAbstract=!!fields.abstract.text;
  if(!groups.length)return{pass:true,coverage:1,phrase:false,title:0,hasAbstract};
- // A word found only in the abstract counts three quarters.
- const where=unit=>unitCount(fields.title,unit,fuzzy)||unitCount(fields.keywords,unit,fuzzy)?1:hasAbstract&&unitCount(fields.abstract,unit,fuzzy)?0.75:0;
- let total=0,lowest=1,phrase=false,titleShare=0,found=0,size=0;
+ const head=unit=>unitCount(fields.title,unit,fuzzy)||unitCount(fields.keywords,unit,fuzzy)?1:0,where=unit=>head(unit)||(anyAbstract&&unitCount(fields.abstract,unit,fuzzy)?0.75:0);
+ // Per pass: the summed best share, the weakest concept, words found and query size.
+ const score=hit=>{let total=0,lowest=1,found=0,size=0;for(const alternatives of groups){let best=0,bestFound=0,bestSize=1;for(const {units} of alternatives){const hits=units.map(hit),share=hits.reduce((sum,value)=>sum+value,0)/units.length;if(share>best){best=share;bestFound=hits.filter(Boolean).length;bestSize=units.length;}}total+=best;lowest=Math.min(lowest,best);found+=bestFound;size+=bestSize;}return{coverage:total/groups.length,lowest,ok:size<2||found>=2};};
+ let phrase=false,titleShare=0;
  for(const alternatives of groups){
-  let best=0,bestTitle=0,bestFound=0,bestSize=1;
-  for(const {text,units} of alternatives){const hits=units.map(where),share=hits.reduce((sum,hit)=>sum+hit,0)/units.length,inTitle=units.filter(unit=>unitCount(fields.title,unit,fuzzy)).length/units.length;if(share>best){best=share;bestFound=hits.filter(Boolean).length;bestSize=units.length;}if(inTitle>bestTitle)bestTitle=inTitle;if(units.length>1&&(fields.title.text.includes(text)||hasAbstract&&fields.abstract.text.includes(text)))phrase=true;}
-  total+=best;lowest=Math.min(lowest,best);titleShare+=bestTitle;found+=bestFound;size+=bestSize;
+  let bestTitle=0;
+  for(const {text,units} of alternatives){const inTitle=units.filter(unit=>unitCount(fields.title,unit,fuzzy)).length/units.length;if(inTitle>bestTitle)bestTitle=inTitle;if(units.length>1&&(fields.title.text.includes(text)||anyAbstract&&fields.abstract.text.includes(text)))phrase=true;}
+  titleShare+=bestTitle;
  }
- const coverage=total/groups.length,threshold=hasAbstract?DISCOVERY_SCOPE_THRESHOLDS.abstract:DISCOVERY_SCOPE_THRESHOLDS.title;
+ const top=score(head),full=score(where);
  // Two named concepts each need some evidence, and a query of several words needs
  // at least two of them; a phrase found as typed passes.
- return{pass:(phrase||coverage>=threshold&&(size<2||found>=2))&&lowest>0,coverage,phrase,title:titleShare/groups.length,hasAbstract};
+ const pass=full.lowest>0&&(phrase||top.coverage>=DISCOVERY_SCOPE_THRESHOLDS.title&&top.ok&&top.lowest>0||full.coverage>=DISCOVERY_SCOPE_THRESHOLDS.abstract&&full.ok);
+ return{pass,coverage:full.coverage,phrase,title:titleShare/groups.length,hasAbstract};
 }
 // Field-weighted BM25 over the concept groups of one pool of records: the best
 // alternative per group, title > keywords > abstract, plus a phrase bonus.
@@ -186,7 +205,9 @@ export async function prepareDiscoveryQuery(E,query,researchScope={},signal,runt
  if(discovery&&!original.topicID&&original.domain){const canonical=canonicalResearchDomain(original.domain);if(canonical!==original.domain){if(chinese(original.domain))notes.push('研究领域“'+original.domain+'”按“'+RESEARCH_DOMAINS.find(row=>row.id===canonical).label+'”处理。');original.domain=canonical;}}
  const scope={...original},values={query:clean(query),primaryKeyword:scope.primaryKeyword,secondaryKeyword:scope.secondaryKeyword,acronymMeaning:acronymMeaningTerm(scope.acronymMeaning)};
  if(scope.domain&&!scope.topicID&&!PRESET_DOMAINS.has(scope.domain))values.domain=scope.domain;
- for(const key of Object.keys(values))values[key]=translateDiscoveryTerm(values[key]);
+ // Whole table words now; a run composed from pieces is kept as a guess for when no
+ // translator answers, and never cached as a translation.
+ const guesses={};for(const key of Object.keys(values)){const whole=translateDiscoveryTerm(values[key],{compose:false}),composed=translateDiscoveryTerm(values[key]);values[key]=whole;if(composed!==whole&&!chinese(composed))guesses[key]=composed;}
  const abort=()=>{if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});};
  // Both keys are taken before any cached translation is applied, so the same
  // input finds its translation and its expansion on every later search.
@@ -236,10 +257,11 @@ export async function prepareDiscoveryQuery(E,query,researchScope={},signal,runt
    const now=left(),reply=await runtime.machineTerms(Object.fromEntries(now.map(key=>[key,values[key]])),signal,{onRequest:()=>phase('translate')}).catch(error=>{if(signal?.aborted)throw error;return null;});abort();
    if(reply?.tried)tried=true;for(const key of now){const text=clean(reply?.translations?.[key]);if(text&&!chinese(text)){values[key]=text.slice(0,600);remember(key);}}
   }
-  if(left().length)warning=tried?'英文检索词转换未完成，当前保留原关键词；可填写英文同义词重试。':'未配置翻译，中文检索词未翻译，结果可能很少。可在设置中配置模型或学术翻译。';
-  if(reported)options.onPhase?.('search');
   // A failed cache write keeps this search's result; the next search asks again.
   const translatedNow=pending.length>0&&!pending.some(key=>chinese(values[key]));
+  for(const key of left())if(guesses[key])values[key]=guesses[key];
+  if(left().length)warning=tried?'英文检索词转换未完成，当前保留原关键词；可填写英文同义词重试。':'未配置翻译，中文检索词未翻译，结果可能很少。可在设置中配置模型或学术翻译。';
+  if(reported)options.onPhase?.('search');
   if(translatedNow||source==='model')try{await E.store.update(state=>{
    if(translatedNow){state.discoveryQueryTranslations||={};state.discoveryQueryTranslations[signature]={...values};for(const old of Object.keys(state.discoveryQueryTranslations).slice(0,-100))delete state.discoveryQueryTranslations[old];}
    if(source==='model'){state.discoveryQueryExpansions||={};state.discoveryQueryExpansions[expansionKey]={synonyms:expansion.synonyms,removed:[],at:Date.now()};for(const old of Object.keys(state.discoveryQueryExpansions).slice(0,-100))delete state.discoveryQueryExpansions[old];}
@@ -249,7 +271,7 @@ export async function prepareDiscoveryQuery(E,query,researchScope={},signal,runt
  Object.assign(scope,Object.fromEntries(Object.entries(values).filter(([key])=>key!=='query')));
  // Exclusions stay conservative: keep the original phrase and its known
  // translation so adding an English query never drops a user's exclusion.
- scope.excludedKeywords=[...new Set(original.excludedKeywords.flatMap(term=>[term,translateDiscoveryTerm(term)]))];
+ scope.excludedKeywords=[...new Set(original.excludedKeywords.flatMap(term=>[term,translateDiscoveryTerm(term,{compose:false})]))];
  const removed=new Set((expansion?.removed||[]).map(term=>String(term).toLowerCase())),synonyms={};
  for(const key of EXPANDABLE){const list=cleanSynonyms(expansion?.synonyms?.[key],scope[key]).filter(term=>!removed.has(term.toLowerCase()));if(list.length)synonyms[key]=list;}
  const groups=discovery?discoveryQueryGroups(scope,values.query,{synonyms,domainMatch}):null;

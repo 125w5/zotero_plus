@@ -176,3 +176,8 @@ html body #view-search.discovery-unified #search-results>section.empty>.discover
 html body #view-search.discovery-unified .card.discovery-paper>:is(.discovery-paper-meta,p,.discovery-keywords,details){margin-inline-start:52px}
 @media(max-width:900px){html body #view-search.discovery-unified .card.discovery-paper>button{margin-inline-start:52px}}
 @media(max-width:540px){html body #view-search.discovery-unified .card.discovery-paper>:is(.discovery-paper-meta,p,.discovery-keywords,details,button){margin-inline-start:0}}
+/* PDF state under a result's meta line: 可下载 PDF / 正在检查 PDF / 仅题录. */
+html body #view-search.discovery-unified .card.discovery-paper>.discovery-pdf-state{display:block;margin:-5px 0 8px;margin-inline-start:52px;color:var(--ui-secondary);font-size:12px;line-height:1.6}
+html body #view-search.discovery-unified .card.discovery-paper>.discovery-pdf-state[data-pdf=available]{color:var(--ui-primary-text,#405e82)}
+html body #view-search.discovery-unified .card.discovery-paper>.discovery-pdf-state:empty{display:none}
+@media(max-width:540px){html body #view-search.discovery-unified .card.discovery-paper>.discovery-pdf-state{margin-inline-start:0}}

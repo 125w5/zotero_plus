@@ -123,8 +123,9 @@
     const merged={...await E.searchDiscoverySources({prepared,filters:choice,indexes,cursor,limit,signal,refresh,onProgress,scanBudget}),page,nextPage:page+1,provider:provider||''};
     if(signal?.aborted)throw Object.assign(Error('已取消'),{name:'AbortError'});
     // Only a first page that every index answered is kept; later pages continue the
-    // in-memory merged pool, and a page missing a rate-limited index is fetched again.
-    if(page===1&&!cursor&&merged.records.length&&!merged.fallback&&!merged.providerErrors?.length)await E.store.update(s=>{s.paperSearchPages||={};s.paperSearchPages[key]={at:Date.now(),result:merged};const keys=Object.keys(s.paperSearchPages);for(const k of keys.slice(0,Math.max(0,keys.length-80)))delete s.paperSearchPages[k];});
+    // in-memory merged pool, and a page missing a rate-limited index, or one still
+    // answering at the deadline, is fetched again.
+    if(page===1&&!cursor&&merged.records.length&&!merged.fallback&&!merged.providerErrors?.length&&!Object.values(merged.providerStates||{}).some(state=>state.status!=='ok'))await E.store.update(s=>{s.paperSearchPages||={};s.paperSearchPages[key]={at:Date.now(),result:merged};const keys=Object.keys(s.paperSearchPages);for(const k of keys.slice(0,Math.max(0,keys.length-80)))delete s.paperSearchPages[k];});
     return merged;
    }
    const started=Date.now(),scans=[];let result,fallback,errors=[];for(const name of provider?[provider]:restricted?['openalex']:['openalex','semantic','arxiv'])try{
@@ -254,42 +255,70 @@
  // the error's lasting says which, for a caller that records the address.
  E.discoveryPDFUnavailable=(error,unchanged)=>{let text=String(error?.message??error??''),lasting=lastingPDF(text),reason=pdfReason(text);return Object.assign(Error(lasting?reason+'；'+unchanged:'公开 PDF 暂不可用：'+reason+'；'+unchanged+'，可稍后重试'),{lasting});};
  // pdf-status.mjs's {state,label,reason} on every result and error of obtainPaper.
- let Status;const pdfStatusOf=value=>{try{Status||=ChromeUtils.importESModule('chrome://zotero/content/research/shared/pdf-resolver.mjs');return typeof Status.pdfStatus==='function'?Status.pdfStatus(value):null;}catch{return null;}};
- const withStatus=error=>{if(error&&typeof error==='object'&&!error.state){const value=pdfStatusOf(error);if(value)Object.assign(error,value);}return error;};
+ let Status;const statusModule=()=>{try{return Status||=ChromeUtils.importESModule('chrome://zotero/content/research/shared/pdf-resolver.mjs');}catch{return null;}};
+ const pdfStatusOf=value=>{try{const module=statusModule();return typeof module?.pdfStatus==='function'?module.pdfStatus(value):null;}catch{return null;}};
+ // An error without a state is classified by its text: instanceof Error does not hold across compartments.
+ const withStatus=error=>{if(error&&typeof error==='object'&&!error.state){const module=statusModule(),value=typeof module?.pdfErrorStatus==='function'?module.pdfErrorStatus(error):pdfStatusOf(error);if(value)Object.assign(error,value);}return error;};
  const delay=(ms,fn)=>{const set=typeof E.setTimeout==='function'?E.setTimeout:typeof setTimeout==='function'?setTimeout:null,clear=typeof E.clearTimeout==='function'?E.clearTimeout:typeof clearTimeout==='function'?clearTimeout:()=>{};if(!set)return ()=>{};const id=set(fn,ms);return ()=>clear(id);};
  const eraseQuietly=async object=>{try{if(object&&!object.deleted)await object.eraseTx?.();}catch(error){Zotero.logError?.(error);}};
  const isPDF=attachment=>!!attachment&&(typeof attachment.isPDFAttachment!=='function'||attachment.isPDFAttachment());
  const ZOTERO_FIND_TIMEOUT=60000;
+ // An item's attempt that has not settled yet; a retry does not start a second one on it.
+ const zoteroAttempts=new Map();
+ // What a user or another caller can change on an item while Zotero looks: its fields, notes,
+ // files, folders, tags and relations. null when it cannot be read, which counts as changed.
+ const itemState=(item,skip)=>{try{return JSON.stringify([!!item.deleted,item.dateModified||'',item.getNotes?.()||[],(item.getAttachments?.()||[]).filter(id=>id!==skip),item.getCollections?.()||[],(item.getTags?.()||[]).map(tag=>tag.tag+':'+(tag.type||0)),item.getRelations?.()||{}]);}catch{return null;}};
  // Zotero's own Find Available PDF (the DOI and URL pages through the user's proxy and
  // institution settings, Zotero's open-access lookup, custom resolvers), once every open copy
- // above has failed. It needs an item: a new one is erased again when no PDF arrives, so the
- // library is as it was; an existing one keeps only a PDF that arrives, even a late one.
+ // above has failed. It needs an item: a new one is erased again when no PDF arrives and nothing
+ // else has used or changed it (search.js discardProvisionalItem), so the library is as it was;
+ // otherwise the item is kept ({kept:true}). An item keeps a PDF that arrives late only if it has
+ // gained no other PDF meanwhile; {pending:true} while that attempt still runs.
  const findWithZotero=async(record,{existing,target,signal,onProgress})=>{
   const Attachments=Zotero.Attachments;if(typeof Attachments?.addAvailableFile!=='function'||signal?.aborted)return null;
   if(!Ref.cleanDOI(record.doi)&&!/^https?:\/\//i.test(record.url||''))return null;
+  if(existing&&zoteroAttempts.has(existing.id))return {pending:true};
   onProgress({stage:'resolve',text:'正在用 Zotero 的“查找可用 PDF”查找（使用 Zotero 中的代理与机构设置）…'});
   let item=existing,created=false;
-  if(!item){const saved=await E.importAcademic(record,{select:false,...target});item=await Zotero.Items.getAsync(saved.id);created=!saved.existing;}
+  if(!item){const saved=await E.importAcademic(record,{select:false,provisional:true,...target});item=await Zotero.Items.getAsync(saved.id);created=!saved.existing&&!saved.joined;}
   if(!item)return null;
+  if(zoteroAttempts.has(item.id)){if(created)E.releaseProvisionalItem?.(item.id);return {pending:true,kept:created};}
+  const before=itemState(item),files=new Set(item.getAttachments?.()||[]);
   const attempt=Promise.resolve().then(()=>Attachments.addAvailableFile(item));attempt.catch(()=>{});
+  zoteroAttempts.set(item.id,attempt);attempt.finally(()=>{if(zoteroAttempts.get(item.id)===attempt)zoteroAttempts.delete(item.id);}).catch(()=>{});
   let attachment=null,failure=null,stopTimer=()=>{},abort;
   try{attachment=await Promise.race([attempt,new Promise((_,fail)=>{stopTimer=delay(ZOTERO_FIND_TIMEOUT,()=>fail(Object.assign(Error('Zotero 查找可用 PDF 超时'),{name:'TimeoutError'})));}),new Promise((_,fail)=>{if(!signal)return;abort=()=>fail(Object.assign(Error('已取消 PDF 获取'),{name:'AbortError'}));signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();})]);}
   catch(error){failure=error;}
   finally{stopTimer();if(abort)signal.removeEventListener('abort',abort);}
-  if(attachment&&!isPDF(attachment)){await eraseQuietly(attachment);attachment=null;}
-  if(attachment){E.manuscripts?.queueArticle?.(attachment.id);return {itemID:item.id,attachmentID:attachment.id,downloaded:true,viaZotero:true,pdfSource:'Zotero 查找可用 PDF',...target};}
+  let rejected=attachment&&!isPDF(attachment)?attachment.id:null;
+  if(rejected){await eraseQuietly(attachment);attachment=null;}
+  if(attachment){if(created)E.releaseProvisionalItem?.(item.id);E.manuscripts?.queueArticle?.(attachment.id);return {itemID:item.id,attachmentID:attachment.id,downloaded:true,viaZotero:true,pdfSource:'Zotero 查找可用 PDF',...target};}
   if(failure&&failure.name!=='TimeoutError'&&failure.name!=='AbortError')Zotero.logError?.(failure);
-  // A file that arrives after the timeout is kept on an existing item if it is a PDF; on an item
-  // erased here it is erased too.
-  attempt.then(late=>{if(late&&(created||!isPDF(late)))return eraseQuietly(late);}).catch(()=>{});
-  if(created)await eraseQuietly(item);
+  let erased=false;
+  if(created){
+   const now=itemState(item,rejected),unchanged=before!==null&&now===before;
+   if(!unchanged)E.releaseProvisionalItem?.(item.id);
+   else if(E.discardProvisionalItem)erased=await E.discardProvisionalItem(item);
+   else{await eraseQuietly(item);erased=!!item.deleted;}
+  }
+  // A file that arrives after the timeout goes with an erased item, and is not kept beside a PDF
+  // the item gained meanwhile (a paid copy, or one the user added).
+  attempt.then(async late=>{
+   if(!late)return;if(erased||item.deleted||!isPDF(late))return eraseQuietly(late);
+   const others=await Promise.all((item.getAttachments?.()||[]).filter(id=>id!==late.id&&!files.has(id)).map(id=>Zotero.Items.getAsync(id)));
+   if(others.some(other=>other&&!other.deleted&&isPDF(other)))await eraseQuietly(late);
+  }).catch(()=>{});
   if(failure?.name==='AbortError')throw failure;
-  return null;
+  const pending=failure?.name==='TimeoutError'&&!erased;
+  return pending||created&&!erased?{pending,kept:created&&!erased}:null;
  };
  E.obtainPaper=async(record,options={})=>{
   const{open=true,onProgress=()=>{},signal}=options,target=E.resolveAcademicTarget?await E.resolveAcademicTarget(options):{libraryID:options.libraryID,collectionID:options.collectionID},key=String(target.libraryID||'')+':'+(Ref.cleanDOI(record.doi)||record.url||record.id);
   let task=obtaining.get(key);
   if(!task){task=(async()=>{
+   // An arXiv record takes arxiv.js's preprint import with its version-aware reuse; the steps
+   // below (status, folder, corpus, Reader) are the same for it.
+   if(Ref.arxivRecordID(record)&&E.importAcademicPDF)return E.importAcademicPDF(record,{...options,open:false,onProgress:value=>{if(value?.stage!=='saved')onProgress(value);},signal,...target});
    onProgress({stage:'lookup',text:'正在匹配文库…'});
    // Nothing is filed until a public PDF is resolved and probed; obtainOpenPaper
    // files the record only after the download.
@@ -310,9 +339,14 @@
    catch(error){
     if(signal?.aborted||error?.name==='AbortError'||error?.stop)throw error;
     const viaZotero=await findWithZotero(record,{existing,target,signal,onProgress});
-    if(viaZotero){const attachment=await E.library.localPDF(viaZotero.attachmentID);if(attachment)return {...viaZotero,path:await attachment.getFilePathAsync()};}
-    else if(typeof Zotero.Attachments?.addAvailableFile==='function'&&(Ref.cleanDOI(record.doi)||/^https?:\/\//i.test(record.url||''))){error.zotero=true;error.message+='（Zotero 的“查找可用 PDF”也未找到）';}
-    const bytes=error.paidPDF&&E.openAlexContentPDF?await E.openAlexContentPDF(error.paidPDF,{signal,onProgress}).catch(paid=>{if(signal?.aborted||paid?.name==='AbortError')throw paid;Zotero.logError?.(paid);return null;}):null;
+    if(viaZotero?.attachmentID){const attachment=await E.library.localPDF(viaZotero.attachmentID);if(attachment)return {...viaZotero,path:await attachment.getFilePathAsync()};}
+    else if(typeof Zotero.Attachments?.addAvailableFile==='function'&&(Ref.cleanDOI(record.doi)||/^https?:\/\//i.test(record.url||''))){
+     error.zotero=true;
+     if(viaZotero?.kept)error.message=error.message.split(unchanged).join('题录已保留（查找期间已被使用或修改）');
+     error.message+=viaZotero?.pending?'（Zotero 的“查找可用 PDF”仍在进行，找到后会附在这条题录上）':'（Zotero 的“查找可用 PDF”也未找到）';
+    }
+    // Zotero's attempt still running on a kept item may yet attach a PDF; a paid copy now would be a second one.
+    const bytes=error.paidPDF&&!viaZotero?.pending&&E.openAlexContentPDF?await E.openAlexContentPDF(error.paidPDF,{signal,onProgress}).catch(paid=>{if(signal?.aborted||paid?.name==='AbortError')throw paid;Zotero.logError?.(paid);return null;}):null;
     if(!bytes)throw error;
     found={bytes,record:{...record,pdf:error.paidPDF,pdfSource:'OpenAlex 全文（付费）',pdfHints:error.pdfHints||{},oa:true},paid:true};
    }

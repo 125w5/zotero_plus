@@ -135,7 +135,8 @@ test('an arXiv PDF is downloaded and checked before the record is filed and atta
 	let f=await load({withArxiv:true,download:async()=>arxivPDF()}),imported=[];
 	let importAcademic=f.E.importAcademic;f.E.importAcademic=async(record,options)=>{imported.push(record);return importAcademic(record,options);};
 	let result=await f.E.obtainPaper(arxivRecord,{open:false,collectionID:7,onProgress:f.progress});
-	assert.deepEqual(f.calls,['find','download','import','attach:11'],'nothing is written before the PDF bytes arrive');
+	// The last step is obtainPaper's shared tail, which every download takes (the item is already in its folder).
+	assert.deepEqual(f.calls,['find','download','import','attach:11','place:11:7'],'nothing is written before the PDF bytes arrive');
 	assert.equal(imported.length,1);assert.equal(imported[0].source,'arXiv');assert.equal(imported[0].url,'https://arxiv.org/abs/2401.01234v2');
 	assert.equal(result.itemID,11);assert.equal(result.attachmentID,40);assert.equal(result.downloaded,true);assert.equal(result.path,'/local/40.pdf');
 	assert.deepEqual(f.stages,['lookup','download','save','saved']);

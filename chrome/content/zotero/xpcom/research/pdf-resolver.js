@@ -68,7 +68,8 @@
  // (pdfHints) for the item type. With lookup:false only the record's own addresses are tried.
  // When every source has answered and none has a PDF, the addresses tried are recorded for a
  // day; a source that was rate limited, timed out or refused leaves nothing recorded. The
- // error carries pdf-status.mjs's {state,label,reason} and, when OpenAlex holds a paid copy, paidPDF.
+ // error carries pdf-status.mjs's {state,label,reason} and, when OpenAlex holds a paid copy and every
+ // free copy was tried (not error.incomplete), paidPDF.
  E.resolveOpenPDF=async(record,{signal,onProgress=()=>{},lookup=true,unchanged='文库没有变化',timing}={})=>{
   const ctx=P.pdfContext(record),list=stages(record,ctx);
   try{
@@ -79,7 +80,7 @@
    return {...found,...P.pdfStatus('pdf'),record:{...record,pdf:found.url,pdfSource:found.source,pdfHints:ctx.hints,oa:true}};
   }
   catch(error){
-   if(error&&typeof error==='object'){if(ctx.paidPDF)error.paidPDF=ctx.paidPDF;error.pdfHints=ctx.hints;}
+   if(error&&typeof error==='object'){if(ctx.paidPDF&&!error.incomplete)error.paidPDF=ctx.paidPDF;error.pdfHints=ctx.hints;}
    if(error?.lasting)for(const url of new Set([P.pdfURL(record.pdf),...(error.attempted||[])].filter(Boolean)))if(!recentFailure(url))await E.markDiscoveryPDFFailure?.(url,error);
    throw error;
   }

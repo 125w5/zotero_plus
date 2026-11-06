@@ -93,11 +93,9 @@
   }
   E.showReader(reader);await reader.navigate({position});return position;
  };
- // A reference enters the library only with a confirmed public PDF. obtainPaper
- // downloads before it files the record, but treats any https pdf field as public,
- // so a pdf not marked open access is checked on OpenAlex here first. OpenAlex
- // records now take pdf_url only from open-access locations; only one cached by an
- // earlier version can still carry a closed location's pdf_url.
+ // A reference enters the library only with a confirmed public PDF. obtainPaper treats
+ // any https pdf field as public, so a reference's pdf not marked open access is dropped
+ // and obtainPaper looks it up in the open sources instead.
  let openRecord=record=>/^https:\/\//i.test(record.pdf||'')&&(record.oa===true||record.source==='Semantic Scholar');
  let openReason=error=>{let text=String(error?.message||'').replace(/[，,]\s*(?:请重试|未保存附件)$/,'');return /\p{Script=Han}/u.test(text)?text:'来源暂时无法访问';};
  E.obtainReferencePaper=async(record,options={})=>{

@@ -80,10 +80,4 @@
    onProgress({stage:'saved',text:'PDF 已保存'});if(open)await Zotero.Reader.open(attachment.id);E.manuscripts.queueArticle(attachment.id);return{itemID:item.id,attachmentID:attachment.id,downloaded:transferred,reused:!transferred,path:await attachment.getFilePathAsync(),...target};
   })();downloads.set(key,task);try{return await task;}finally{downloads.delete(key);}
  };
- // Only an arXiv record (arxivRecordID) takes the arXiv preprint import. A journal
- // article whose open copy is on arxiv.org keeps the original path, its item type and journal.
- const obtain=E.obtainPaper;E.obtainPaper=async(record,options)=>{
-  if(!P.arxivRecordID(record))return obtain(record,options);
-  const result=await E.importAcademicPDF(record,options);await E.workspaceOutputs?.rememberDownload(record,result);return result;
- };
 })(Zotero.Research);
